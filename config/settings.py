@@ -6,6 +6,7 @@ variables de entorno o del archivo `.env`. Ver `.env.example`.
 """
 import os
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
@@ -50,6 +51,7 @@ INSTALLED_APPS = [
     "corsheaders",
     # Módulos de TexCore (uno por carpeta dentro de apps/)
     "apps.core",
+    "apps.users",
 ]
 
 MIDDLEWARE = [
@@ -104,10 +106,18 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
-    # La autenticación se define en Sprint 1 (HU01). Por ahora la API es pública.
-    "DEFAULT_AUTHENTICATION_CLASSES": [],
+    # Autenticación JWT (HU01), implementada en apps.users.
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
     "UNAUTHENTICATED_USER": None,
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": False,
 }
 
 CORS_ALLOWED_ORIGINS = env_list(
@@ -131,3 +141,5 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 APP_NAME = "TexCore API"
 APP_VERSION = "0.1.0"
 APP_ENV = os.getenv("APP_ENV", "local")
+
+AUTH_USER_MODEL = "users.CustomUser"

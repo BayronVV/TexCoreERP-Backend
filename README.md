@@ -51,12 +51,37 @@ La API queda en http://localhost:8000.
 Base de datos por entorno: **texcore-dev** (desarrollo diario, rama
 `pruebas`) y **texcore-prod** (rama `main`). Solo cambia `DATABASE_URL`.
 
+## Seed de datos
+
+Para entrar por primera vez al ERP hace falta una cuenta con rol
+`ADMIN` (los registros nuevos quedan en `PENDING` hasta que un admin
+les asigna rol). Créala con:
+
+```powershell
+python manage.py seed_admin
+```
+
+Es idempotente (se puede correr varias veces sin duplicar la cuenta) y
+usa `admin@texcore.test` / `Admin#2026` si no defines `ADMIN_EMAIL` /
+`ADMIN_PASSWORD` en `.env`. En texcore-prod pasa una contraseña propia:
+
+```powershell
+python manage.py seed_admin --email tu-correo@empresa.com --password "Otra#Clave1"
+```
+
+`--reset-password` fuerza la contraseña también si la cuenta ya existía.
+
 ## Endpoints
 
-| Método | Ruta              | Descripción |
-|--------|-------------------|-------------|
-| GET    | `/api/health/`    | El servidor está vivo (no toca la base de datos). |
-| GET    | `/api/health/db/` | `SELECT 1` y lista de tablas: comprueba la conexión a Supabase. |
+| Método | Ruta                      | Descripción |
+|--------|---------------------------|-------------|
+| GET    | `/api/health/`            | El servidor está vivo (no toca la base de datos). |
+| GET    | `/api/health/db/`         | `SELECT 1` y lista de tablas: comprueba la conexión a Supabase. |
+| POST   | `/api/register/`          | Crea una cuenta (queda en rol `PENDING`). |
+| POST   | `/api/token/`             | Login: devuelve tokens JWT (`access` / `refresh`). |
+| POST   | `/api/token/refresh/`     | Renueva el `access` token. |
+| GET    | `/api/users/`             | Lista usuarios (solo `ADMIN`). |
+| PATCH  | `/api/users/<id>/role/`   | Cambia el rol de un usuario (solo `ADMIN`). |
 
 ## Pruebas
 

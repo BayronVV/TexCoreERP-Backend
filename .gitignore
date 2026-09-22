@@ -1,5 +1,22 @@
-*.sqlite3
-__pycache__/
-*.pyc
-venv/
+# Secretos y configuración local (NUNCA versionar)
 .env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Base local y estáticos generados
+*.sqlite3
+staticfiles/
+
+# Editor / SO
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db

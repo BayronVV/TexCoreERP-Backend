@@ -1,0 +1,9 @@
+# Dependencias del backend de TexCore.
+# Instalar con:  pip install -r requirements.txt
+
+Django>=5.2.8,<5.3            # Framework web (5.2 = LTS, soporte hasta abril 2028)
+djangorestframework>=3.16,<4  # API REST
+django-cors-headers>=4.9,<5   # CORS para que el frontend (otro origen) consuma la API
+dj-database-url>=3.0,<4       # Lee la conexión a BD desde DATABASE_URL
+python-dotenv>=1.1,<2         # Carga variables desde el archivo .env
+psycopg[binary]>=3.2,<4       # Driver de PostgreSQL (Supabase)

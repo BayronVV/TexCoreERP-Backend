@@ -23,6 +23,8 @@ class CustomUser(AbstractUser, BaseModel):
         ('SECRETARIA', 'Secretaria'),
     )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='PENDING')
+    requested_area = models.CharField(max_length=20, choices=ROLE_CHOICES, null=True, blank=True)
+    document_id = models.CharField(max_length=20, null=True, blank=True)
 
     def __str__(self):
         return f"{self.username} - {self.get_role_display()}"

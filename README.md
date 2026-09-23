@@ -83,6 +83,28 @@ python manage.py seed_admin --email tu-correo@empresa.com --password "Otra#Clave
 | GET    | `/api/users/`             | Lista usuarios (solo `ADMIN`). |
 | PATCH  | `/api/users/<id>/role/`   | Cambia el rol de un usuario (solo `ADMIN`). |
 
+## Control de acceso por rol (HU 1.4)
+
+Cada vista puede declarar `permission_classes = [HasRole]` y una lista
+`allowed_roles` (ver `apps/core/permissions.py`). `HasRole` corre antes
+que la vista, para toda petición autenticada por JWT — es el punto de
+la app que "intercepta la petición y valida si el rol tiene acceso a la
+ruta" (un middleware clásico de Django no puede hacerlo aquí, porque
+`request.user` solo queda resuelto cuando DRF procesa el token, no
+durante el pipeline de `MIDDLEWARE`).
+
+```python
+class MiVista(generics.ListAPIView):
+    permission_classes = [HasRole]
+    allowed_roles = ["ADMIN", "GERENTE"]
+```
+
+`apps/core/constants.py` (`ROLE_MODULES`) documenta qué módulo del
+sistema puede usar cada rol, según el diagrama de casos de uso. El
+frontend mantiene la misma tabla en `src/config/roleModules.js` para
+bloquear visualmente el menú lateral (TE-75); si cambias una, cambia la
+otra.
+
 ## Pruebas
 
 ```powershell

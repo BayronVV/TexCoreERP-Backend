@@ -1,15 +1,18 @@
 """Endpoints de salud usados para verificar que el sistema está vivo."""
+
 import time
 
 from django.conf import settings
 from django.db import DatabaseError, connection
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def health(request):
     """GET /api/health/ — responde sin tocar la base de datos."""
     return Response(
@@ -24,6 +27,7 @@ def health(request):
 
 
 @api_view(["GET"])
+@permission_classes([AllowAny])
 def health_db(request):
     """GET /api/health/db/ — ejecuta SELECT 1 y lista las tablas del esquema public."""
     started = time.perf_counter()
@@ -31,7 +35,8 @@ def health_db(request):
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
             cursor.fetchone()
-            tables = sorted(connection.introspection.table_names(cursor))
+            # La lista de tablas solo se expone en desarrollo.
+            tables = sorted(connection.introspection.table_names(cursor)) if settings.DEBUG else None
             server_version = _server_version(cursor)
     except DatabaseError as exc:
         return Response(

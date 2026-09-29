@@ -1,36 +1,28 @@
 """
-Control de acceso por rol (HU 1.4 - TE-77).
+Permiso por ruta (HU 1.4). Es una permission class y no un middleware porque el
+usuario del JWT solo existe dentro de DRF. Se usa por defecto en todas las vistas
+(settings.REST_FRAMEWORK); cada vista declara qué permiso exige:
 
-DRF resuelve la autenticación JWT y arma `request.user` durante el
-despacho de la vista, no en el pipeline de `MIDDLEWARE` de Django (ahí
-`request.user` todavía sería anónimo). Por eso el punto correcto para
-"interceptar la petición y validar si el rol tiene acceso a la ruta" es
-una permission class de DRF: corre antes que el `handler` de la vista,
-para cada request, exactamente igual que un middleware — pero con
-`request.user` ya resuelto.
-
-Uso en una vista:
-
-    class MiVista(generics.ListAPIView):
-        permission_classes = [HasRole]
-        allowed_roles = ["ADMIN", "GERENTE"]
+    required_permissions = {"GET": "inventario.ver", "POST": "inventario.gestionar"}
+    required_permissions = "inventario.ver"   # el mismo para todos los métodos
 """
+
 from rest_framework.permissions import BasePermission
 
 
-class HasRole(BasePermission):
-    """Permite el acceso solo si el usuario autenticado tiene uno de los
-    roles listados en `view.allowed_roles`. Si la vista no define
-    `allowed_roles`, no restringe (deja pasar a cualquier autenticado)."""
-
-    message = "Tu rol no tiene permiso para acceder a este recurso."
+class HasPermission(BasePermission):
+    message = "Tu rol no tiene permiso para realizar esta acción."
 
     def has_permission(self, request, view):
-        if not (request.user and request.user.is_authenticated):
+        user = request.user
+        if not (user and user.is_authenticated):
             return False
 
-        allowed_roles = getattr(view, "allowed_roles", None)
-        if not allowed_roles:
-            return True
-
-        return request.user.role in allowed_roles
+        required = getattr(view, "required_permissions", None)
+        if isinstance(required, dict):
+            method = "GET" if request.method == "HEAD" else request.method
+            required = required.get(method)
+        # Falla cerrado: una vista o un método sin permiso declarado no se abre.
+        if not required:
+            return request.method == "OPTIONS"
+        return user.has_permission_code(required)

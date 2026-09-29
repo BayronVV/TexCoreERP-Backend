@@ -4,6 +4,7 @@ Configuración de Django para TexCore.
 Todo lo que cambia entre entornos (local, testing, producción) se lee de
 variables de entorno o del archivo `.env`. Ver `.env.example`.
 """
+
 import os
 import sys
 from datetime import timedelta
@@ -87,7 +88,9 @@ if DATABASE_URL and not RUNNING_TESTS:
     DATABASES = {
         "default": dj_database_url.parse(
             DATABASE_URL,
-            conn_max_age=int(os.getenv("DB_CONN_MAX_AGE", "60")),
+            # 0 = una conexión por petición. Con runserver (un hilo por petición) un
+            # valor mayor deja conexiones abiertas y agota el pool de Supabase.
+            conn_max_age=int(os.getenv("DB_CONN_MAX_AGE", "0")),
             conn_health_checks=True,
             ssl_require=env_bool("DB_SSL_REQUIRE", True),
         )
@@ -110,19 +113,55 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ],
-    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
+    # Una vista que no declare required_permissions queda cerrada. Las públicas
+    # (login, registro, recuperación, health) declaran AllowAny.
+    "DEFAULT_PERMISSION_CLASSES": ["apps.core.permissions.HasPermission"],
     "UNAUTHENTICATED_USER": None,
+    # Proxies delante del backend. 0 = usar la IP de la conexión e ignorar
+    # X-Forwarded-For (si no, cualquiera evade los límites cambiando ese header).
+    "NUM_PROXIES": int(os.getenv("NUM_PROXIES", "0")),
+    "DEFAULT_THROTTLE_RATES": {
+        "login": os.getenv("THROTTLE_LOGIN", "10/minute"),
+        "register": os.getenv("THROTTLE_REGISTER", "20/hour"),
+        "password_reset": os.getenv("THROTTLE_PASSWORD_RESET", "5/hour"),
+        "password_reset_check": os.getenv("THROTTLE_PASSWORD_RESET_CHECK", "30/hour"),
+    },
 }
 
+# RF01: la sesión vence a los 30 minutos sin uso. Cada refresh entrega un
+# refresh nuevo, así que mientras la persona trabaja la sesión se extiende.
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
-    "ROTATE_REFRESH_TOKENS": False,
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(minutes=30),
+    "ROTATE_REFRESH_TOKENS": True,
+    # Los tokens llevan un resumen del hash de la contraseña: al cambiarla
+    # (p. ej. con "olvidé mi contraseña") se invalidan las sesiones abiertas.
+    "CHECK_REVOKE_TOKEN": True,
+    "TOKEN_REFRESH_SERIALIZER": "apps.users.serializers.SafeTokenRefreshSerializer",
+    # Registra el último acceso al iniciar sesión (se muestra en "Usuarios").
+    "UPDATE_LAST_LOGIN": True,
 }
 
-CORS_ALLOWED_ORIGINS = env_list(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
-)
+CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+
+# --- Correo y recuperación de contraseña (HU 1.3) -------------------------------
+# En desarrollo los correos se imprimen en la consola del runserver. Para
+# guardarlos como archivos .eml usa EMAIL_BACKEND=django.core.mail.backends.filebased.EmailBackend
+# y EMAIL_FILE_PATH; para enviarlos de verdad, el backend SMTP con EMAIL_HOST/*.
+
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_FILE_PATH = os.getenv("EMAIL_FILE_PATH", str(BASE_DIR / "tmp" / "emails"))
+EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "TexCore ERP <no-reply@texcore.local>")
+
+# URL pública del frontend: se usa para armar el enlace del correo.
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+PASSWORD_RESET_TOKEN_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_MINUTES", "15"))  # RF02
+ACCOUNT_INVITE_TOKEN_HOURS = int(os.getenv("ACCOUNT_INVITE_TOKEN_HOURS", "48"))
 
 # --- Internacionalización -----------------------------------------------------
 
@@ -143,3 +182,10 @@ APP_VERSION = "0.1.0"
 APP_ENV = os.getenv("APP_ENV", "local")
 
 AUTH_USER_MODEL = "users.CustomUser"
+
+# Además de la política propia (apps/users/validators.py) se rechazan
+# contraseñas comunes o parecidas a los datos de la persona.
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+]

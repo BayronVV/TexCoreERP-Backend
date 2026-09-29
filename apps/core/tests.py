@@ -1,4 +1,4 @@
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 
@@ -9,6 +9,7 @@ class HealthTests(SimpleTestCase):
         self.assertEqual(response.json()["status"], "ok")
 
 
+@override_settings(DEBUG=True)
 class HealthDbTests(TestCase):
     def test_health_db_ejecuta_consulta(self):
         response = self.client.get(reverse("health-db"))

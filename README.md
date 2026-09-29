@@ -10,7 +10,8 @@ API REST del ERP TexCore (gestión y trazabilidad de producción de jeans).
 backend/
 ├── config/            # Configuración del proyecto (settings, urls, wsgi/asgi)
 ├── apps/              # Un módulo de Django por área de negocio
-│   └── core/          # Transversal: endpoints de salud y modelo base (borrado lógico)
+│   ├── core/          # Transversal: endpoints de salud, modelo base (borrado lógico), permisos
+│   └── users/         # Usuarios, roles y permisos, recuperación de contraseña
 ├── docs/              # Convenciones técnicas (base de datos, borrado lógico)
 ├── manage.py
 ├── requirements.txt
@@ -45,7 +46,8 @@ La API queda en http://localhost:8000.
 | `APP_ENV`              | No (`local`) | Nombre del entorno que muestra `/api/health/`. |
 | `DATABASE_URL`         | Recomendada | Cadena de Supabase (*Session pooler*). Vacía = SQLite local. |
 | `DB_SSL_REQUIRE`       | No (`true`) | Supabase exige SSL. |
-| `DB_CONN_MAX_AGE`      | No (`60`) | Segundos que se reutiliza la conexión. |
+| `DB_CONN_MAX_AGE`      | No (`0`) | Segundos que se reutiliza la conexión (0 con runserver). |
+| `NUM_PROXIES`          | No (`0`) | Proxies delante del backend; 0 ignora `X-Forwarded-For`. |
 | `CORS_ALLOWED_ORIGINS` | No | Orígenes del frontend autorizados. |
 
 Base de datos por entorno: **texcore-dev** (desarrollo diario, rama
@@ -73,37 +75,86 @@ python manage.py seed_admin --email tu-correo@empresa.com --password "Otra#Clave
 
 ## Endpoints
 
-| Método | Ruta                      | Descripción |
-|--------|---------------------------|-------------|
-| GET    | `/api/health/`            | El servidor está vivo (no toca la base de datos). |
-| GET    | `/api/health/db/`         | `SELECT 1` y lista de tablas: comprueba la conexión a Supabase. |
-| POST   | `/api/register/`          | Crea una cuenta (queda en rol `PENDING`). |
-| POST   | `/api/token/`             | Login: devuelve tokens JWT (`access` / `refresh`). |
-| POST   | `/api/token/refresh/`     | Renueva el `access` token. |
-| GET    | `/api/users/`             | Lista usuarios (solo `ADMIN`). |
-| PATCH  | `/api/users/<id>/role/`   | Cambia el rol de un usuario (solo `ADMIN`). |
+Salvo los marcados como públicos, todos exigen `Authorization: Bearer <access>`.
 
-## Control de acceso por rol (HU 1.4)
+| Método | Ruta | Permiso | Descripción |
+|--------|------|---------|-------------|
+| GET | `/api/health/`, `/api/health/db/` | público | Estado del servidor y de la base. |
+| POST | `/api/register/` | público | Solicitud de cuenta; queda en rol `PENDING` con el área pedida. |
+| POST | `/api/token/`, `/api/token/refresh/` | público | Login JWT. El correo no distingue mayúsculas; cada refresh entrega un refresh nuevo. |
+| GET | `/api/auth/me/` | sesión | Usuario activo con su rol y permisos efectivos. |
+| POST | `/api/auth/password-reset/` | público | Pide el correo de recuperación. Responde igual exista o no la cuenta. |
+| POST | `/api/auth/password-reset/validate/` | público | `{token}`: ¿el enlace sigue vigente? Devuelve `purpose` y el correo. |
+| POST | `/api/auth/password-reset/confirm/` | público | `{token, password, password_confirm}`: guarda la nueva contraseña. |
+| GET, POST | `/api/users/` | `seguridad.ver` / `seguridad.gestionar` | Lista usuarios / crea uno y le envía la invitación. |
+| GET, PATCH, DELETE | `/api/users/<id>/` | `seguridad.ver` / `seguridad.gestionar` | Ver, cambiar rol, activar/desactivar, borrado lógico. |
+| POST | `/api/users/<id>/invite/` | `seguridad.gestionar` | Reenvía el enlace para definir contraseña. |
+| GET, POST | `/api/roles/` | `seguridad.ver` / `seguridad.roles` | Roles con sus permisos y cantidad de usuarios / crear rol. |
+| GET, PATCH, DELETE | `/api/roles/<id>/` | `seguridad.ver` / `seguridad.roles` | Ver, editar permisos, eliminar (solo roles no base y sin usuarios). |
+| GET | `/api/permissions/` | `seguridad.ver` | Catálogo de permisos por módulo. |
 
-Cada vista puede declarar `permission_classes = [HasRole]` y una lista
-`allowed_roles` (ver `apps/core/permissions.py`). `HasRole` corre antes
-que la vista, para toda petición autenticada por JWT — es el punto de
-la app que "intercepta la petición y valida si el rol tiene acceso a la
-ruta" (un middleware clásico de Django no puede hacerlo aquí, porque
-`request.user` solo queda resuelto cuando DRF procesa el token, no
-durante el pipeline de `MIDDLEWARE`).
+## Roles y permisos (HU 1.4)
+
+Tablas `seguridad_rol`, `seguridad_permiso` y `seguridad_rol_permiso`
+(modelos `Role`, `ModulePermission`, `RolePermission` en `apps/users`).
+`CustomUser.role` es una llave foránea a `seguridad_rol.code`: la columna
+sigue guardando el código (`ADMIN`, `VENDEDOR`...), así el JWT y el
+frontend no cambian.
+
+- Cada módulo tiene los permisos `<modulo>.ver` y `<modulo>.gestionar`;
+  Seguridad además tiene `seguridad.roles`.
+- `ADMIN` tiene todos los permisos de forma implícita y no se puede
+  restringir. `PENDING` no puede tener permisos.
+- Reglas de RF03: nadie cambia su propio rol ni se desactiva o elimina a
+  sí mismo, y siempre debe quedar al menos un administrador activo que
+  pueda entrar (una cuenta invitada sin contraseña no cuenta).
+- Delegación: alguien con `seguridad.gestionar` o `seguridad.roles` que no
+  es ADMIN puede administrar roles y usuarios operativos, pero no puede
+  crear ni tocar administradores, asignar roles con permisos de Seguridad,
+  dar o quitar permisos de Seguridad, ni editar los permisos de su propio
+  rol. Así nadie puede fabricarse un administrador.
+- "Registrar y modificar" en un módulo exige también "Ver" ese módulo.
+- Los datos iniciales salen del diagrama de casos de uso
+  (migración `0003_roles_y_permisos`); después se administran desde la
+  pantalla "Roles y permisos".
+
+**Validación en cada ruta (TE-77):** las vistas declaran
+`permission_classes = [HasPermission]` y `required_permissions`
+(`apps/core/permissions.py`). DRF lo ejecuta antes del handler en cada
+petición, con el usuario del JWT ya resuelto (un middleware clásico de
+Django no lo tendría todavía). Si una vista no declara el permiso, se
+niega el acceso.
 
 ```python
-class MiVista(generics.ListAPIView):
-    permission_classes = [HasRole]
-    allowed_roles = ["ADMIN", "GERENTE"]
+class MiVista(generics.ListCreateAPIView):
+    permission_classes = [HasPermission]
+    required_permissions = {"GET": "inventario.ver", "POST": "inventario.gestionar"}
 ```
 
-`apps/core/constants.py` (`ROLE_MODULES`) documenta qué módulo del
-sistema puede usar cada rol, según el diagrama de casos de uso. El
-frontend mantiene la misma tabla en `src/config/roleModules.js` para
-bloquear visualmente el menú lateral (TE-75); si cambias una, cambia la
-otra.
+## Sesión (RF01)
+
+El access token dura 15 minutos y el refresh 30, y cada refresh entrega uno
+nuevo: la sesión vence tras 30 minutos sin uso. El login tiene un límite de
+10 intentos por minuto por IP.
+
+## Recuperación de contraseña (HU 1.3)
+
+1. `POST /api/auth/password-reset/` con el correo. Si la cuenta existe y
+   está activa se envía un enlace `FRONTEND_URL/restablecer-contrasena?token=...`.
+2. El token es aleatorio (`secrets.token_urlsafe`), se guarda solo su
+   SHA-256 en `seguridad_token_recuperacion`, vence en 15 minutos (RF02),
+   sirve una sola vez y pedir uno nuevo invalida los anteriores.
+3. Límites: 5 solicitudes por hora por IP (la IP de la conexión; ver
+   `NUM_PROXIES` si hay un proxy delante) y 3 correos por hora por usuario.
+   Si el correo no se puede enviar la respuesta es la misma, para no
+   revelar qué cuentas existen.
+5. Al cambiar la contraseña se cierran las sesiones abiertas: los tokens
+   emitidos antes dejan de servir.
+4. Las cuentas creadas por un administrador reciben el mismo tipo de
+   enlace (`purpose=invite`, vigencia 48 h) para definir su contraseña.
+
+En desarrollo el correo se imprime en la consola del `runserver`; ver
+`.env.example` para guardarlo como archivo o enviarlo por SMTP.
 
 ## Pruebas
 

@@ -20,3 +20,6 @@ staticfiles/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Correos de desarrollo (EMAIL_BACKEND filebased)
+tmp/

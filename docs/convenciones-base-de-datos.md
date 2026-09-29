@@ -72,3 +72,7 @@ Para que nadie lea las tablas saltándose el backend:
 - Desactivar la Data API (Project Settings → Data API) **o**
 - Activar RLS sin políticas en cada tabla nueva
   (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY;`).
+- En TexCore esto es automático: al final de cada `python manage.py migrate`,
+  `apps/core/db_security.py` activa RLS en todas las tablas de `public` y les
+  quita los privilegios a `anon`/`authenticated` (también para tablas futuras).
+  No hay que agregar nada a las migraciones nuevas.

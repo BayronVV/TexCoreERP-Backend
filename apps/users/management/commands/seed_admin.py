@@ -16,9 +16,10 @@ las variables de entorno ADMIN_EMAIL / ADMIN_PASSWORD, o con --email /
 --password. En texcore-prod usa --password (o la variable de entorno)
 con una contraseña real: nunca dejes la de ejemplo.
 """
+
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
-from django.conf import settings
 from django.db import IntegrityError
 
 DEFAULT_EMAIL = "admin@texcore.test"
@@ -39,12 +40,8 @@ class Command(BaseCommand):
             default=None,
             help="Contraseña del administrador (por defecto: $ADMIN_PASSWORD o una de desarrollo).",
         )
-        parser.add_argument(
-            "--first-name", default="Admin", help="Nombre (solo al crear la cuenta)."
-        )
-        parser.add_argument(
-            "--last-name", default="TexCore", help="Apellido (solo al crear la cuenta)."
-        )
+        parser.add_argument("--first-name", default="Admin", help="Nombre (solo al crear la cuenta).")
+        parser.add_argument("--last-name", default="TexCore", help="Apellido (solo al crear la cuenta).")
         parser.add_argument(
             "--reset-password",
             action="store_true",
@@ -69,7 +66,7 @@ class Command(BaseCommand):
                 "username": email,
                 "first_name": options["first_name"],
                 "last_name": options["last_name"],
-                "role": "ADMIN",
+                "role_id": "ADMIN",
                 "is_staff": True,
                 "is_superuser": True,
             },
@@ -84,8 +81,8 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f"Administrador creado: {email}"))
         else:
             changed = []
-            if user.role != "ADMIN":
-                user.role = "ADMIN"
+            if user.role_id != "ADMIN":
+                user.role_id = "ADMIN"
                 changed.append("role")
             if not user.is_staff:
                 user.is_staff = True

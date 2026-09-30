@@ -2,24 +2,73 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from . import catalog
-from .models import Evidencia, Movimiento, OrdenSalida, Producto
+from . import catalog, services
+from .models import Evidencia, Movimiento, OrdenSalida, Producto, Proveedor
+
+
+def category_name(obj):
+    data = catalog.CATEGORIES.get(obj.categoria)
+    return data["label"] if data else obj.get_tipo_display()
 
 
 class ProductoSerializer(serializers.ModelSerializer):
+    """Vista de inventario: con existencias. Es de solo lectura; el catálogo es quien edita."""
+
     tipo_nombre = serializers.CharField(source="get_tipo_display", read_only=True)
+    categoria_nombre = serializers.SerializerMethodField()
     bajo_minimo = serializers.SerializerMethodField()
 
     class Meta:
         model = Producto
         fields = [
-            "id", "codigo", "nombre", "tipo", "tipo_nombre", "unidad", "stock_actual",
-            "stock_minimo", "bajo_minimo", "descripcion",
+            "id", "codigo", "nombre", "tipo", "tipo_nombre", "categoria", "categoria_nombre", "unidad",
+            "stock_actual", "stock_minimo", "bajo_minimo", "descripcion", "ancho_util", "color",
+            "composicion", "tiene_imagen", "imagen_version",
         ]
-        read_only_fields = ["id", "codigo", "stock_actual"]
+        read_only_fields = fields
+
+    def get_categoria_nombre(self, obj):
+        return category_name(obj)
 
     def get_bajo_minimo(self, obj):
         return obj.stock_minimo > 0 and obj.stock_actual <= obj.stock_minimo
+
+
+class CatalogoSerializer(serializers.ModelSerializer):
+    """Vista de catálogo. No expone `stock_actual` ni `bajo_minimo`: las existencias solo se
+    cambian (y se consultan) desde los movimientos de inventario."""
+
+    tipo_nombre = serializers.CharField(source="get_tipo_display", read_only=True)
+    categoria_nombre = serializers.SerializerMethodField()
+    unidades_permitidas = serializers.SerializerMethodField()
+    nombre = serializers.CharField(max_length=150)
+    categoria = serializers.ChoiceField(choices=catalog.CATEGORY_CHOICES)
+    unidad = serializers.ChoiceField(choices=catalog.UNITS)
+    stock_minimo = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal("0"), required=False, default=Decimal("0")
+    )
+    descripcion = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    ancho_util = serializers.DecimalField(
+        max_digits=4, decimal_places=2, required=False, allow_null=True, default=None
+    )
+    color = serializers.CharField(max_length=60, required=False, allow_blank=True, default="")
+    composicion = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+
+    class Meta:
+        model = Producto
+        fields = [
+            "id", "codigo", "nombre", "tipo", "tipo_nombre", "categoria", "categoria_nombre", "unidad",
+            "unidades_permitidas", "stock_minimo", "descripcion", "ancho_util", "color", "composicion",
+            "tiene_imagen", "imagen_version", "created_at",
+        ]
+        read_only_fields = ["id", "codigo", "tipo", "tiene_imagen", "imagen_version", "created_at"]
+
+    def get_categoria_nombre(self, obj):
+        return category_name(obj)
+
+    def get_unidades_permitidas(self, obj):
+        data = catalog.CATEGORIES.get(obj.categoria)
+        return data["units"] if data else [u for u, _ in catalog.UNITS]
 
     def validate_nombre(self, value):
         value = value.strip()
@@ -27,18 +76,64 @@ class ProductoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Escribe el nombre.")
         return value
 
-    def validate_stock_minimo(self, value):
-        if value < 0:
-            raise serializers.ValidationError("El mínimo no puede ser negativo.")
+    def create(self, validated_data):
+        return services.create_product(**validated_data)
+
+    def update(self, instance, validated_data):
+        # En una edición parcial solo se toca lo que llegó (los defaults no cuentan).
+        return services.update_product(instance, **{k: v for k, v in validated_data.items() if k in self.initial_data})
+
+
+class ProveedorSerializer(serializers.ModelSerializer):
+    categoria_nombre = serializers.SerializerMethodField()
+    nit_formateado = serializers.SerializerMethodField()
+    insumos_vinculados = serializers.IntegerField(read_only=True, default=0)
+    archivado = serializers.SerializerMethodField()
+    # El NIT se escribe como lo teclea la persona (con o sin puntos); se guarda normalizado.
+    nit = serializers.CharField(max_length=20)
+    razon_social = serializers.CharField(max_length=150)
+    categoria = serializers.ChoiceField(choices=catalog.SUPPLIER_CATEGORY_CHOICES)
+    contacto = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
+    telefono = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
+    correo = serializers.EmailField(max_length=120, required=False, allow_blank=True, default="")
+    ciudad = serializers.CharField(max_length=80, required=False, allow_blank=True, default="")
+    direccion = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
+
+    class Meta:
+        model = Proveedor
+        fields = [
+            "id", "nit", "nit_dv", "nit_formateado", "razon_social", "categoria", "categoria_nombre",
+            "contacto", "telefono", "correo", "ciudad", "direccion", "insumos_vinculados", "archivado",
+            "created_at",
+        ]
+        read_only_fields = ["id", "nit_dv", "created_at"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["nit"] = instance.nit  # sin puntos ni dígito de verificación
+        return data
+
+    def get_categoria_nombre(self, obj):
+        return dict(catalog.SUPPLIER_CATEGORY_CHOICES).get(obj.categoria, obj.categoria)
+
+    def get_nit_formateado(self, obj):
+        body = f"{int(obj.nit):,}".replace(",", ".") if obj.nit.isdigit() else obj.nit
+        return f"{body}-{obj.nit_dv}" if obj.nit_dv else body
+
+    def get_archivado(self, obj):
+        return obj.deleted_at is not None
+
+    def validate_razon_social(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Escribe la razón social.")
         return value
 
-    def validate(self, attrs):
-        # Tipo y unidad no cambian: los movimientos ya registrados dependen de ellos.
-        if self.instance:
-            for field in ("tipo", "unidad"):
-                if field in attrs and attrs[field] != getattr(self.instance, field):
-                    raise serializers.ValidationError({field: "No se puede cambiar después de crear el producto."})
-        return attrs
+    def create(self, validated_data):
+        return services.save_supplier(**validated_data)
+
+    def update(self, instance, validated_data):
+        return services.save_supplier(instance, **{k: v for k, v in validated_data.items() if k in self.initial_data})
 
 
 class EvidenciaSerializer(serializers.ModelSerializer):
@@ -59,7 +154,7 @@ class MovimientoSerializer(serializers.ModelSerializer):
         model = Movimiento
         fields = [
             "id", "producto", "producto_codigo", "producto_nombre", "unidad", "tipo", "motivo",
-            "cantidad", "stock_antes", "stock_despues", "fecha", "proveedor", "orden_compra",
+            "cantidad", "stock_antes", "stock_despues", "fecha", "proveedor", "proveedor_nombre", "orden_compra",
             "lote", "orden", "orden_codigo", "observaciones", "registrado_por_nombre",
             "evidencias", "created_at",
         ]
@@ -117,7 +212,7 @@ class IngresoInputSerializer(serializers.Serializer):
     producto = serializers.IntegerField()
     cantidad = serializers.DecimalField(max_digits=12, decimal_places=2)
     fecha = serializers.DateField()
-    proveedor = serializers.CharField(max_length=150, required=False, allow_blank=True, default="")
+    proveedor = serializers.IntegerField(required=False, allow_null=True, default=None)
     orden_compra = serializers.CharField(max_length=40, required=False, allow_blank=True, default="")
     lote = serializers.CharField(max_length=60, required=False, allow_blank=True, default="")
     orden = serializers.IntegerField(required=False, allow_null=True, default=None)
@@ -155,18 +250,3 @@ class OrdenInputSerializer(serializers.Serializer):
 
 class AnulacionInputSerializer(serializers.Serializer):
     motivo = serializers.CharField(max_length=255)
-
-
-class ProductoInputSerializer(serializers.Serializer):
-    nombre = serializers.CharField(max_length=150)
-    tipo = serializers.ChoiceField(choices=catalog.PRODUCT_TYPES)
-    unidad = serializers.ChoiceField(choices=catalog.UNITS)
-    stock_minimo = serializers.DecimalField(
-        max_digits=12, decimal_places=2, min_value=Decimal("0"), required=False, default=Decimal("0")
-    )
-    descripcion = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
-
-    def validate_nombre(self, value):
-        if not value.strip():
-            raise serializers.ValidationError("Escribe el nombre.")
-        return value

@@ -174,15 +174,19 @@ python manage.py test        # usa SQLite temporal, nunca la base en la nube
 - Ramas: trabajo diario en `pruebas` (ramas `feature/*` salen de ella); `main`
   solo recibe merges aprobados por Pull Request.
 
-## Inventario (HU 2.3 y 2.4)
+## Inventario (HU 2.1 a 2.4)
 
 App `apps/inventory`. Todo bajo `/api/inventario/`; ver requiere `inventario.ver` y registrar `inventario.gestionar`.
 
 | Endpoint | Qué hace |
 |----------|----------|
-| `GET/POST productos/` | Catálogo (materia prima, insumo, pantalón genérico, terminado). El código (`MP-0001`...) se asigna solo. |
-| `PATCH/DELETE productos/<id>/` | Editar nombre y mínimo; eliminar (borrado lógico, solo con existencias en cero). |
-| `POST ingresos/` | Ingreso. Compras: proveedor y lote obligatorios. Pantalones: solo cerrando la orden OP/LV que los fabricó. |
+| `GET metadatos/` | Categorías, unidades compatibles y reglas del catálogo (las pantallas las leen de aquí). |
+| `GET productos/` | Productos **con existencias**, para Inventario. Solo lectura. |
+| `GET/POST catalogo/`, `GET/PATCH/DELETE catalogo/<id>/` | Catálogo de telas e insumos (HU 2.2). **No expone existencias**: el saldo solo cambia con movimientos. Filtros `?categoria=` y `?q=`. |
+| `GET/POST/DELETE catalogo/<id>/imagen/` | Imagen de referencia (JPG/PNG/WEBP, máx. 2 MB). Se guarda en la base y se sirve con sesión. |
+| `GET/POST proveedores/`, `GET/PATCH/DELETE proveedores/<id>/` | Proveedores (HU 2.1, RF04). NIT único entre activos; `?q=`, `?categoria=`, `?archivados=1`. |
+| `POST proveedores/<id>/restaurar/` | Reactiva un proveedor archivado (si su NIT sigue libre). |
+| `POST ingresos/` | Ingreso. Compras: proveedor (id de la lista) y lote obligatorios. Pantalones: solo cerrando la orden OP/LV que los fabricó. |
 | `GET/POST ordenes/` | Salidas con varias líneas ("cesta"). Numeran `OP-0001` (producción) y `LV-0001` (lavandería). |
 | `POST ordenes/<id>/anular/` | Anula una orden en proceso y devuelve el stock. |
 | `GET movimientos/` | Kardex: cada cambio de saldo con saldo antes y después. |
@@ -190,12 +194,29 @@ App `apps/inventory`. Todo bajo `/api/inventario/`; ver requiere `inventario.ver
 | `GET evidencias/<id>/archivo/` | Descarga con sesión; los archivos no son públicos. |
 | `GET alertas/` | Productos cuyo saldo llegó al mínimo. |
 
+**Catálogo (RF05).** Cada producto tiene una categoría (telas, hilos, cierres, botones y remaches,
+etiquetas y empaque, químicos, otros insumos, pantalón genérico, producto terminado) que fija su tipo,
+las unidades compatibles y los datos obligatorios: las **telas** exigen ancho útil (0 a 5 m, lo usa el
+corte computarizado) y las telas y los hilos exigen composición con porcentajes que sumen 100
+(`80% algodón / 20% nylon`). El código se asigna solo por categoría (`TEL-0001`, `HIL-0001`...). La
+categoría y la unidad no cambian cuando el producto ya tiene movimientos.
+
+**Proveedores (RF04).** NIT con 6 a 10 dígitos y dígito de verificación opcional (se guarda normalizado;
+`890.900.001-4` y `890900001-4` son el mismo). Se clasifican por el tipo de insumo que suministran. Los
+ingresos de compra eligen un proveedor activo y el kardex guarda también su nombre de ese momento. Los
+"insumos vinculados" son los distintos productos que se han recibido de él.
+
 Flujo: `OP` saca tela e insumos y al terminar entra el pantalón genérico; `LV` saca genéricos
 más botones e insumos y al volver entra el producto terminado del modelo. Una salida con stock
 insuficiente se rechaza completa y devuelve `faltantes`. Los saldos se bloquean por fila, así
 que dos salidas simultáneas no pueden dejar el stock en negativo.
 
-Las evidencias se guardan en `MEDIA_ROOT` (por defecto `backend/media/`, ignorado por git).
+Las imágenes del catálogo viven en la base (columna `imagen`), por eso sobreviven a los redespliegues. Las evidencias se guardan en `MEDIA_ROOT` (por defecto `backend/media/`, ignorado por git).
 En producción hay que moverlas a Supabase Storage.
 
-`python manage.py seed_inventario` crea un catálogo de ejemplo (solo con `DJANGO_DEBUG=true`).
+`python manage.py seed_inventario` crea proveedores y un catálogo de ejemplo (solo con `DJANGO_DEBUG=true`).
+
+**Migraciones 0002 y 0003.** La 0002 convierte el texto libre `proveedor` de los movimientos en
+`proveedor_nombre` (no se pierde el historial) y agrega la llave `proveedor`; la 0003 clasifica los
+productos anteriores por su nombre. Si la base la comparte un backend desplegado con la versión anterior,
+esa versión falla en el historial de movimientos hasta que se despliegue la nueva.

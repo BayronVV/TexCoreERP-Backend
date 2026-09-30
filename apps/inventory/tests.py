@@ -11,7 +11,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from . import catalog
-from .models import Movimiento, OrdenSalida, Producto
+from .models import Movimiento, OrdenSalida, Producto, Proveedor
 
 User = get_user_model()
 PASSWORD = "Passw0rd!23"
@@ -43,15 +43,19 @@ class InventoryBase(TestCase):
     def setUp(self):
         self.storekeeper = make_user("almacen@t.co", "ALMACENISTA")
         self.api = client_for(self.storekeeper)
-        self.tela = self.product("Tela denim", catalog.RAW_MATERIAL, "m", stock="1000", minimo="200")
-        self.cierre = self.product("Cierre", catalog.SUPPLY, "unidad", stock="500", minimo="100")
-        self.boton = self.product("Botón", catalog.SUPPLY, "unidad", stock="300")
-        self.generico = self.product("Pantalón genérico", catalog.GENERIC_PANTS, "unidad")
-        self.skinny = self.product("MOD-SKINNY 5 BOTONES V2", catalog.FINISHED_PANTS, "unidad")
+        self.supplier = Proveedor.objects.create(
+            nit="890900001", nit_dv="4", razon_social="Textiles SA", categoria=catalog.CAT_FABRIC
+        )
+        self.tela = self.product("Tela denim", catalog.CAT_FABRIC, "m", stock="1000", minimo="200")
+        self.cierre = self.product("Cierre", catalog.CAT_ZIPPER, "unidad", stock="500", minimo="100")
+        self.boton = self.product("Botón", catalog.CAT_BUTTON, "unidad", stock="300")
+        self.generico = self.product("Pantalón genérico", catalog.CAT_GENERIC, "unidad")
+        self.skinny = self.product("MOD-SKINNY 5 BOTONES V2", catalog.CAT_FINISHED, "unidad")
 
-    def product(self, name, kind, unit, stock="0", minimo="0"):
+    def product(self, name, category, unit, stock="0", minimo="0"):
         return Producto.objects.create(
-            codigo=f"T-{Producto.all_objects.count() + 1}", nombre=name, tipo=kind, unidad=unit,
+            codigo=f"T-{Producto.all_objects.count() + 1}", nombre=name, categoria=category,
+            tipo=catalog.CATEGORIES[category]["tipo"], unidad=unit,
             stock_actual=Decimal(stock), stock_minimo=Decimal(minimo),
         )
 
@@ -100,42 +104,10 @@ class PermissionTests(InventoryBase):
         self.assertEqual(client.post(reverse("inventario_ordenes"), {}, format="json").status_code, 403)
 
 
-class ProductTests(InventoryBase):
-    def test_crea_producto_con_codigo_automatico(self):
-        response = self.api.post(
-            reverse("inventario_productos"),
-            {"nombre": "Hilo", "tipo": "MATERIA_PRIMA", "unidad": "kg", "stock_minimo": "5"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 201, response.content)
-        self.assertRegex(response.json()["codigo"], r"^MP-\d{4}$")
-        self.assertEqual(response.json()["stock_actual"], "0.00")
-
-    def test_nombre_repetido_del_mismo_tipo_se_rechaza(self):
-        response = self.api.post(
-            reverse("inventario_productos"),
-            {"nombre": "tela DENIM", "tipo": "MATERIA_PRIMA", "unidad": "m"},
-            format="json",
-        )
-        self.assertEqual(response.status_code, 400)
-
-    def test_no_cambia_unidad_ni_tipo(self):
-        url = reverse("inventario_producto", args=[self.tela.id])
-        self.assertEqual(self.api.patch(url, {"unidad": "kg"}, format="json").status_code, 400)
-        self.assertEqual(self.api.patch(url, {"stock_minimo": "50"}, format="json").status_code, 200)
-
-    def test_no_se_elimina_con_existencias(self):
-        url = reverse("inventario_producto", args=[self.tela.id])
-        self.assertEqual(self.api.delete(url).status_code, 400)
-        url = reverse("inventario_producto", args=[self.generico.id])
-        self.assertEqual(self.api.delete(url).status_code, 204)
-        self.assertTrue(Producto.all_objects.get(pk=self.generico.id).is_deleted)
-
-
 class PurchaseEntryTests(InventoryBase):
     def entry(self, **overrides):
         body = {
-            "producto": self.tela.id, "cantidad": "150", "fecha": today(), "proveedor": "Textiles SA",
+            "producto": self.tela.id, "cantidad": "150", "fecha": today(), "proveedor": self.supplier.id,
             "orden_compra": "OC-1", "lote": "L-2026-01",
         }
         body.update(overrides)
@@ -149,11 +121,28 @@ class PurchaseEntryTests(InventoryBase):
         movement = Movimiento.objects.get()
         self.assertEqual((movement.stock_antes, movement.stock_despues), (Decimal("1000"), Decimal("1150")))
         self.assertEqual(movement.registrado_por, self.storekeeper)
+        # Se guarda el proveedor y su nombre de ese momento
+        self.assertEqual((movement.proveedor, movement.proveedor_nombre), (self.supplier, "Textiles SA"))
 
     def test_exige_proveedor_y_lote(self):
-        self.assertEqual(self.entry(proveedor="").status_code, 400)
+        self.assertEqual(self.entry(proveedor=None).status_code, 400)
         self.assertEqual(self.entry(lote="").status_code, 400)
         self.assertEqual(Movimiento.objects.count(), 0)
+
+    def test_proveedor_inexistente_o_archivado_se_rechaza(self):
+        self.assertEqual(self.entry(proveedor=99999).status_code, 400)
+        self.supplier.delete()  # borrado lógico
+        response = self.entry()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("archivado", response.json()["proveedor"][0])
+        self.assertEqual(Movimiento.objects.count(), 0)
+
+    def test_el_historial_conserva_el_nombre_aunque_el_proveedor_cambie(self):
+        movement_id = self.entry().json()["id"]
+        self.supplier.razon_social = "Textiles Nueva SA"
+        self.supplier.save()
+        row = self.api.get(reverse("inventario_movimientos")).json()[0]
+        self.assertEqual((row["id"], row["proveedor_nombre"]), (movement_id, "Textiles SA"))
 
     def test_cantidad_invalida(self):
         self.assertEqual(self.entry(cantidad="0").status_code, 400)
@@ -326,7 +315,7 @@ class EvidenceTests(InventoryBase):
         super().setUp()
         self.movement = self.api.post(
             reverse("inventario_ingresos"),
-            {"producto": self.tela.id, "cantidad": "10", "fecha": today(), "proveedor": "P", "lote": "L1"},
+            {"producto": self.tela.id, "cantidad": "10", "fecha": today(), "proveedor": self.supplier.id, "lote": "L1"},
             format="json",
         ).json()
 

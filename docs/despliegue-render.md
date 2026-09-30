@@ -44,6 +44,23 @@ ignora y todas las peticiones parecerían venir de la misma IP, así que los
 límites por IP (login, recuperación de contraseña) compartirían un solo cupo.
 Se usa `1`; si el límite bloquea a usuarios distintos a la vez, revisar el valor.
 
+### Correo en Render
+
+**Render bloquea el SMTP saliente en los puertos 25, 465 y 587 en el plan
+gratuito.** Gmail (`smtp.gmail.com:587`) se queda esperando hasta que gunicorn
+mata el proceso, y la solicitud de recuperación responde 500. Opciones:
+
+- Un SMTP que acepte el puerto **2525** (Brevo, SendGrid, Mailgun), por ejemplo
+  Brevo: `EMAIL_HOST=smtp-relay.brevo.com`, `EMAIL_PORT=2525`,
+  `EMAIL_USE_TLS=true`, `EMAIL_HOST_USER` = login de Brevo, `EMAIL_HOST_PASSWORD`
+  = clave SMTP de Brevo, y verificar el remitente en `DEFAULT_FROM_EMAIL`.
+- Un plan de pago de Render, que sí permite SMTP.
+
+`EMAIL_TIMEOUT` (10 s por defecto) hace que un SMTP inalcanzable falle rápido en
+vez de colgar la petición. Mientras no haya SMTP, usar
+`EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend`: el enlace queda
+en los logs del servicio.
+
 ### Limitaciones conocidas
 
 - **Evidencias de inventario (fotos y PDF):** se guardan en el disco del

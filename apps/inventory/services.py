@@ -5,22 +5,17 @@ todo (saldo, kardex, orden) o no se guarda nada.
 Los productos se bloquean siempre en orden de id para que dos órdenes que tocan
 los mismos productos no se queden esperándose una a la otra.
 """
+import re
 from decimal import Decimal, InvalidOperation
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from . import catalog
-from .models import Consecutivo, Evidencia, Movimiento, OrdenLinea, OrdenSalida, Producto
+from .models import Consecutivo, Evidencia, Movimiento, OrdenLinea, OrdenSalida, Producto, Proveedor
 
 MAX_QUANTITY = Decimal("9999999999.99")
-TYPE_PREFIX = {
-    catalog.RAW_MATERIAL: "MP",
-    catalog.SUPPLY: "IN",
-    catalog.GENERIC_PANTS: "PG",
-    catalog.FINISHED_PANTS: "PT",
-}
 
 
 def fail(message, field="detail", **extra):
@@ -83,38 +78,228 @@ def _apply_movement(product, kind, reason, quantity, **fields):
     )
 
 
-# --- Productos ---------------------------------------------------------------
+# --- Catálogo de productos (HU 2.2) -------------------------------------------
+
+PERCENTAGE = re.compile(r"(\d+(?:[.,]\d+)?)\s*%")
+
+
+def check_composition(text, required):
+    """Las composiciones se escriben como "98% algodón / 2% elastano": los porcentajes suman 100."""
+    text = text.strip()
+    if not text:
+        if required:
+            fail("La composición textil es obligatoria (ej. 100% algodón).", "composicion")
+        return ""
+    percentages = [Decimal(p.replace(",", ".")) for p in PERCENTAGE.findall(text)]
+    if required and not percentages:
+        fail("Indica la composición con porcentajes (ej. 80% algodón, 20% nylon).", "composicion")
+    if percentages and sum(percentages) != 100:
+        fail(f"Los porcentajes de la composición suman {sum(percentages).normalize():f}%, deben sumar 100%.", "composicion")
+    return text
+
+
+def clean_product_fields(*, categoria, unidad, ancho_util, composicion, color):
+    """Reglas del catálogo que dependen de la categoría. Devuelve los datos ya normalizados."""
+    if categoria not in catalog.CATEGORIES:
+        fail("Elige la categoría del producto.", "categoria")
+    rules = catalog.CATEGORIES[categoria]
+    if unidad not in rules["units"]:
+        allowed = ", ".join(rules["units"])
+        fail(f"La unidad «{unidad}» no es compatible con {rules['label'].lower()}. Usa: {allowed}.", "unidad")
+
+    if categoria in catalog.WIDTH_REQUIRED:
+        if ancho_util is None:
+            fail("El ancho útil del rollo es obligatorio para las telas (en metros).", "ancho_util")
+        if not (0 < ancho_util <= catalog.MAX_FABRIC_WIDTH):
+            fail(f"El ancho útil debe estar entre 0 y {catalog.MAX_FABRIC_WIDTH} metros.", "ancho_util")
+    else:
+        ancho_util = None  # solo las telas tienen ancho útil
+
+    return {
+        "tipo": rules["tipo"],
+        "ancho_util": ancho_util,
+        "composicion": check_composition(composicion, categoria in catalog.COMPOSITION_REQUIRED),
+        "color": color.strip(),
+    }
+
+
+def _same_name_exists(nombre, categoria, exclude_id=None):
+    # Se compara en Python: "iexact" de SQLite solo ignora mayúsculas ASCII (ñ, í, é...).
+    queryset = Producto.objects.filter(categoria=categoria)
+    if exclude_id:
+        queryset = queryset.exclude(pk=exclude_id)
+    wanted = nombre.casefold()
+    return any(existing.casefold() == wanted for existing in queryset.values_list("nombre", flat=True))
+
 
 @transaction.atomic
-def create_product(*, nombre, tipo, unidad, stock_minimo, descripcion=""):
+def create_product(*, nombre, categoria, unidad, stock_minimo=0, descripcion="", ancho_util=None,
+                   color="", composicion=""):
     name = nombre.strip()
-    if Producto.objects.filter(tipo=tipo, nombre__iexact=name).exists():
-        fail("Ya existe un producto con ese nombre y tipo.", "nombre")
-    return Producto.objects.create(
-        codigo=next_code(TYPE_PREFIX[tipo]), nombre=name, tipo=tipo, unidad=unidad,
-        stock_minimo=stock_minimo, descripcion=descripcion.strip(),
+    if _same_name_exists(name, categoria):
+        fail("Ya existe un producto con ese nombre en esta categoría.", "nombre")
+    cleaned = clean_product_fields(
+        categoria=categoria, unidad=unidad, ancho_util=ancho_util, composicion=composicion, color=color
     )
+    return Producto.objects.create(
+        codigo=next_code(catalog.CATEGORIES[categoria]["prefix"]), nombre=name, categoria=categoria,
+        unidad=unidad, stock_minimo=stock_minimo, descripcion=descripcion.strip(), **cleaned,
+    )
+
+
+@transaction.atomic
+def update_product(product, **data):
+    """Edita un producto del catálogo. El stock no se toca: solo cambia con movimientos."""
+    product = Producto.objects.select_for_update().get(pk=product.pk)
+    values = {
+        "nombre": data.get("nombre", product.nombre).strip(),
+        "categoria": data.get("categoria", product.categoria),
+        "unidad": data.get("unidad", product.unidad),
+        "ancho_util": data.get("ancho_util", product.ancho_util),
+        "composicion": data.get("composicion", product.composicion),
+        "color": data.get("color", product.color),
+    }
+    structural = values["categoria"] != product.categoria or values["unidad"] != product.unidad
+    if structural and (product.stock_actual != 0 or Movimiento.objects.filter(producto=product).exists()):
+        fail("La categoría y la unidad no se pueden cambiar cuando el producto ya tiene movimientos.", "categoria")
+    if _same_name_exists(values["nombre"], values["categoria"], exclude_id=product.pk):
+        fail("Ya existe un producto con ese nombre en esta categoría.", "nombre")
+
+    cleaned = clean_product_fields(
+        categoria=values["categoria"], unidad=values["unidad"], ancho_util=values["ancho_util"],
+        composicion=values["composicion"], color=values["color"],
+    )
+    product.nombre, product.categoria, product.unidad = values["nombre"], values["categoria"], values["unidad"]
+    product.tipo, product.ancho_util = cleaned["tipo"], cleaned["ancho_util"]
+    product.composicion, product.color = cleaned["composicion"], cleaned["color"]
+    if "stock_minimo" in data:
+        product.stock_minimo = data["stock_minimo"]
+    if "descripcion" in data:
+        product.descripcion = data["descripcion"].strip()
+    product.save()
+    return product
+
+
+def archive_product(product):
+    if product.stock_actual > 0:
+        fail("No se puede eliminar un producto con existencias.")
+    if OrdenSalida.objects.filter(estado=catalog.STATUS_OPEN, producto_resultado=product).exists():
+        fail("Hay una orden en proceso que produce este producto.")
+    product.delete()
+
+
+IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+@transaction.atomic
+def set_product_image(product, upload):
+    if upload is None:
+        fail("Adjunta una imagen.", "imagen")
+    if upload.size > catalog.IMAGE_MAX_BYTES:
+        fail(f"La imagen pesa más de {catalog.IMAGE_MAX_BYTES // (1024 * 1024)} MB.", "imagen")
+    data = upload.read()
+    content_type, _ = detect_type(data[:16])
+    if content_type not in IMAGE_TYPES:
+        fail("Solo se aceptan imágenes JPG, PNG o WEBP.", "imagen")
+    product = Producto.objects.select_for_update().get(pk=product.pk)
+    product.imagen, product.imagen_tipo = data, content_type
+    product.imagen_version += 1
+    product.save(update_fields=["imagen", "imagen_tipo", "imagen_version", "updated_at"])
+    return product
+
+
+@transaction.atomic
+def clear_product_image(product):
+    product = Producto.objects.select_for_update().get(pk=product.pk)
+    product.imagen, product.imagen_tipo = None, ""
+    product.imagen_version += 1
+    product.save(update_fields=["imagen", "imagen_tipo", "imagen_version", "updated_at"])
+    return product
+
+
+# --- Proveedores (HU 2.1) --------------------------------------------------------
+
+NIT = re.compile(r"^(\d{6,10})(?:-(\d))?$")
+
+
+def normalize_nit(raw):
+    """Acepta "890.900.001-4", "890900001-4" o "890900001". Devuelve (número, dígito de verificación)."""
+    text = re.sub(r"[.\s]", "", str(raw or ""))
+    match = NIT.match(text)
+    if not match:
+        fail("El NIT no es válido. Escríbelo como 890.900.001-4 (6 a 10 dígitos y, si lo tiene, el dígito de verificación).", "nit")
+    return match.group(1), match.group(2) or ""
+
+
+def check_supplier_nit_free(nit, exclude_id=None):
+    queryset = Proveedor.objects.filter(nit=nit)
+    if exclude_id:
+        queryset = queryset.exclude(pk=exclude_id)
+    if queryset.exists():
+        fail("Ya existe un proveedor activo con ese NIT.", "nit")
+
+
+def check_phone(value):
+    value = value.strip()
+    if value and not (7 <= len(re.sub(r"\D", "", value)) <= 15 and re.fullmatch(r"[\d\s()+-]+", value)):
+        fail("El teléfono no es válido (solo números, espacios, + y -).", "telefono")
+    return value
+
+
+@transaction.atomic
+def save_supplier(instance=None, **data):
+    """Crea o actualiza un proveedor validando NIT (estructura y duplicado) y teléfono."""
+    raw_nit = data.pop("nit", None)
+    if raw_nit is not None:
+        nit, dv = normalize_nit(raw_nit)
+        check_supplier_nit_free(nit, exclude_id=instance.pk if instance else None)
+        data["nit"], data["nit_dv"] = nit, dv
+    if "telefono" in data:
+        data["telefono"] = check_phone(data["telefono"])
+    for field in ("razon_social", "contacto", "ciudad", "direccion"):
+        if field in data:
+            data[field] = data[field].strip()
+    try:
+        if instance is None:
+            return Proveedor.objects.create(**data)
+        for field, value in data.items():
+            setattr(instance, field, value)
+        instance.save()
+        return instance
+    except IntegrityError:  # dos personas guardando el mismo NIT a la vez
+        fail("Ya existe un proveedor activo con ese NIT.", "nit")
+
+
+@transaction.atomic
+def restore_supplier(supplier):
+    check_supplier_nit_free(supplier.nit, exclude_id=supplier.pk)
+    supplier.restore()
+    return supplier
 
 
 # --- Ingresos ------------------------------------------------------------------
 
 @transaction.atomic
-def register_entry(*, user, producto_id, cantidad, fecha, proveedor="", orden_compra="", lote="",
+def register_entry(*, user, producto_id, cantidad, fecha, proveedor_id=None, orden_compra="", lote="",
                    orden_id=None, observaciones=""):
     check_date(fecha)
     product = lock_products([producto_id])[producto_id]
     quantity = parse_quantity(cantidad, product.unidad)
 
     if product.tipo in catalog.PURCHASED_TYPES:
-        if not proveedor.strip():
-            fail("El proveedor es obligatorio.", "proveedor")
+        if not proveedor_id:
+            fail("Selecciona el proveedor.", "proveedor")
+        supplier = Proveedor.objects.filter(pk=proveedor_id).first()  # solo activos
+        if supplier is None:
+            fail("El proveedor no existe o está archivado.", "proveedor")
         if not lote.strip():
             fail("El lote es obligatorio para materia prima e insumos.", "lote")
         if orden_id:
             fail("Las compras no se asocian a una orden de salida.", "orden")
         return _apply_movement(
             product, catalog.ENTRY, catalog.REASON_PURCHASE, quantity,
-            fecha=fecha, proveedor=proveedor.strip(), orden_compra=orden_compra.strip(),
+            fecha=fecha, proveedor=supplier, proveedor_nombre=supplier.razon_social,
+            orden_compra=orden_compra.strip(),
             lote=lote.strip(), observaciones=observaciones.strip(), registrado_por=user,
         )
 

@@ -57,14 +57,15 @@ Se usa `1`; si el límite bloquea a usuarios distintos a la vez, revisar el valo
 
 ## Frontend (`texcore-web`)
 
-- **Build:** `npm ci && npm run build && cp dist/index.html dist/404.html`
+- **Build:** `npm ci && npm run build`
 - **Publish directory:** `dist`
 - **Variables:** `VITE_API_URL=https://texcore-api.onrender.com`, `NODE_VERSION=22`.
   `VITE_API_URL` se lee al compilar: si cambia, hay que volver a desplegar.
 - **Regla de reescritura (obligatoria):** en el panel del sitio →
-  *Redirects/Rewrites* agregar `/*` → `/index.html`, tipo **Rewrite**. Sin ella,
+  *Redirects/Rewrites* agregar `/*` → `/index.html`, acción **Rewrite**. Sin ella,
   recargar `/inventario` o abrir el enlace del correo de recuperación da 404.
-  (La copia `404.html` del build es un respaldo, pero devuelve estado 404.)
+  Render no sirve un `404.html` como respaldo: sin la regla, esas rutas
+  responden "Not Found" en texto plano. Solo se puede crear desde el panel.
 
 ## Después de desplegar
 

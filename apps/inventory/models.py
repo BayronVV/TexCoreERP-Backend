@@ -2,8 +2,10 @@
 Inventario (HU 2.3 y 2.4). Nombres de tabla en español, borrado lógico en todo
 (ver docs/convenciones-base-de-datos.md).
 
-- Producto: cualquier cosa que tiene existencias (tela, botones, pantalón genérico,
-  jean terminado). Su saldo vive en `stock_actual`.
+- Proveedor: a quién se le compra (RF04). Se clasifica por la categoría que suministra.
+- Producto: el catálogo (RF05) y, a la vez, lo que tiene existencias (tela, botones,
+  pantalón genérico, jean terminado). Su saldo vive en `stock_actual` y solo cambia
+  con movimientos: el catálogo no lo muestra ni lo edita.
 - Movimiento: kardex. Cada cambio de saldo deja una fila con saldo antes y después.
 - OrdenSalida: documento OP/LV con varias líneas. Descuenta el inventario al
   crearse y, cuando lo fabricado regresa, se cierra con un ingreso.
@@ -15,7 +17,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
-from apps.core.models import BaseModel
+from apps.core.models import ActiveManager, ActiveQuerySet, BaseModel
 
 from . import catalog
 
@@ -30,14 +32,65 @@ class Consecutivo(models.Model):
         db_table = "inventario_consecutivo"
 
 
+class Proveedor(BaseModel):
+    # NIT sin puntos ni dígito de verificación; el DV va aparte. Es único entre los activos.
+    nit = models.CharField(max_length=10)
+    nit_dv = models.CharField(max_length=1, blank=True)
+    razon_social = models.CharField(max_length=150)
+    categoria = models.CharField(max_length=20, choices=catalog.SUPPLIER_CATEGORY_CHOICES)
+    contacto = models.CharField(max_length=120, blank=True)
+    telefono = models.CharField(max_length=20, blank=True)
+    correo = models.EmailField(max_length=120, blank=True)
+    ciudad = models.CharField(max_length=80, blank=True)
+    direccion = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        db_table = "inventario_proveedor"
+        ordering = ["razon_social"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["nit"], condition=Q(deleted_at__isnull=True), name="uq_proveedor_nit_activo"
+            ),
+        ]
+
+    def __str__(self):
+        return self.razon_social
+
+
+class ProductoManager(ActiveManager):
+    """La imagen de referencia pesa; no se trae de la base salvo que se pida."""
+
+    def get_queryset(self):
+        return super().get_queryset().defer("imagen")
+
+
+class ProductoAllManager(models.Manager.from_queryset(ActiveQuerySet)):
+    """Incluye eliminados (borrado lógico), también sin traer la imagen."""
+
+    def get_queryset(self):
+        return super().get_queryset().defer("imagen")
+
+
 class Producto(BaseModel):
     codigo = models.CharField(max_length=20)
     nombre = models.CharField(max_length=150)
     tipo = models.CharField(max_length=15, choices=catalog.PRODUCT_TYPES)
+    # Vacía solo en productos anteriores al catálogo; la migración 0003 los clasifica.
+    categoria = models.CharField(max_length=20, choices=catalog.CATEGORY_CHOICES, blank=True)
     unidad = models.CharField(max_length=10, choices=catalog.UNITS)
     stock_actual = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     stock_minimo = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     descripcion = models.CharField(max_length=255, blank=True)
+    # Ancho útil del rollo en metros (lo necesita el corte computarizado). Solo telas.
+    ancho_util = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
+    color = models.CharField(max_length=60, blank=True)
+    composicion = models.CharField(max_length=120, blank=True)
+    imagen = models.BinaryField(null=True, blank=True, editable=False)
+    imagen_tipo = models.CharField(max_length=20, blank=True)
+    imagen_version = models.PositiveIntegerField(default=0)  # sube con cada cambio de imagen
+
+    objects = ProductoManager()
+    all_objects = ProductoAllManager()
 
     class Meta:
         db_table = "inventario_producto"
@@ -52,6 +105,10 @@ class Producto(BaseModel):
 
     def __str__(self):
         return f"{self.codigo} {self.nombre}"
+
+    @property
+    def tiene_imagen(self):
+        return bool(self.imagen_tipo)
 
 
 class OrdenSalida(BaseModel):
@@ -111,7 +168,10 @@ class Movimiento(BaseModel):
     stock_antes = models.DecimalField(max_digits=12, decimal_places=2)
     stock_despues = models.DecimalField(max_digits=12, decimal_places=2)
     fecha = models.DateField()
-    proveedor = models.CharField(max_length=150, blank=True)
+    # Compras: el proveedor elegido y su nombre al momento de la compra (si el proveedor
+    # cambia de razón social o se archiva, el historial sigue diciendo lo que se registró).
+    proveedor = models.ForeignKey(Proveedor, on_delete=models.PROTECT, null=True, blank=True, related_name="movimientos")
+    proveedor_nombre = models.CharField(max_length=150, blank=True)
     orden_compra = models.CharField(max_length=40, blank=True)
     lote = models.CharField(max_length=60, blank=True)
     orden = models.ForeignKey(OrdenSalida, on_delete=models.PROTECT, null=True, blank=True, related_name="movimientos")

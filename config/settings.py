@@ -170,6 +170,9 @@ EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", True)
+# Sin tope, un servidor SMTP inalcanzable deja la petición colgada hasta que gunicorn
+# mata el proceso (500). Con tope, el envío falla rápido y la API responde igual.
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "TexCore ERP <no-reply@texcore.local>")
 
 # URL pública del frontend: se usa para armar el enlace del correo.

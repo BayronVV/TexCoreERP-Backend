@@ -44,6 +44,23 @@ ignora y todas las peticiones parecerían venir de la misma IP, así que los
 límites por IP (login, recuperación de contraseña) compartirían un solo cupo.
 Se usa `1`; si el límite bloquea a usuarios distintos a la vez, revisar el valor.
 
+### Correo en Render
+
+**Render bloquea el SMTP saliente en los puertos 25, 465 y 587 en el plan
+gratuito.** Gmail (`smtp.gmail.com:587`) se queda esperando hasta que gunicorn
+mata el proceso, y la solicitud de recuperación responde 500. Opciones:
+
+- Un SMTP que acepte el puerto **2525** (Brevo, SendGrid, Mailgun), por ejemplo
+  Brevo: `EMAIL_HOST=smtp-relay.brevo.com`, `EMAIL_PORT=2525`,
+  `EMAIL_USE_TLS=true`, `EMAIL_HOST_USER` = login de Brevo, `EMAIL_HOST_PASSWORD`
+  = clave SMTP de Brevo, y verificar el remitente en `DEFAULT_FROM_EMAIL`.
+- Un plan de pago de Render, que sí permite SMTP.
+
+`EMAIL_TIMEOUT` (10 s por defecto) hace que un SMTP inalcanzable falle rápido en
+vez de colgar la petición. Mientras no haya SMTP, usar
+`EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend`: el enlace queda
+en los logs del servicio.
+
 ### Limitaciones conocidas
 
 - **Evidencias de inventario (fotos y PDF):** se guardan en el disco del
@@ -57,14 +74,15 @@ Se usa `1`; si el límite bloquea a usuarios distintos a la vez, revisar el valo
 
 ## Frontend (`texcore-web`)
 
-- **Build:** `npm ci && npm run build && cp dist/index.html dist/404.html`
+- **Build:** `npm ci && npm run build`
 - **Publish directory:** `dist`
 - **Variables:** `VITE_API_URL=https://texcore-api.onrender.com`, `NODE_VERSION=22`.
   `VITE_API_URL` se lee al compilar: si cambia, hay que volver a desplegar.
 - **Regla de reescritura (obligatoria):** en el panel del sitio →
-  *Redirects/Rewrites* agregar `/*` → `/index.html`, tipo **Rewrite**. Sin ella,
+  *Redirects/Rewrites* agregar `/*` → `/index.html`, acción **Rewrite**. Sin ella,
   recargar `/inventario` o abrir el enlace del correo de recuperación da 404.
-  (La copia `404.html` del build es un respaldo, pero devuelve estado 404.)
+  Render no sirve un `404.html` como respaldo: sin la regla, esas rutas
+  responden "Not Found" en texto plano. Solo se puede crear desde el panel.
 
 ## Después de desplegar
 

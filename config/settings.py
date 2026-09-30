@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     # Módulos de TexCore (uno por carpeta dentro de apps/)
     "apps.core",
     "apps.users",
+    "apps.inventory",
 ]
 
 MIDDLEWARE = [
@@ -174,6 +175,11 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Evidencias de inventario (fotos y PDF). No se sirven como archivos publicos: se
+# descargan por un endpoint que exige permiso. En produccion moverlas a Supabase
+# Storage, porque el disco de un servidor web suele ser efimero.
+MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", str(BASE_DIR / "media")))
 
 # --- Metadatos ----------------------------------------------------------------
 

@@ -168,3 +168,29 @@ python manage.py test        # usa SQLite temporal, nunca la base en la nube
 - Borrado lógico, nombres y migraciones: [docs/convenciones-base-de-datos.md](docs/convenciones-base-de-datos.md)
 - Ramas: trabajo diario en `pruebas` (ramas `feature/*` salen de ella); `main`
   solo recibe merges aprobados por Pull Request.
+
+## Inventario (HU 2.3 y 2.4)
+
+App `apps/inventory`. Todo bajo `/api/inventario/`; ver requiere `inventario.ver` y registrar `inventario.gestionar`.
+
+| Endpoint | Qué hace |
+|----------|----------|
+| `GET/POST productos/` | Catálogo (materia prima, insumo, pantalón genérico, terminado). El código (`MP-0001`...) se asigna solo. |
+| `PATCH/DELETE productos/<id>/` | Editar nombre y mínimo; eliminar (borrado lógico, solo con existencias en cero). |
+| `POST ingresos/` | Ingreso. Compras: proveedor y lote obligatorios. Pantalones: solo cerrando la orden OP/LV que los fabricó. |
+| `GET/POST ordenes/` | Salidas con varias líneas ("cesta"). Numeran `OP-0001` (producción) y `LV-0001` (lavandería). |
+| `POST ordenes/<id>/anular/` | Anula una orden en proceso y devuelve el stock. |
+| `GET movimientos/` | Kardex: cada cambio de saldo con saldo antes y después. |
+| `POST movimientos/<id>/evidencias/`, `POST ordenes/<id>/evidencias/` | Fotos JPG/PNG/WEBP o PDF (5 MB, hasta 10). Se validan por contenido. |
+| `GET evidencias/<id>/archivo/` | Descarga con sesión; los archivos no son públicos. |
+| `GET alertas/` | Productos cuyo saldo llegó al mínimo. |
+
+Flujo: `OP` saca tela e insumos y al terminar entra el pantalón genérico; `LV` saca genéricos
+más botones e insumos y al volver entra el producto terminado del modelo. Una salida con stock
+insuficiente se rechaza completa y devuelve `faltantes`. Los saldos se bloquean por fila, así
+que dos salidas simultáneas no pueden dejar el stock en negativo.
+
+Las evidencias se guardan en `MEDIA_ROOT` (por defecto `backend/media/`, ignorado por git).
+En producción hay que moverlas a Supabase Storage.
+
+`python manage.py seed_inventario` crea un catálogo de ejemplo (solo con `DJANGO_DEBUG=true`).

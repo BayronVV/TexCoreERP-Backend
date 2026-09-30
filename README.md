@@ -156,6 +156,11 @@ nuevo: la sesión vence tras 30 minutos sin uso. El login tiene un límite de
 En desarrollo el correo se imprime en la consola del `runserver`; ver
 `.env.example` para guardarlo como archivo o enviarlo por SMTP.
 
+## Despliegue
+
+Render (Web Service Python) con gunicorn. Pasos, variables de entorno, CORS y
+limitaciones en [`docs/despliegue-render.md`](docs/despliegue-render.md).
+
 ## Pruebas
 
 ```powershell

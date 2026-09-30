@@ -40,6 +40,9 @@ if not SECRET_KEY:
     SECRET_KEY = "solo-desarrollo-no-usar-en-produccion"
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
+# Render define el host público del servicio; se acepta aunque no esté en la lista.
+if os.getenv("RENDER_EXTERNAL_HOSTNAME"):
+    ALLOWED_HOSTS.append(os.environ["RENDER_EXTERNAL_HOSTNAME"])
 
 # --- Aplicaciones -------------------------------------------------------------
 
@@ -144,6 +147,16 @@ SIMPLE_JWT = {
 }
 
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+
+# --- Seguridad en producción (DJANGO_DEBUG=false) -----------------------------
+# Detrás del proxy de Render la conexión llega por HTTP; el proxy avisa el
+# esquema original en X-Forwarded-Proto. No se activa SECURE_SSL_REDIRECT porque
+# Render ya redirige http -> https y el chequeo de salud del servicio entra por http.
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "31536000"))
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 # --- Correo y recuperación de contraseña (HU 1.3) -------------------------------
 # En desarrollo los correos se imprimen en la consola del runserver. Para

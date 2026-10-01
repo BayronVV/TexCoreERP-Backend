@@ -208,14 +208,23 @@ class OrdenSerializer(serializers.ModelSerializer):
 
 # --- Entradas de escritura (validan forma; las reglas de negocio están en services) ---
 
+class OptionalIdField(serializers.IntegerField):
+    """Id opcional: una cadena vacía (campo sin elegir en el formulario) cuenta como ausente."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, str) and not data.strip():
+            return None
+        return super().to_internal_value(data)
+
+
 class IngresoInputSerializer(serializers.Serializer):
     producto = serializers.IntegerField()
     cantidad = serializers.DecimalField(max_digits=12, decimal_places=2)
     fecha = serializers.DateField()
-    proveedor = serializers.IntegerField(required=False, allow_null=True, default=None)
+    proveedor = OptionalIdField(required=False, allow_null=True, default=None)
     orden_compra = serializers.CharField(max_length=40, required=False, allow_blank=True, default="")
     lote = serializers.CharField(max_length=60, required=False, allow_blank=True, default="")
-    orden = serializers.IntegerField(required=False, allow_null=True, default=None)
+    orden = OptionalIdField(required=False, allow_null=True, default=None)
     observaciones = serializers.CharField(max_length=1000, required=False, allow_blank=True, default="")
 
 

@@ -243,6 +243,15 @@ class OrderReturnTests(InventoryBase):
         self.assertEqual(self.generico.stock_actual, Decimal("80"))
         self.assertEqual(OrdenSalida.objects.get(pk=order["id"]).estado, "COMPLETADA")
 
+    def test_formulario_envia_campos_vacios_como_cadena(self):
+        """El formulario manda proveedor y lote vacíos al recibir un pantalón: no debe dar 400."""
+        order = self.production_order().json()
+        response = self.entry(
+            self.generico, str(order["id"]), "80",
+            proveedor="", orden_compra="", lote="", observaciones="",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+
     def test_una_orden_no_se_recibe_dos_veces(self):
         order = self.production_order().json()
         self.assertEqual(self.entry(self.generico, order["id"], "80").status_code, 201)

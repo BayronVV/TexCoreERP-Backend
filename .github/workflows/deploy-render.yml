@@ -1,0 +1,36 @@
+name: Despliegue en Render
+
+# Cada cambio que llega a main lo despliega Render por su cuenta. Este workflow espera el
+# resultado real de ese despliegue y lo publica como un despliegue de GitHub en el entorno
+# "production". La app GitHub for Atlassian lo muestra en Jira (pestaña Implementaciones de
+# las incidencias cuya clave, p. ej. TE-45, aparece en los commits) y en la página Despliegues.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: despliegue-render
+  cancel-in-progress: false
+
+jobs:
+  render:
+    name: Render (texcore-api)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: production
+      url: https://texcore-api.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - name: Esperar el despliegue de Render de este commit
+        run: python3 .github/scripts/wait_render_deploy.py
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: srv-dauj9njncjis73frq3g0

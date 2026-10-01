@@ -84,6 +84,22 @@ en los logs del servicio.
   Render no sirve un `404.html` como respaldo: sin la regla, esas rutas
   responden "Not Found" en texto plano. Solo se puede crear desde el panel.
 
+## Despliegues en Jira
+
+Render despliega solo cada cambio que llega a `main`, pero no avisa a Jira. El workflow
+`.github/workflows/deploy-render.yml` (en los dos repos) espera el resultado real de ese
+despliegue consultando la API de Render (`.github/scripts/wait_render_deploy.py`) y lo publica
+como un despliegue de GitHub en el entorno `production`. La app **GitHub for Atlassian** lo muestra
+en la pestaña *Implementaciones* de las incidencias cuya clave (p. ej. `TE-45`) aparece en los commits,
+y en la página *Despliegues* del proyecto.
+
+- Requiere el secreto de repositorio `RENDER_API_KEY` (GitHub: Settings > Secrets and variables > Actions;
+  la clave se crea en Render: Account Settings > API Keys).
+- Y tener activada la función *Despliegues* en Jira (Configuración del proyecto > Funciones) con GitHub Actions
+  como herramienta conectada.
+- Si Render falla o cancela el despliegue, el workflow falla y Jira lo muestra como fallido.
+- También se puede lanzar a mano: pestaña Actions > *Despliegue en Render* > *Run workflow*.
+
 ## Después de desplegar
 
 1. `GET https://texcore-api.onrender.com/api/health/` debe responder `ok`.

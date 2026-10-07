@@ -1,0 +1,5 @@
+# Herramientas solo para desarrollo (no se instalan en Render).
+# Instalar con:  pip install -r requirements-dev.txt
+-r requirements.txt
+
+mkdocs-material>=9.5,<10   # Sitio de documentación:  mkdocs serve  /  mkdocs build

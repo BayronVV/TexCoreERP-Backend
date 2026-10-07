@@ -11,8 +11,10 @@ backend/
 ├── config/            # Configuración del proyecto (settings, urls, wsgi/asgi)
 ├── apps/              # Un módulo de Django por área de negocio
 │   ├── core/          # Transversal: endpoints de salud, modelo base (borrado lógico), permisos
-│   └── users/         # Usuarios, roles y permisos, recuperación de contraseña
-├── docs/              # Convenciones técnicas (base de datos, borrado lógico)
+│   ├── users/         # Usuarios, roles y permisos, recuperación de contraseña
+│   └── inventory/     # Proveedores, catálogo, órdenes de salida, kardex, evidencias y alertas
+├── docs/              # Documentación (sitio MkDocs): manuales, arquitectura, modelo de datos
+├── mkdocs.yml         # Configuración del sitio de documentación
 ├── manage.py
 ├── requirements.txt
 └── .env.example       # Plantilla de variables de entorno (sin secretos)
@@ -21,6 +23,16 @@ backend/
 Los módulos de negocio de los próximos sprints (usuarios, inventario,
 producción, ...) se agregan como `apps/<modulo>/` y se registran en
 `INSTALLED_APPS`.
+
+## Documentación
+
+- **API interactiva (Swagger):** con el servidor en marcha, <http://localhost:8000/api/docs/> (también `/api/redoc/` y `/api/schema/`).
+  Se genera desde el código con drf-spectacular; `API_DOCS_ENABLED=false` la oculta.
+- **Manuales y arquitectura:** `pip install -r requirements-dev.txt` y luego `mkdocs serve`
+  (usa `mkdocs serve -a 127.0.0.1:8001` si el backend ya ocupa el puerto 8000).
+  Incluye manual técnico, manual del sistema, manual de usuario y ficha técnica.
+- **Modelo de datos:** `python manage.py generar_erd --salida docs/modelo-de-datos.md` regenera el diagrama
+  entidad-relación (Mermaid) desde los modelos.
 
 ## Levantar en local
 

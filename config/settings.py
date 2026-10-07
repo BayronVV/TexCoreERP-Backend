@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     # Terceros
     "rest_framework",
+    "drf_spectacular",  # documentación OpenAPI de la API (/api/docs/)
     "corsheaders",
     # Módulos de TexCore (uno por carpeta dentro de apps/)
     "apps.core",
@@ -121,6 +122,7 @@ REST_FRAMEWORK = {
     # (login, registro, recuperación, health) declaran AllowAny.
     "DEFAULT_PERMISSION_CLASSES": ["apps.core.permissions.HasPermission"],
     "UNAUTHENTICATED_USER": None,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     # Proxies delante del backend. 0 = usar la IP de la conexión e ignorar
     # X-Forwarded-For (si no, cualquiera evade los límites cambiando ese header).
     "NUM_PROXIES": int(os.getenv("NUM_PROXIES", "0")),
@@ -144,6 +146,36 @@ SIMPLE_JWT = {
     "TOKEN_REFRESH_SERIALIZER": "apps.users.serializers.SafeTokenRefreshSerializer",
     # Registra el último acceso al iniciar sesión (se muestra en "Usuarios").
     "UPDATE_LAST_LOGIN": True,
+}
+
+# --- Documentación de la API (drf-spectacular) ----------------------------------
+# /api/docs/ (Swagger UI), /api/redoc/ y /api/schema/ (OpenAPI). Para ocultarla en
+# un despliegue: API_DOCS_ENABLED=false.
+API_DOCS_ENABLED = env_bool("API_DOCS_ENABLED", True)
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "TexCore ERP · API",
+    "DESCRIPTION": (
+        "API REST del sistema ERP para la gestión y trazabilidad de la producción de jeans.\n\n"
+        "Autenticación: JWT. Inicia sesión en `POST /api/token/`, copia el `access` y pulsa "
+        "**Authorize** (esquema Bearer). Cada ruta exige un permiso por rol (RNF01): sin él la "
+        "API responde 403; sin sesión, 401."
+    ),
+    "VERSION": "Sprint 1",
+    "SERVE_INCLUDE_SCHEMA": False,
+    # Agrupa las rutas por módulo: /api/inventario/... -> «inventario», /api/users/... -> «users»
+    "SCHEMA_PATH_PREFIX": r"/api",
+    # Peticiones y respuestas con esquemas separados (los campos de solo lectura no se envían)
+    "COMPONENT_SPLIT_REQUEST": True,
+    # Nombres claros para los enums que comparten el nombre de campo («tipo», «categoria»).
+    "ENUM_NAME_OVERRIDES": {
+        "TipoProductoEnum": "apps.inventory.catalog.PRODUCT_TYPES",
+        "TipoOrdenEnum": "apps.inventory.catalog.ORDER_TYPES",
+        "TipoMovimientoEnum": "apps.inventory.catalog.MOVEMENT_TYPES",
+        "CategoriaProductoEnum": "apps.inventory.catalog.CATEGORY_CHOICES",
+        "CategoriaProveedorEnum": "apps.inventory.catalog.SUPPLIER_CATEGORY_CHOICES",
+    },
+    "SWAGGER_UI_SETTINGS": {"persistAuthorization": True, "displayRequestDuration": True},
 }
 
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")

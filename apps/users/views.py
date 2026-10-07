@@ -5,12 +5,13 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
-from rest_framework import generics, permissions, status
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
+from rest_framework import generics, permissions, serializers, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from . import catalog, password_reset
 from .models import ModulePermission, PasswordResetToken, Role
@@ -45,6 +46,10 @@ def _client_ip(request):
         return None
 
 
+@extend_schema(
+    tags=["auth"], summary="Registrar un usuario nuevo (HU 1.1)",
+    description="La cuenta nace con el rol `PENDING` y sin permisos hasta que un Administrador la apruebe.",
+)
 class UserRegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = [permissions.AllowAny]
@@ -53,12 +58,26 @@ class UserRegisterView(generics.CreateAPIView):
     throttle_scope = "register"
 
 
+@extend_schema(
+    tags=["auth"], summary="Iniciar sesión (HU 1.2)",
+    description="Devuelve `access` (15 min) y `refresh` (30 min). El correo no distingue mayúsculas. "
+    "401 si las credenciales son inválidas o la cuenta está inactiva; 429 si se supera el límite de intentos.",
+)
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
 
 
+@extend_schema(
+    tags=["auth"], summary="Renovar el access token",
+    description="Entrega un `access` nuevo y un `refresh` nuevo (rotativo). 401 si el usuario ya no está activo o cambió su contraseña.",
+)
+class CustomTokenRefreshView(TokenRefreshView):
+    pass
+
+
+@extend_schema(tags=["auth"], summary="Usuario de la sesión y sus permisos")
 class MeView(generics.RetrieveAPIView):
     """Usuario de la sesión con sus permisos efectivos."""
 
@@ -72,6 +91,12 @@ class MeView(generics.RetrieveAPIView):
 # Usuarios
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["users"], summary="Listar usuarios",
+        parameters=[OpenApiParameter("role", str, description="Código del rol (ADMIN, ALMACENISTA...)")]),
+    post=extend_schema(tags=["users"], summary="Crear un usuario con invitación por correo",
+        description="Envía un enlace para que la persona defina su contraseña. `email_sent` indica si el correo salió."),
+)
 class UserListCreateView(generics.ListCreateAPIView):
     required_permissions = {"GET": catalog.USERS_VIEW, "POST": catalog.USERS_MANAGE}
 
@@ -95,6 +120,13 @@ class UserListCreateView(generics.ListCreateAPIView):
         return Response(data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["users"], summary="Consultar un usuario"),
+    patch=extend_schema(tags=["users"], summary="Aprobar, cambiar rol o activar/desactivar",
+        description="Solo un Administrador asigna roles con permisos de Seguridad (BUG-01). Nadie edita su propio rol."),
+    delete=extend_schema(tags=["users"], summary="Eliminar (borrado lógico)",
+        description="Siempre debe quedar al menos un Administrador activo."),
+)
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     http_method_names = DETAIL_METHODS
     required_permissions = {
@@ -132,6 +164,10 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         user.save(update_fields=["is_active", "deleted_at", "updated_at"])
 
 
+@extend_schema(
+    tags=["users"], summary="Reenviar la invitación", request=None,
+    responses=inline_serializer("Detalle", {"detail": serializers.CharField()}),
+)
 class UserResendInviteView(APIView):
     """Reenvía el enlace para definir la contraseña de una cuenta creada por un admin."""
 
@@ -163,6 +199,11 @@ def _roles_with_counts():
     ).prefetch_related("permissions")
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["roles"], summary="Listar roles con sus permisos y número de usuarios"),
+    post=extend_schema(tags=["roles"], summary="Crear un rol propio",
+        description="El código es inmutable (mayúsculas, números o guion bajo). Requiere `seguridad.roles`."),
+)
 class RoleListCreateView(generics.ListCreateAPIView):
     required_permissions = {"GET": catalog.USERS_VIEW, "POST": catalog.ROLES_MANAGE}
     serializer_class = RoleSerializer
@@ -175,6 +216,13 @@ class RoleListCreateView(generics.ListCreateAPIView):
         serializer.save(is_system=False)
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["roles"], summary="Consultar un rol"),
+    patch=extend_schema(tags=["roles"], summary="Editar el nombre o los permisos de un rol",
+        description="Los permisos de ADMIN y PENDING no se editan. \"Registrar y modificar\" exige también \"Ver\" el módulo."),
+    delete=extend_schema(tags=["roles"], summary="Eliminar un rol",
+        description="Solo roles que no son base del sistema y sin usuarios asignados."),
+)
 class RoleDetailView(generics.RetrieveUpdateDestroyAPIView):
     http_method_names = DETAIL_METHODS
     required_permissions = {
@@ -200,6 +248,7 @@ class RoleDetailView(generics.RetrieveUpdateDestroyAPIView):
         role.delete()
 
 
+@extend_schema(tags=["roles"], summary="Catálogo de permisos por módulo")
 class ModulePermissionListView(generics.ListAPIView):
     required_permissions = catalog.USERS_VIEW
     serializer_class = ModulePermissionSerializer
@@ -215,6 +264,12 @@ GENERIC_RESET_MESSAGE = (
 INVALID_LINK_MESSAGE = "El enlace no es válido o ya venció. Solicita uno nuevo."
 
 
+@extend_schema(
+    tags=["auth"], summary="Pedir enlace para restablecer la contraseña (HU 1.3)",
+    request=PasswordResetRequestSerializer,
+    responses=inline_serializer("RecuperacionSolicitada", {
+        "detail": serializers.CharField(), "expires_minutes": serializers.IntegerField()}),
+)
 class PasswordResetRequestView(APIView):
     """Responde lo mismo exista o no el correo (y aunque falle el envío), para no
     revelar qué cuentas existen."""
@@ -236,6 +291,13 @@ class PasswordResetRequestView(APIView):
         )
 
 
+@extend_schema(
+    tags=["auth"], summary="Comprobar si un enlace sigue vigente",
+    request=PasswordResetTokenSerializer,
+    responses=inline_serializer("EnlaceValido", {
+        "valid": serializers.BooleanField(), "purpose": serializers.CharField(),
+        "email": serializers.EmailField()}),
+)
 class PasswordResetValidateView(APIView):
     """Permite al frontend avisar antes de que el usuario escriba, si el enlace ya no sirve.
     Es POST para que el token no quede en los logs de acceso."""
@@ -255,6 +317,11 @@ class PasswordResetValidateView(APIView):
         return Response({"valid": True, "purpose": token.purpose, "email": token.user.email})
 
 
+@extend_schema(
+    tags=["auth"], summary="Definir la nueva contraseña con el enlace",
+    request=PasswordResetConfirmSerializer,
+    responses=inline_serializer("ContrasenaActualizada", {"detail": serializers.CharField()}),
+)
 class PasswordResetConfirmView(APIView):
     permission_classes = [permissions.AllowAny]
     throttle_classes = [ScopedRateThrottle]

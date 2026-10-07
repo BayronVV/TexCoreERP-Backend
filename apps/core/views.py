@@ -5,12 +5,21 @@ import time
 from django.conf import settings
 from django.db import DatabaseError, connection
 from django.utils import timezone
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 
+@extend_schema(
+    tags=["salud"], summary="Estado del servicio",
+    responses=inline_serializer("Salud", {
+        "status": serializers.CharField(), "service": serializers.CharField(),
+        "version": serializers.CharField(), "environment": serializers.CharField(),
+        "timestamp": serializers.DateTimeField(),
+    }),
+)
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health(request):
@@ -26,6 +35,15 @@ def health(request):
     )
 
 
+@extend_schema(
+    tags=["salud"], summary="Estado de la conexión a la base de datos",
+    description="Ejecuta `SELECT 1`. Responde 503 si la base no está disponible.",
+    responses=inline_serializer("SaludBD", {
+        "status": serializers.CharField(), "vendor": serializers.CharField(),
+        "server_version": serializers.CharField(allow_null=True),
+        "latency_ms": serializers.FloatField(),
+    }),
+)
 @api_view(["GET"])
 @permission_classes([AllowAny])
 def health_db(request):

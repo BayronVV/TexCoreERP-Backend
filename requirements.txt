@@ -9,3 +9,4 @@ python-dotenv>=1.1,<2         # Carga variables desde el archivo .env
 psycopg[binary]>=3.2,<4       # Driver de PostgreSQL (Supabase)
 djangorestframework-simplejwt>=5.3,<6  # Autenticación JWT (HU01)
 gunicorn>=23,<24              # Servidor WSGI de producción (Render)
+drf-spectacular>=0.28,<1       # Documentación OpenAPI de la API (/api/docs/)

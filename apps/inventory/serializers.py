@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from . import catalog, services
@@ -27,10 +28,10 @@ class ProductoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_categoria_nombre(self, obj):
+    def get_categoria_nombre(self, obj) -> str:
         return category_name(obj)
 
-    def get_bajo_minimo(self, obj):
+    def get_bajo_minimo(self, obj) -> bool:
         return obj.stock_minimo > 0 and obj.stock_actual <= obj.stock_minimo
 
 
@@ -63,10 +64,10 @@ class CatalogoSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "codigo", "tipo", "tiene_imagen", "imagen_version", "created_at"]
 
-    def get_categoria_nombre(self, obj):
+    def get_categoria_nombre(self, obj) -> str:
         return category_name(obj)
 
-    def get_unidades_permitidas(self, obj):
+    def get_unidades_permitidas(self, obj) -> list[str]:
         data = catalog.CATEGORIES.get(obj.categoria)
         return data["units"] if data else [u for u, _ in catalog.UNITS]
 
@@ -85,6 +86,7 @@ class CatalogoSerializer(serializers.ModelSerializer):
 
 
 class ProveedorSerializer(serializers.ModelSerializer):
+    """Proveedor (HU 2.1) con NIT formateado e insumos vinculados (se deducen del kardex)."""
     categoria_nombre = serializers.SerializerMethodField()
     nit_formateado = serializers.SerializerMethodField()
     insumos_vinculados = serializers.IntegerField(read_only=True, default=0)
@@ -113,14 +115,14 @@ class ProveedorSerializer(serializers.ModelSerializer):
         data["nit"] = instance.nit  # sin puntos ni dígito de verificación
         return data
 
-    def get_categoria_nombre(self, obj):
+    def get_categoria_nombre(self, obj) -> str:
         return dict(catalog.SUPPLIER_CATEGORY_CHOICES).get(obj.categoria, obj.categoria)
 
-    def get_nit_formateado(self, obj):
+    def get_nit_formateado(self, obj) -> str:
         body = f"{int(obj.nit):,}".replace(",", ".") if obj.nit.isdigit() else obj.nit
         return f"{body}-{obj.nit_dv}" if obj.nit_dv else body
 
-    def get_archivado(self, obj):
+    def get_archivado(self, obj) -> bool:
         return obj.deleted_at is not None
 
     def validate_razon_social(self, value):
@@ -137,12 +139,14 @@ class ProveedorSerializer(serializers.ModelSerializer):
 
 
 class EvidenciaSerializer(serializers.ModelSerializer):
+    """Metadatos de una evidencia; el archivo se descarga con sesión."""
     class Meta:
         model = Evidencia
         fields = ["id", "nombre_original", "content_type", "tamano", "created_at"]
 
 
 class MovimientoSerializer(serializers.ModelSerializer):
+    """Movimiento del kardex con su producto, proveedor, usuario y evidencias."""
     producto_nombre = serializers.CharField(source="producto.nombre", read_only=True)
     producto_codigo = serializers.CharField(source="producto.codigo", read_only=True)
     unidad = serializers.CharField(source="producto.unidad", read_only=True)
@@ -159,9 +163,10 @@ class MovimientoSerializer(serializers.ModelSerializer):
             "evidencias", "created_at",
         ]
 
-    def get_registrado_por_nombre(self, obj):
+    def get_registrado_por_nombre(self, obj) -> str:
         return (obj.registrado_por.get_full_name() or obj.registrado_por.email) if obj.registrado_por else ""
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_evidencias(self, obj):
         # Las evidencias de una salida se adjuntan a la orden, no a cada línea:
         # las filas de salida y anulación muestran las de su orden. El retorno
@@ -173,6 +178,7 @@ class MovimientoSerializer(serializers.ModelSerializer):
 
 
 class OrdenSerializer(serializers.ModelSerializer):
+    """Orden de salida con sus líneas y evidencias."""
     tipo_nombre = serializers.CharField(source="get_tipo_display", read_only=True)
     estado_nombre = serializers.CharField(source="get_estado_display", read_only=True)
     producto_resultado_nombre = serializers.CharField(source="producto_resultado.nombre", read_only=True)
@@ -190,9 +196,10 @@ class OrdenSerializer(serializers.ModelSerializer):
             "motivo_anulacion", "created_at",
         ]
 
-    def get_registrado_por_nombre(self, obj):
+    def get_registrado_por_nombre(self, obj) -> str:
         return (obj.registrado_por.get_full_name() or obj.registrado_por.email) if obj.registrado_por else ""
 
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
     def get_lineas(self, obj):
         return [
             {
@@ -218,6 +225,7 @@ class OptionalIdField(serializers.IntegerField):
 
 
 class IngresoInputSerializer(serializers.Serializer):
+    """Datos para registrar un ingreso (`POST /api/inventario/ingresos/`)."""
     producto = serializers.IntegerField()
     cantidad = serializers.DecimalField(max_digits=12, decimal_places=2)
     fecha = serializers.DateField()
@@ -229,11 +237,13 @@ class IngresoInputSerializer(serializers.Serializer):
 
 
 class LineaInputSerializer(serializers.Serializer):
+    """Una línea de la cesta: producto y cantidad."""
     producto = serializers.IntegerField()
     cantidad = serializers.DecimalField(max_digits=12, decimal_places=2)
 
 
 class OrdenInputSerializer(serializers.Serializer):
+    """Datos para crear una orden con su cesta de materiales."""
     tipo = serializers.ChoiceField(choices=catalog.ORDER_TYPES)
     fecha_salida = serializers.DateField()
     responsable = serializers.CharField(max_length=120)
@@ -258,4 +268,5 @@ class OrdenInputSerializer(serializers.Serializer):
 
 
 class AnulacionInputSerializer(serializers.Serializer):
+    """Motivo obligatorio para anular una orden."""
     motivo = serializers.CharField(max_length=255)

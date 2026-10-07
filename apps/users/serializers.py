@@ -43,6 +43,7 @@ def _grants_security(role):
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """Login: el correo no distingue mayúsculas y el JWT lleva el rol del usuario."""
     def validate(self, attrs):
         # El registro guarda el correo en minúsculas; el login no debe distinguir.
         attrs[self.username_field] = attrs[self.username_field].strip().lower()
@@ -73,6 +74,7 @@ class SafeTokenRefreshSerializer(TokenRefreshSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    """Usuario para listados y detalle (solo lectura)."""
     role_name = serializers.CharField(source="role.name", read_only=True)
     requested_area_name = serializers.CharField(source="requested_area.name", read_only=True, default=None)
     full_name = serializers.SerializerMethodField()
@@ -100,21 +102,22 @@ class UserSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_full_name(self, user):
+    def get_full_name(self, user) -> str:
         return user.get_full_name() or user.email
 
-    def get_has_password(self, user):
+    def get_has_password(self, user) -> bool:
         return user.has_usable_password()
 
 
 class MeSerializer(UserSerializer):
+    """Usuario de la sesión con sus permisos efectivos."""
     permissions = serializers.SerializerMethodField()
 
     class Meta(UserSerializer.Meta):
         fields = UserSerializer.Meta.fields + ["permissions"]
         read_only_fields = fields
 
-    def get_permissions(self, user):
+    def get_permissions(self, user) -> list[str]:
         return sorted(user.get_permission_codes())
 
 
@@ -168,6 +171,7 @@ class UserCreateSerializer(_AssignRoleMixin, serializers.ModelSerializer):
 
 
 class UserAdminUpdateSerializer(_AssignRoleMixin, serializers.ModelSerializer):
+    """Cambios de un administrador: rol, activación y datos. Aplica las reglas de delegación (BUG-01)."""
     role = _RoleField(required=False)
 
     class Meta:
@@ -200,6 +204,7 @@ class UserAdminUpdateSerializer(_AssignRoleMixin, serializers.ModelSerializer):
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
+    """Registro público (HU 1.1): la cuenta nace con rol PENDING hasta que un administrador la apruebe."""
     password_confirm = serializers.CharField(write_only=True)
     requested_area = _RoleField(required=False, allow_null=True)
 
@@ -256,12 +261,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 
 class ModulePermissionSerializer(serializers.ModelSerializer):
+    """Permiso de un módulo, p. ej. `inventario.gestionar`."""
     class Meta:
         model = ModulePermission
         fields = ["code", "name", "module", "description"]
 
 
 class RoleSerializer(serializers.ModelSerializer):
+    """Rol con su matriz de permisos y el número de usuarios que lo tienen."""
     permissions = serializers.SlugRelatedField(
         slug_field="code", queryset=ModulePermission.objects.all(), many=True, required=False
     )
@@ -344,14 +351,17 @@ class RoleSerializer(serializers.ModelSerializer):
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
+    """Correo para pedir el enlace de recuperación."""
     email = serializers.EmailField()
 
 
 class PasswordResetTokenSerializer(serializers.Serializer):
+    """Token del enlace de recuperación."""
     token = serializers.CharField()
 
 
 class PasswordResetConfirmSerializer(PasswordResetTokenSerializer):
+    """Token y nueva contraseña (con su confirmación) para restablecerla."""
     password = serializers.CharField(write_only=True)
     password_confirm = serializers.CharField(write_only=True)
 

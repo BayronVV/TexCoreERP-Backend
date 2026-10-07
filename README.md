@@ -28,6 +28,7 @@ producción, ...) se agregan como `apps/<modulo>/` y se registran en
 
 - **API interactiva (Swagger):** con el servidor en marcha, <http://localhost:8000/api/docs/> (también `/api/redoc/` y `/api/schema/`).
   Se genera desde el código con drf-spectacular; `API_DOCS_ENABLED=false` la oculta.
+- **Sitio publicado:** <https://bayronvv.github.io/TexCoreERP-Backend/> (se actualiza solo al fusionar cambios de `docs/` en `main`).
 - **Manuales y arquitectura:** `pip install -r requirements-dev.txt` y luego `mkdocs serve`
   (usa `mkdocs serve -a 127.0.0.1:8001` si el backend ya ocupa el puerto 8000).
   Incluye manual técnico, manual del sistema, manual de usuario y ficha técnica.

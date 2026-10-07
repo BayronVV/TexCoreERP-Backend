@@ -27,7 +27,7 @@ reportes se construyen en los siguientes sprints.
 
 - Sistema en producción: <https://texcore-web.onrender.com>
 - API en producción: <https://texcore-api.onrender.com>
-- Documentación interactiva de la API (Swagger): `/api/docs/` del backend
+- Documentación interactiva de la API (Swagger): <https://texcore-api.onrender.com/api/docs/>
 - Repositorios: [backend](https://github.com/BayronVV/TexCoreERP-Backend) y [frontend](https://github.com/BayronVV/TexCoreERP-Frontend)
 
 !!! note "Documentación como código"

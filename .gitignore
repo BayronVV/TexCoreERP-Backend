@@ -26,3 +26,6 @@ tmp/
 
 # Evidencias subidas (fotos y PDF)
 media/
+
+# Sitio de documentación generado (mkdocs build)
+site/

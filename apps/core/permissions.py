@@ -11,9 +11,13 @@ from rest_framework.permissions import BasePermission
 
 
 class HasPermission(BasePermission):
+    """Permiso por defecto de la API: la vista declara `required_permissions` y el rol del usuario debe tenerlo.
+    Falla cerrado: una vista o método sin permiso declarado no se abre.
+    """
     message = "Tu rol no tiene permiso para realizar esta acción."
 
     def has_permission(self, request, view):
+        """True si hay sesión y el rol tiene el permiso que la vista exige para el método HTTP."""
         user = request.user
         if not (user and user.is_authenticated):
             return False

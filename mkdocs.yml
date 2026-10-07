@@ -1,0 +1,43 @@
+site_name: TexCore ERP · Documentación
+site_description: Manual técnico, manual del sistema, manual de usuario y ficha técnica de TexCore ERP.
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  language: es
+  palette:
+    primary: red
+    accent: red
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+
+markdown_extensions:
+  - admonition
+  - tables
+  - attr_list
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Inicio: index.md
+  - Manual técnico:
+      - Arquitectura: arquitectura.md
+      - API REST: api.md
+      - Modelo de datos: modelo-de-datos.md
+      - Convenciones de base de datos: convenciones-base-de-datos.md
+  - Manual del sistema:
+      - Instalación y operación: manual-del-sistema.md
+      - Despliegue en Render: despliegue-render.md
+  - Manual de usuario: manual-de-usuario.md
+  - Ficha técnica: ficha-tecnica.md

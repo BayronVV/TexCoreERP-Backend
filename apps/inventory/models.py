@@ -33,6 +33,7 @@ class Consecutivo(models.Model):
 
 
 class Proveedor(BaseModel):
+    """Proveedor de telas e insumos (HU 2.1). El NIT es único entre los proveedores activos."""
     # NIT sin puntos ni dígito de verificación; el DV va aparte. Es único entre los activos.
     nit = models.CharField(max_length=10)
     nit_dv = models.CharField(max_length=1, blank=True)
@@ -72,6 +73,9 @@ class ProductoAllManager(models.Manager.from_queryset(ActiveQuerySet)):
 
 
 class Producto(BaseModel):
+    """Producto del catálogo (HU 2.2): materia prima, insumo, pantalón genérico o terminado.
+    La categoría fija el tipo; `stock_actual` solo cambia mediante movimientos.
+    """
     codigo = models.CharField(max_length=20)
     nombre = models.CharField(max_length=150)
     tipo = models.CharField(max_length=15, choices=catalog.PRODUCT_TYPES)
@@ -107,11 +111,12 @@ class Producto(BaseModel):
         return f"{self.codigo} {self.nombre}"
 
     @property
-    def tiene_imagen(self):
+    def tiene_imagen(self) -> bool:
         return bool(self.imagen_tipo)
 
 
 class OrdenSalida(BaseModel):
+    """Orden de producción (OP) o de lavandería (LV) que saca materiales del almacén (HU 2.3)."""
     codigo = models.CharField(max_length=20)
     tipo = models.CharField(max_length=12, choices=catalog.ORDER_TYPES)
     estado = models.CharField(max_length=12, choices=catalog.ORDER_STATUSES, default=catalog.STATUS_OPEN)
@@ -145,6 +150,7 @@ class OrdenSalida(BaseModel):
 
 
 class OrdenLinea(BaseModel):
+    """Línea de la cesta de una orden: un producto y la cantidad que sale."""
     orden = models.ForeignKey(OrdenSalida, on_delete=models.PROTECT, related_name="lineas")
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name="+")
     cantidad = models.DecimalField(max_digits=12, decimal_places=2)
@@ -161,6 +167,7 @@ class OrdenLinea(BaseModel):
 
 
 class Movimiento(BaseModel):
+    """Fila del kardex: cada ingreso o salida con el saldo antes y después, el usuario y la fecha."""
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name="movimientos")
     tipo = models.CharField(max_length=8, choices=catalog.MOVEMENT_TYPES)
     motivo = models.CharField(max_length=15, choices=catalog.MOVEMENT_REASONS)
@@ -195,6 +202,7 @@ def _evidence_path(instance, filename):
 
 
 class Evidencia(BaseModel):
+    """Foto o PDF adjunto a un movimiento o a una orden."""
     movimiento = models.ForeignKey(Movimiento, on_delete=models.PROTECT, null=True, blank=True, related_name="evidencias")
     orden = models.ForeignKey(OrdenSalida, on_delete=models.PROTECT, null=True, blank=True, related_name="evidencias")
     archivo = models.FileField(upload_to=_evidence_path)

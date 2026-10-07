@@ -2,7 +2,9 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, Q
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
-from rest_framework import generics, status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
+from rest_framework import generics, serializers, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
@@ -22,6 +24,7 @@ from .serializers import (
     ProveedorSerializer,
 )
 
+LIMIT_PARAM = OpenApiParameter("limit", int, description="Máximo de filas (1 a 200, por defecto 100)")
 READ_WRITE = {"GET": catalog.INVENTORY_VIEW, "POST": catalog.INVENTORY_MANAGE}
 LIST_LIMIT = 200
 
@@ -48,6 +51,10 @@ def apply_filters(queryset, params, mapping):
     return queryset
 
 
+@extend_schema(
+    tags=["inventario"], summary="Categorías, unidades y reglas del catálogo",
+    responses={200: OpenApiTypes.OBJECT},
+)
 class MetadatosView(APIView):
     """Categorías, unidades y reglas del catálogo, para que las pantallas no las dupliquen."""
 
@@ -76,6 +83,13 @@ class MetadatosView(APIView):
         })
 
 
+@extend_schema(
+    tags=["inventario"], summary="Alertas de stock mínimo (HU 2.4)",
+    description="Productos con existencias en el mínimo o por debajo (`warning`) o sin existencias (`critical`).",
+    responses=inline_serializer("Alertas", {
+        "count": serializers.IntegerField(),
+        "alerts": serializers.ListField(child=serializers.DictField())}),
+)
 class AlertListView(APIView):
     required_permissions = catalog.INVENTORY_VIEW
 
@@ -84,6 +98,10 @@ class AlertListView(APIView):
         return Response({"count": len(alerts), "alerts": alerts})
 
 
+@extend_schema_view(get=extend_schema(
+    tags=["inventario"], summary="Productos con existencias",
+    parameters=[OpenApiParameter("tipo", str, description="Tipos separados por coma: MATERIA_PRIMA, INSUMO, GENERICO, TERMINADO")],
+))
 class ProductoListView(generics.ListAPIView):
     """Productos con sus existencias, para Inventario (ingresos, salidas y existencias).
     Solo lectura: los productos se crean y editan en el catálogo."""
@@ -102,6 +120,13 @@ class ProductoListView(generics.ListAPIView):
 
 # --- Catálogo de telas e insumos (HU 2.2) ---------------------------------------
 
+@extend_schema_view(
+    get=extend_schema(tags=["catalogo"], summary="Listar el catálogo (sin existencias)",
+        parameters=[OpenApiParameter("categoria", str, description="Categorías separadas por coma (TELA, HILO...)"),
+                    OpenApiParameter("q", str, description="Busca en nombre, código y color")]),
+    post=extend_schema(tags=["catalogo"], summary="Crear un producto (HU 2.2)",
+        description="La categoría fija el tipo y las unidades permitidas. Las telas exigen `ancho_util` (0 a 5 m) y las telas e hilos, composición que sume 100 %."),
+)
 class CatalogoListCreateView(generics.ListAPIView):
     required_permissions = READ_WRITE
     serializer_class = CatalogoSerializer
@@ -124,6 +149,13 @@ class CatalogoListCreateView(generics.ListAPIView):
         return Response(CatalogoSerializer(product).data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["catalogo"], summary="Consultar un producto"),
+    patch=extend_schema(tags=["catalogo"], summary="Editar un producto",
+        description="La categoría y la unidad no cambian si el producto ya tiene movimientos."),
+    delete=extend_schema(tags=["catalogo"], summary="Archivar un producto",
+        description="Solo sin existencias y sin órdenes en proceso que lo produzcan."),
+)
 class CatalogoDetailView(generics.RetrieveUpdateDestroyAPIView):
     required_permissions = {
         "GET": catalog.INVENTORY_VIEW,
@@ -138,6 +170,15 @@ class CatalogoDetailView(generics.RetrieveUpdateDestroyAPIView):
         services.archive_product(instance)
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["catalogo"], summary="Descargar la imagen de referencia",
+        description="Con `ETag`: responde 304 si `If-None-Match` coincide.",
+        responses={(200, "image/*"): OpenApiTypes.BINARY, 304: None, 404: None}),
+    post=extend_schema(tags=["catalogo"], summary="Subir o reemplazar la imagen (máx. 2 MB)",
+        request={"multipart/form-data": inline_serializer("ImagenSubida", {"imagen": serializers.ImageField()})},
+        responses={201: CatalogoSerializer}),
+    delete=extend_schema(tags=["catalogo"], summary="Quitar la imagen", responses={200: CatalogoSerializer}),
+)
 class CatalogoImagenView(APIView):
     """Imagen de referencia del producto. Se guarda en la base y se sirve con sesión."""
 
@@ -182,6 +223,14 @@ def suppliers_queryset(archived=False):
     )
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["proveedores"], summary="Listar proveedores (HU 2.1)",
+        parameters=[OpenApiParameter("archivados", bool, description="true para ver los archivados"),
+                    OpenApiParameter("categoria", str, description="Categorías separadas por coma"),
+                    OpenApiParameter("q", str, description="Busca en razón social, contacto, ciudad y NIT")]),
+    post=extend_schema(tags=["proveedores"], summary="Registrar un proveedor",
+        description="El NIT se normaliza (6 a 10 dígitos y dígito de verificación) y no puede repetirse entre proveedores activos."),
+)
 class ProveedorListCreateView(generics.ListAPIView):
     required_permissions = READ_WRITE
     serializer_class = ProveedorSerializer
@@ -209,6 +258,12 @@ class ProveedorListCreateView(generics.ListAPIView):
         return Response(ProveedorSerializer(supplier).data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["proveedores"], summary="Consultar un proveedor (activo o archivado)"),
+    patch=extend_schema(tags=["proveedores"], summary="Editar un proveedor activo"),
+    delete=extend_schema(tags=["proveedores"], summary="Archivar un proveedor",
+        description="Borrado lógico: el historial de ingresos conserva el nombre del proveedor."),
+)
 class ProveedorDetailView(generics.RetrieveUpdateDestroyAPIView):
     required_permissions = {
         "GET": catalog.INVENTORY_VIEW,
@@ -229,6 +284,8 @@ class ProveedorDetailView(generics.RetrieveUpdateDestroyAPIView):
         )
 
 
+@extend_schema(tags=["proveedores"], summary="Restaurar un proveedor archivado", request=None,
+    responses={200: ProveedorSerializer})
 class ProveedorRestaurarView(APIView):
     required_permissions = catalog.INVENTORY_MANAGE
 
@@ -238,6 +295,12 @@ class ProveedorRestaurarView(APIView):
         return Response(ProveedorSerializer(get_object_or_404(suppliers_queryset(), pk=pk)).data)
 
 
+@extend_schema_view(get=extend_schema(
+    tags=["movimientos"], summary="Historial de movimientos (kardex)",
+    parameters=[LIMIT_PARAM, OpenApiParameter("tipo", str, description="INGRESO o SALIDA"), OpenApiParameter("producto", int, description="Id del producto"),
+                OpenApiParameter("orden", int, description="Id de la orden"), OpenApiParameter("desde", OpenApiTypes.DATE, description="Fecha mínima"),
+                OpenApiParameter("hasta", OpenApiTypes.DATE, description="Fecha máxima")],
+))
 class MovimientoListView(generics.ListAPIView):
     required_permissions = catalog.INVENTORY_VIEW
     serializer_class = MovimientoSerializer
@@ -256,6 +319,13 @@ class MovimientoListView(generics.ListAPIView):
         return limited(queryset, self.request)
 
 
+@extend_schema(
+    tags=["movimientos"], summary="Registrar un ingreso (HU 2.3)",
+    description="**Materias primas e insumos:** compra con proveedor de la lista y lote obligatorios. "
+    "**Pantalón genérico o terminado:** solo entra cerrando la orden (`orden`) que lo fabricó; "
+    "la orden pasa a COMPLETADA. `proveedor` y `orden` vacíos se tratan como ausentes (TE-168).",
+    request=IngresoInputSerializer, responses={201: MovimientoSerializer},
+)
 class IngresoCreateView(APIView):
     required_permissions = catalog.INVENTORY_MANAGE
 
@@ -271,6 +341,15 @@ class IngresoCreateView(APIView):
         return Response(MovimientoSerializer(movement).data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema_view(
+    get=extend_schema(tags=["ordenes"], summary="Listar órdenes de salida",
+        parameters=[LIMIT_PARAM, OpenApiParameter("tipo", str, description="PRODUCCION (OP) o LAVANDERIA (LV)"),
+                    OpenApiParameter("estado", str, description="EN_PROCESO, COMPLETADA o ANULADA"),
+                    OpenApiParameter("producto_resultado", int, description="Id del producto que se obtiene")]),
+    post=extend_schema(tags=["ordenes"], summary="Crear una orden con su cesta de materiales",
+        description="Valida el stock de cada línea; si falta material responde 400 con `faltantes`.",
+        request=OrdenInputSerializer, responses={201: OrdenSerializer}),
+)
 class OrdenListCreateView(generics.ListAPIView):
     required_permissions = READ_WRITE
     serializer_class = OrdenSerializer
@@ -297,12 +376,18 @@ class OrdenListCreateView(generics.ListAPIView):
         return Response(OrdenSerializer(order).data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(tags=["ordenes"], summary="Consultar una orden")
 class OrdenDetailView(generics.RetrieveAPIView):
     required_permissions = catalog.INVENTORY_VIEW
     serializer_class = OrdenSerializer
     queryset = OrdenSalida.objects.all()
 
 
+@extend_schema(
+    tags=["ordenes"], summary="Anular una orden en proceso",
+    description="Devuelve al inventario los materiales de la cesta. Exige el motivo.",
+    request=AnulacionInputSerializer, responses={200: OrdenSerializer},
+)
 class OrdenAnularView(APIView):
     required_permissions = catalog.INVENTORY_MANAGE
 
@@ -311,6 +396,13 @@ class OrdenAnularView(APIView):
         data.is_valid(raise_exception=True)
         order = services.cancel_order(user=request.user, order_id=pk, motivo=data.validated_data["motivo"])
         return Response(OrdenSerializer(order).data)
+
+
+EVIDENCIAS_BODY = {
+    "multipart/form-data": inline_serializer(
+        "EvidenciasSubidas", {"archivos": serializers.ListField(child=serializers.FileField())}
+    )
+}
 
 
 class EvidenciaUploadView(APIView):
@@ -326,16 +418,22 @@ class EvidenciaUploadView(APIView):
         return Response(EvidenciaSerializer(saved, many=True).data, status=status.HTTP_201_CREATED)
 
 
+@extend_schema(tags=["evidencias"], summary="Adjuntar evidencias a un movimiento (JPG, PNG, WEBP o PDF)",
+    request=EVIDENCIAS_BODY, responses={201: EvidenciaSerializer(many=True)})
 class MovimientoEvidenciaView(EvidenciaUploadView):
     def owner(self, pk):
         return {"movement": get_object_or_404(Movimiento, pk=pk)}
 
 
+@extend_schema(tags=["evidencias"], summary="Adjuntar evidencias a una orden (JPG, PNG, WEBP o PDF)",
+    request=EVIDENCIAS_BODY, responses={201: EvidenciaSerializer(many=True)})
 class OrdenEvidenciaView(EvidenciaUploadView):
     def owner(self, pk):
         return {"order": get_object_or_404(OrdenSalida, pk=pk)}
 
 
+@extend_schema(tags=["evidencias"], summary="Descargar una evidencia",
+    responses={(200, "application/octet-stream"): OpenApiTypes.BINARY})
 class EvidenciaArchivoView(APIView):
     """Descarga autenticada: los archivos no cuelgan de una URL pública."""
 

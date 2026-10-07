@@ -48,6 +48,7 @@ class Role(BaseModel):
 
 
 class RolePermission(models.Model):
+    """Asignación de un permiso a un rol (tabla intermedia), con quién y cuándo lo concedió."""
     role = models.ForeignKey(Role, on_delete=models.CASCADE)
     permission = models.ForeignKey(ModulePermission, on_delete=models.CASCADE)
     granted_at = models.DateTimeField(auto_now_add=True)
@@ -61,6 +62,7 @@ class RolePermission(models.Model):
 
 
 class CustomUserManager(UserManager):
+    """Manager que oculta los usuarios eliminados (borrado lógico) y crea superusuarios con rol ADMIN."""
     def get_queryset(self):
         return super().get_queryset().filter(deleted_at__isnull=True)
 
@@ -70,6 +72,7 @@ class CustomUserManager(UserManager):
 
 
 class CustomUser(AbstractUser, BaseModel):
+    """Usuario del sistema. El correo es también el `username`; el rol decide los permisos (RBAC)."""
     # to_field="code" + db_column: la columna sigue guardando el código del rol
     # ("ADMIN", "VENDEDOR"...), igual que antes de tener tabla de roles.
     role = models.ForeignKey(

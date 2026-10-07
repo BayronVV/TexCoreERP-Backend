@@ -16,6 +16,9 @@ PASSWORD_RULES = [
 
 
 def validate_password_policy(password, user=None):
+    """Aplica la política de contraseñas (8+ caracteres, mayúscula, minúscula, número y símbolo)
+    y las reglas de Django. Lanza ValidationError con el detalle de lo que falta.
+    """
     missing = [text for check, text in PASSWORD_RULES if not check(password or "")]
     if missing:
         raise ValidationError({"password": "La contraseña debe tener " + ", ".join(missing) + "."})
@@ -26,5 +29,6 @@ def validate_password_policy(password, user=None):
 
 
 def validate_passwords_match(password, confirmation):
+    """Falla si la contraseña y su confirmación no coinciden."""
     if password != confirmation:
         raise ValidationError({"password_confirm": "Las contraseñas no coinciden."})

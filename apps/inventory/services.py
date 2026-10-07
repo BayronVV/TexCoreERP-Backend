@@ -19,6 +19,7 @@ MAX_QUANTITY = Decimal("9999999999.99")
 
 
 def fail(message, field="detail", **extra):
+    """Lanza un error 400 con el formato de la API: `{campo: [mensaje]}` más datos extra (p. ej. `faltantes`)."""
     raise ValidationError({field: [message], **extra})
 
 
@@ -31,6 +32,9 @@ def next_code(prefix):
 
 
 def parse_quantity(value, unit, field="cantidad"):
+    """Convierte la cantidad a Decimal de 2 decimales. Exige que sea mayor que cero, no supere el máximo
+    y que la unidad admita decimales (las unidades enteras no).
+    """
     try:
         quantity = Decimal(str(value)).quantize(Decimal("0.01"))
     except (InvalidOperation, ValueError):
@@ -45,15 +49,20 @@ def parse_quantity(value, unit, field="cantidad"):
 
 
 def format_quantity(quantity, unit):
+    """Texto legible de una cantidad con su unidad, p. ej. «10 unidad»."""
     return f"{quantity.normalize():f} {unit}"
 
 
 def check_date(value, field="fecha"):
+    """Rechaza fechas futuras."""
     if value > timezone.localdate():
         fail("La fecha no puede ser futura.", field)
 
 
 def lock_products(ids):
+    """Bloquea (`SELECT ... FOR UPDATE`) los productos, en orden de id, para que dos movimientos
+    simultáneos no corrompan el stock. Devuelve `{id: producto}`. Llamar dentro de una transacción.
+    """
     products = {p.id: p for p in Producto.objects.select_for_update().filter(id__in=ids).order_by("id")}
     missing = set(ids) - set(products)
     if missing:
@@ -135,6 +144,9 @@ def _same_name_exists(nombre, categoria, exclude_id=None):
 @transaction.atomic
 def create_product(*, nombre, categoria, unidad, stock_minimo=0, descripcion="", ancho_util=None,
                    color="", composicion=""):
+    """Crea un producto del catálogo (HU 2.2). El código sale del consecutivo de su categoría y se validan
+    nombre único, unidad compatible, ancho útil (telas) y composición (telas e hilos).
+    """
     name = nombre.strip()
     if _same_name_exists(name, categoria):
         fail("Ya existe un producto con ese nombre en esta categoría.", "nombre")
@@ -181,6 +193,7 @@ def update_product(product, **data):
 
 
 def archive_product(product):
+    """Archiva (borrado lógico) un producto. Solo si no tiene existencias ni una orden en proceso que lo produzca."""
     if product.stock_actual > 0:
         fail("No se puede eliminar un producto con existencias.")
     if OrdenSalida.objects.filter(estado=catalog.STATUS_OPEN, producto_resultado=product).exists():
@@ -193,6 +206,9 @@ IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 @transaction.atomic
 def set_product_image(product, upload):
+    """Guarda la imagen de referencia en la base (máx. 2 MB; JPG, PNG o WEBP detectado por contenido)
+    y sube `imagen_version` para invalidar cachés.
+    """
     if upload is None:
         fail("Adjunta una imagen.", "imagen")
     if upload.size > catalog.IMAGE_MAX_BYTES:
@@ -210,6 +226,7 @@ def set_product_image(product, upload):
 
 @transaction.atomic
 def clear_product_image(product):
+    """Quita la imagen de referencia del producto."""
     product = Producto.objects.select_for_update().get(pk=product.pk)
     product.imagen, product.imagen_tipo = None, ""
     product.imagen_version += 1
@@ -232,6 +249,7 @@ def normalize_nit(raw):
 
 
 def check_supplier_nit_free(nit, exclude_id=None):
+    """Falla si otro proveedor activo ya usa ese NIT."""
     queryset = Proveedor.objects.filter(nit=nit)
     if exclude_id:
         queryset = queryset.exclude(pk=exclude_id)
@@ -240,6 +258,7 @@ def check_supplier_nit_free(nit, exclude_id=None):
 
 
 def check_phone(value):
+    """Valida el teléfono (7 a 15 dígitos; solo números, espacios, + y -) y lo devuelve sin espacios sobrantes."""
     value = value.strip()
     if value and not (7 <= len(re.sub(r"\D", "", value)) <= 15 and re.fullmatch(r"[\d\s()+-]+", value)):
         fail("El teléfono no es válido (solo números, espacios, + y -).", "telefono")
@@ -272,6 +291,7 @@ def save_supplier(instance=None, **data):
 
 @transaction.atomic
 def restore_supplier(supplier):
+    """Reactiva un proveedor archivado, si su NIT no lo tomó otro proveedor activo."""
     check_supplier_nit_free(supplier.nit, exclude_id=supplier.pk)
     supplier.restore()
     return supplier
@@ -282,6 +302,11 @@ def restore_supplier(supplier):
 @transaction.atomic
 def register_entry(*, user, producto_id, cantidad, fecha, proveedor_id=None, orden_compra="", lote="",
                    orden_id=None, observaciones=""):
+    """Registra un ingreso al almacén (HU 2.3) y devuelve el movimiento del kardex.
+
+    - Materia prima e insumos: compra con proveedor de la lista y lote obligatorios.
+    - Pantalón genérico o terminado: solo entra cerrando la orden que lo fabricó; la orden pasa a COMPLETADA.
+    """
     check_date(fecha)
     product = lock_products([producto_id])[producto_id]
     quantity = parse_quantity(cantidad, product.unidad)
@@ -338,6 +363,11 @@ def register_entry(*, user, producto_id, cantidad, fecha, proveedor_id=None, ord
 @transaction.atomic
 def create_order(*, user, tipo, fecha_salida, responsable, ficha_tecnica, producto_resultado_id, lineas,
                  destino="", cantidad_prendas=None, observaciones=""):
+    """Crea una orden OP (producción) o LV (lavandería) con su cesta de materiales.
+
+    Valida el tipo de cada producto y su stock (si falta material el error trae `faltantes`), genera el código
+    consecutivo y descuenta el stock registrando una salida por línea.
+    """
     rules = catalog.ORDER_RULES[tipo]
     check_date(fecha_salida, "fecha_salida")
 
@@ -397,6 +427,7 @@ def create_order(*, user, tipo, fecha_salida, responsable, ficha_tecnica, produc
 
 @transaction.atomic
 def cancel_order(*, user, order_id, motivo):
+    """Anula una orden EN_PROCESO: devuelve cada línea al inventario (ingreso por anulación) y guarda el motivo."""
     if not motivo.strip():
         fail("Escribe el motivo de la anulación.", "motivo")
     try:
@@ -465,6 +496,9 @@ def detect_type(header):
 
 @transaction.atomic
 def attach_evidence(*, user, files, movement=None, order=None):
+    """Adjunta fotos o PDF a un movimiento o a una orden. El tipo se decide por el contenido del archivo
+    y se respetan los máximos por registro y por archivo definidos en `catalog`.
+    """
     owner = {"movimiento": movement} if movement else {"orden": order}
     current = Evidencia.objects.filter(**owner).count()
     if not files:

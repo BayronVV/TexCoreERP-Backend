@@ -35,6 +35,7 @@ def _ttl(purpose):
 
 
 def can_request_reset(user):
+    """False si el usuario ya pidió el máximo de enlaces de recuperación en la última hora."""
     since = timezone.now() - timedelta(hours=1)
     recent = user.reset_tokens.filter(purpose=PasswordResetToken.PURPOSE_RESET, created_at__gte=since).count()
     return recent < MAX_RESET_REQUESTS_PER_HOUR
@@ -75,6 +76,7 @@ def find_usable_token(raw_token, lock=False):
 
 
 def consume_token(token, new_password):
+    """Cambia la contraseña con el token, lo marca como usado e invalida los demás enlaces vigentes del usuario."""
     user = token.user
     user.set_password(new_password)
     user.save(update_fields=["password", "updated_at"])

@@ -53,6 +53,7 @@ Los detalles de cada endpoint (parámetros, cuerpos y respuestas) están en Swag
 | `movimientos` | `/api/inventario/movimientos/`, `/api/inventario/ingresos/` | TE-47 |
 | `ordenes` | `/api/inventario/ordenes/…` (crear, consultar, anular) | TE-47 |
 | `evidencias` | `/api/inventario/movimientos/<id>/evidencias/`, `/api/inventario/ordenes/<id>/evidencias/`, `/api/inventario/evidencias/<id>/archivo/` | TE-47 |
+| `referencias` | `/api/referencias/…` (catálogo de jeans: variantes, estado e imágenes), `/api/referencias/metadatos/` | TE-49 |
 | `salud` | `/api/health/`, `/api/health/db/` | — |
 
 ## Ejemplo: registrar un ingreso

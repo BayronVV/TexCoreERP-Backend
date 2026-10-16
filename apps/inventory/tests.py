@@ -10,8 +10,11 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.references import catalog as reference_catalog
+from apps.references.models import FichaLinea, FichaTecnica, Referencia
+
 from . import catalog
-from .models import Movimiento, OrdenSalida, Producto, Proveedor
+from .models import Consecutivo, Movimiento, OrdenSalida, Producto, Proveedor
 
 User = get_user_model()
 PASSWORD = "Passw0rd!23"
@@ -51,6 +54,14 @@ class InventoryBase(TestCase):
         self.boton = self.product("Botón", catalog.CAT_BUTTON, "unidad", stock="300")
         self.generico = self.product("Pantalón genérico", catalog.CAT_GENERIC, "unidad")
         self.skinny = self.product("MOD-SKINNY 5 BOTONES V2", catalog.CAT_FINISHED, "unidad")
+        # Referencia activa con ficha técnica: las órdenes de salida se hacen sobre una referencia.
+        Consecutivo.objects.create(clave=reference_catalog.CODE_PREFIX, ultimo=1)  # REF-0001 ya está tomado
+        self.referencia = Referencia.objects.create(
+            codigo="REF-0001", nombre="Skinny 5 bolsillos", ajuste="SKINNY", estado=reference_catalog.ACTIVE
+        )
+        ficha = FichaTecnica.objects.create(referencia=self.referencia, lavado="ENZIMATICO")
+        for product, quantity, waste in ((self.tela, "1.5", "10"), (self.cierre, "1", "0"), (self.boton, "1", "0")):
+            FichaLinea.objects.create(ficha=ficha, producto=product, cantidad=Decimal(quantity), merma=Decimal(waste))
 
     def product(self, name, category, unit, stock="0", minimo="0"):
         return Producto.objects.create(
@@ -62,7 +73,7 @@ class InventoryBase(TestCase):
     def production_order(self, **overrides):
         body = {
             "tipo": "PRODUCCION", "fecha_salida": today(), "responsable": "Marta Ruiz",
-            "ficha_tecnica": "FT-014", "producto_resultado": self.generico.id,
+            "referencia": self.referencia.id, "cantidad_prendas": 100, "producto_resultado": self.generico.id,
             "lineas": [
                 {"producto": self.tela.id, "cantidad": "300"},
                 {"producto": self.cierre.id, "cantidad": "100"},
@@ -74,7 +85,7 @@ class InventoryBase(TestCase):
     def laundry_order(self, quantity="20", **overrides):
         body = {
             "tipo": "LAVANDERIA", "fecha_salida": today(), "responsable": "Lavandería Sol",
-            "ficha_tecnica": "MOD-SKINNY-V2", "producto_resultado": self.skinny.id,
+            "referencia": self.referencia.id, "producto_resultado": self.skinny.id,
             "lineas": [
                 {"producto": self.generico.id, "cantidad": quantity},
                 {"producto": self.boton.id, "cantidad": "100"},
@@ -238,7 +249,7 @@ class OrderReturnTests(InventoryBase):
         order = self.production_order().json()
         response = self.entry(self.generico, order["id"], "80")
         self.assertEqual(response.status_code, 201, response.content)
-        self.assertEqual(response.json()["lote"], "FT-014")
+        self.assertEqual(response.json()["lote"], "REF-0001")
         self.refresh(self.generico)
         self.assertEqual(self.generico.stock_actual, Decimal("80"))
         self.assertEqual(OrdenSalida.objects.get(pk=order["id"]).estado, "COMPLETADA")

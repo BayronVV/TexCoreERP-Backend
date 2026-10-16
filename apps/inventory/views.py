@@ -356,13 +356,14 @@ class OrdenListCreateView(generics.ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        queryset = OrdenSalida.objects.select_related("producto_resultado", "registrado_por").prefetch_related(
+        queryset = OrdenSalida.objects.select_related("producto_resultado", "registrado_por", "referencia").prefetch_related(
             "lineas__producto", "evidencias"
         )
         queryset = apply_filters(
             queryset,
             self.request.query_params,
-            (("tipo", "tipo"), ("estado", "estado"), ("producto_resultado", "producto_resultado_id")),
+            (("tipo", "tipo"), ("estado", "estado"), ("producto_resultado", "producto_resultado_id"),
+             ("referencia", "referencia_id")),
         )
         return limited(queryset, self.request)
 
@@ -371,7 +372,8 @@ class OrdenListCreateView(generics.ListAPIView):
         data.is_valid(raise_exception=True)
         values = dict(data.validated_data)
         order = services.create_order(
-            user=request.user, producto_resultado_id=values.pop("producto_resultado"), **values
+            user=request.user, producto_resultado_id=values.pop("producto_resultado"),
+            referencia_id=values.pop("referencia"), **values,
         )
         return Response(OrdenSerializer(order).data, status=status.HTTP_201_CREATED)
 

@@ -38,13 +38,14 @@ class ReferenciaSerializer(serializers.ModelSerializer):
     colores = serializers.SerializerMethodField()
     imagen_principal = serializers.SerializerMethodField()
     creado_por_nombre = serializers.SerializerMethodField()
+    tiene_ficha = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Referencia
         fields = [
             "id", "codigo", "nombre", "descripcion", "ajuste", "ajuste_nombre", "estado", "estado_nombre",
             "variantes", "tallas", "colores", "imagenes", "imagen_principal",
-            "creado_por_nombre", "created_at", "updated_at",
+            "tiene_ficha", "creado_por_nombre", "created_at", "updated_at",
         ]
         read_only_fields = fields
 

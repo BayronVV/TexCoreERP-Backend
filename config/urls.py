@@ -9,6 +9,7 @@ urlpatterns = [
     path("api/", include("apps.users.urls")),
     path("api/", include("apps.inventory.urls")),
     path("api/", include("apps.references.urls")),
+    path("api/", include("apps.production.urls")),
 ]
 
 if settings.API_DOCS_ENABLED:

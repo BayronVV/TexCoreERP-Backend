@@ -460,6 +460,8 @@ class MetadataTests(ReferenceBase):
         body = self.api.get(reverse("referencias_metadatos")).json()
         self.assertIn({"value": "SKINNY", "label": "Skinny"}, body["ajustes"])
         self.assertEqual([e["value"] for e in body["estados"]], ["BORRADOR", "ACTIVA", "DESCONTINUADA"])
+        self.assertIn({"value": "ENZIMATICO", "label": "Lavado enzimático"}, body["lavados"])
+        self.assertEqual(len(body["lavados"]), len(catalog.WASHES))
         self.assertEqual(body["max_imagenes"], catalog.MAX_IMAGES)
         self.assertEqual(body["imagen_max_bytes"], catalog.IMAGE_MAX_BYTES)
         self.assertEqual(body["max_variantes"], catalog.MAX_VARIANTS)

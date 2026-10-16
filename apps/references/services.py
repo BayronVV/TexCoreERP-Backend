@@ -4,6 +4,7 @@ transacción: o se guarda todo (referencia, variantes, imágenes) o no se guarda
 """
 from django.db import IntegrityError, transaction
 
+from apps.inventory import catalog as inventory_catalog
 from apps.inventory.services import IMAGE_TYPES, detect_type, fail, next_code
 
 from . import catalog
@@ -131,6 +132,11 @@ def archive_reference(reference):
     reference = Referencia.objects.select_for_update().get(pk=reference.pk)
     if reference.estado == catalog.ACTIVE:
         fail("Descontinúa la referencia antes de archivarla.", "estado")
+    if reference.ordenes.filter(estado=inventory_catalog.STATUS_OPEN).exists():
+        fail("La referencia tiene órdenes en proceso; ciérralas o anúlalas antes de archivarla.", "estado")
+    for ficha in reference.fichas.all():
+        ficha.lineas.all().delete()
+    reference.fichas.all().delete()
     reference.variantes.all().delete()
     reference.imagenes.all().delete()
     reference.delete()

@@ -1,4 +1,4 @@
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import catalog, services
-from .models import ImagenReferencia, Referencia
+from .models import FichaTecnica, ImagenReferencia, Referencia
 from .serializers import (
     EstadoInputSerializer,
     ReferenciaInputSerializer,
@@ -25,7 +25,10 @@ READ_WRITE = {"GET": catalog.REFERENCES_VIEW, "POST": catalog.REFERENCES_MANAGE}
 
 
 def references_queryset():
-    return Referencia.objects.select_related("creado_por").prefetch_related("variantes", "imagenes")
+    return (
+        Referencia.objects.select_related("creado_por").prefetch_related("variantes", "imagenes")
+        .annotate(tiene_ficha=Exists(FichaTecnica.objects.filter(referencia=OuterRef("pk"))))
+    )
 
 
 def fresh(reference):
@@ -38,6 +41,7 @@ def fresh(reference):
     responses=inline_serializer("ReferenciaMetadatos", {
         "ajustes": serializers.ListField(child=serializers.DictField()),
         "estados": serializers.ListField(child=serializers.DictField()),
+        "lavados": serializers.ListField(child=serializers.DictField()),
         "max_imagenes": serializers.IntegerField(),
         "imagen_max_bytes": serializers.IntegerField(),
         "max_variantes": serializers.IntegerField(),
@@ -50,6 +54,7 @@ class MetadatosView(APIView):
         return Response({
             "ajustes": [{"value": v, "label": label} for v, label in catalog.FITS],
             "estados": [{"value": v, "label": label} for v, label in catalog.STATES],
+            "lavados": [{"value": v, "label": label} for v, label in catalog.WASHES],
             "max_imagenes": catalog.MAX_IMAGES,
             "imagen_max_bytes": catalog.IMAGE_MAX_BYTES,
             "max_variantes": catalog.MAX_VARIANTS,

@@ -1,10 +1,11 @@
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.inventory import catalog as inventory_catalog
 from apps.references.ficha_serializers import ConsumoLineaSerializer
 
-from . import catalog, tracking
+from . import catalog, monitor, tracking
 from .models import EtapaLote, EventoEtapa, Lote, LoteTalla, OrdenProduccion
 
 
@@ -216,3 +217,120 @@ class OrdenProduccionSerializer(serializers.ModelSerializer):
 
 class AnulacionProduccionSerializer(serializers.Serializer):
     motivo = serializers.CharField(max_length=255)
+
+
+class TarjetaLoteSerializer(serializers.Serializer):
+    """Lote del tablero de estado: lo justo para mostrar una tarjeta y decidir qué acciones ofrecer."""
+    id = serializers.IntegerField()
+    codigo = serializers.CharField()
+    cantidad = serializers.IntegerField()
+    orden = serializers.IntegerField(source="orden_id")
+    orden_codigo = serializers.CharField(source="orden.codigo")
+    referencia = serializers.IntegerField(source="orden.referencia_id")
+    referencia_codigo = serializers.CharField(source="orden.referencia.codigo")
+    referencia_nombre = serializers.CharField(source="orden.referencia.nombre")
+    estado = serializers.SerializerMethodField()
+    estado_nombre = serializers.SerializerMethodField()
+    etapa_actual = serializers.SerializerMethodField()
+    etapa_actual_nombre = serializers.SerializerMethodField()
+    etapas_terminadas = serializers.SerializerMethodField()
+    etapas_total = serializers.SerializerMethodField()
+    termina_el_lote = serializers.SerializerMethodField(
+        help_text="Terminar la etapa en curso deja el lote terminado (es la última etapa)"
+    )
+    tiempo_neto_segundos = serializers.SerializerMethodField()
+    en_curso_desde = serializers.SerializerMethodField()
+    responsable_nombre = serializers.SerializerMethodField()
+    ultimo_movimiento = serializers.DateTimeField(allow_null=True)
+    espera_segundos = serializers.SerializerMethodField(
+        help_text="Segundos detenido (en pausa o entre etapas) desde su último movimiento; vacío si no está detenido"
+    )
+    alerta = serializers.SerializerMethodField(help_text="ATENCION desde 2 h detenido, CRITICA desde 8 h; vacío si no hay alerta")
+    acciones = serializers.SerializerMethodField()
+
+    @staticmethod
+    def _stages(obj):
+        return list(obj.etapas.all())
+
+    @staticmethod
+    def _cancelled(obj):
+        return obj.orden.orden_salida.estado == inventory_catalog.STATUS_CANCELLED
+
+    def _current(self, obj):
+        return tracking.current_stage(self._stages(obj))
+
+    def get_estado(self, obj) -> str:
+        return tracking.lot_state([stage.estado for stage in self._stages(obj)], self._cancelled(obj))
+
+    def get_estado_nombre(self, obj) -> str:
+        return catalog.STATE_NAMES[self.get_estado(obj)]
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_etapa_actual(self, obj):
+        stage = self._current(obj)
+        return stage.etapa if stage else None
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_etapa_actual_nombre(self, obj):
+        stage = self._current(obj)
+        return catalog.STAGE_NAMES[stage.etapa] if stage else None
+
+    def get_etapas_terminadas(self, obj) -> int:
+        return sum(1 for stage in self._stages(obj) if stage.estado == catalog.STAGE_DONE)
+
+    def get_etapas_total(self, obj) -> int:
+        return len(self._stages(obj))
+
+    def get_termina_el_lote(self, obj) -> bool:
+        stages = self._stages(obj)
+        stage = tracking.current_stage(stages)
+        in_course = stage is not None and stage.estado in (catalog.STAGE_RUNNING, catalog.STAGE_PAUSED)
+        return not self._cancelled(obj) and in_course and all(
+            other.estado == catalog.STAGE_DONE for other in stages if other is not stage
+        )
+
+    def get_tiempo_neto_segundos(self, obj) -> int:
+        return sum(tracking.net_seconds(stage) for stage in self._stages(obj))
+
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_en_curso_desde(self, obj):
+        return next((stage.reanudada_at for stage in self._stages(obj) if stage.reanudada_at), None)
+
+    def get_responsable_nombre(self, obj) -> str:
+        stage = self._current(obj)
+        user = stage.responsable if stage else None
+        return (user.get_full_name() or user.email) if user else ""
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_espera_segundos(self, obj):
+        if self._cancelled(obj):
+            return None
+        stage_states = [stage.estado for stage in self._stages(obj)]
+        return monitor.stalled_seconds(
+            tracking.lot_state(stage_states), stage_states, obj.ultimo_movimiento, self.context.get("now") or timezone.now()
+        )
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_alerta(self, obj):
+        return monitor.alert_level(self.get_espera_segundos(obj))
+
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_acciones(self, obj):
+        return tracking.available_actions([stage.estado for stage in self._stages(obj)], self._cancelled(obj))
+
+
+class ColumnaMonitorSerializer(serializers.Serializer):
+    estado = serializers.CharField()
+    nombre = serializers.CharField()
+    total = serializers.IntegerField(help_text="Lotes en esa columna, aunque solo se devuelvan `limite` tarjetas")
+    lotes = TarjetaLoteSerializer(many=True)
+
+
+class MonitorSerializer(serializers.Serializer):
+    generado_at = serializers.DateTimeField()
+    limite = serializers.IntegerField()
+    terminadas_dias = serializers.IntegerField(help_text="La columna Terminada solo muestra los lotes de los últimos N días")
+    alertas = serializers.DictField(
+        child=serializers.IntegerField(), help_text="Lotes activos detenidos: `atencion` (desde 2 h) y `critica` (desde 8 h)"
+    )
+    columnas = ColumnaMonitorSerializer(many=True)

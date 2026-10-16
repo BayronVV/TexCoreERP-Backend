@@ -17,7 +17,8 @@ from rest_framework.exceptions import ValidationError
 from apps.inventory.models import OrdenSalida, Producto
 from apps.references.models import Referencia, Variante
 
-from ... import services
+from ... import services, tracking
+from ...models import EventoEtapa, OrdenProduccion
 
 # `lotes`: (prendas del lote, cuántas de las primeras variantes de la referencia lleva). La cantidad se reparte en
 # partes casi iguales entre esas variantes; `None` deja el lote sin tallas.
@@ -26,11 +27,21 @@ ORDERS = [
         "key": "OPL-DEMO-CLASICO", "referencia": "Clásico 5 bolsillos frosteado", "resultado": "Pantalón genérico rígido",
         "prendas": 80, "dias": 3, "responsable": "Marta Ruiz (producción)",
         "lotes": [(30, 3), (30, 2), (20, None)],
+        # Tiempos de la demo (HU 4.3): (lote, acción, minutos desde las 8:00 del día de salida).
+        "tiempos": [
+            (0, "iniciar", 0), (0, "pausar", 25), (0, "reanudar", 40), (0, "completar", 70),  # corte: 55 min netos
+            (0, "iniciar", 75), (0, "pausar", 130),  # confección pausada
+            (1, "iniciar", 5), (1, "pausar", 20),  # corte pausado
+        ],
     },
     {
         "key": "OPL-DEMO-MOM", "referencia": "Mom vintage tiro alto", "resultado": "Pantalón genérico stretch",
         "prendas": 40, "dias": 1, "responsable": "Jorge Santos (corte)",
         "lotes": [(25, 2), (15, None)],
+        "tiempos": [
+            (0, "iniciar", 0), (0, "completar", 50), (0, "iniciar", 60), (0, "completar", 190),
+            (0, "iniciar", 200), (0, "completar", 260),  # corte, confección y terminación terminadas
+        ],
     },
 ]
 
@@ -52,7 +63,8 @@ class Command(BaseCommand):
         if user is None:
             raise CommandError("No hay usuarios: crea uno primero (por ejemplo con seed_admin).")
         created = sum(self._order(user, spec) for spec in ORDERS)
-        self.stdout.write(self.style.SUCCESS(f"Órdenes de producción nuevas: {created}."))
+        tracked = sum(self._track(user, spec) for spec in ORDERS)
+        self.stdout.write(self.style.SUCCESS(f"Órdenes de producción nuevas: {created} · con tiempos registrados: {tracked}."))
 
     def _order(self, user, spec):
         marker = f"Orden de demostración {spec['key']}"
@@ -80,5 +92,24 @@ class Command(BaseCommand):
         except ValidationError as error:
             first = next(iter(error.detail.values()))
             self.stdout.write(f"Omitida {spec['key']}: {first[0] if isinstance(first, list) else first}")
+            return 0
+        return 1
+
+    def _track(self, user, spec):
+        """Registra los tiempos de demostración en la orden, si existe y todavía no tiene ninguno (idempotente)."""
+        order = OrdenProduccion.objects.filter(
+            orden_salida__observaciones=f"Orden de demostración {spec['key']}"
+        ).first()
+        if order is None or not spec.get("tiempos") or EventoEtapa.objects.filter(etapa_lote__lote__orden=order).exists():
+            return 0
+        lots = list(order.lotes.all())
+        base = timezone.localtime().replace(hour=8, minute=0, second=0, microsecond=0) - timedelta(days=spec["dias"])
+        try:
+            for lot_index, action, minutes in spec["tiempos"]:
+                tracking.act_on_lot(
+                    user=user, lot_id=lots[lot_index].id, action=action, now=base + timedelta(minutes=minutes),
+                )
+        except ValidationError as error:
+            self.stdout.write(f"No se registraron los tiempos de {spec['key']}: {error.detail}")
             return 0
         return 1

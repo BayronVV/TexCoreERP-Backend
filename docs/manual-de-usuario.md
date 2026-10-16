@@ -80,19 +80,15 @@ Cuatro pestañas:
     - Puedes adjuntar **Evidencias (foto o PDF)**. Pulsa **Guardar ingreso**.
     - Una cantidad de cero o negativa se rechaza con *«La cantidad debe ser mayor que cero.»*
 
-**Salida**
-: Crea una orden que saca materiales del almacén.
+**Salida a lavandería**
+: Envía pantalones genéricos a lavar. Las órdenes de producción no se crean aquí: se crean en **Producción → Órdenes de producción**.
 
-    1. Elige el tipo: **Producción (OP)** o **Lavandería (LV)**.
-    2. Indica el responsable y elige la **Referencia de jean** de la lista (solo salen las referencias activas). El código de la
-       referencia (REF-0001) queda como lote con el que volverá al inventario. Para producción la referencia necesita ficha técnica;
-       las que no la tienen aparecen deshabilitadas.
-    3. En producción escribe las **Prendas a producir**: la **Cesta de la orden** se llena sola con los materiales de la ficha
-       (con la merma incluida y redondeados hacia arriba), marcados con *Ficha*. Si falta stock el sistema lo avisa y muestra cuánto.
-       Puedes ajustar las cantidades o agregar otros productos con **Agregar a la cesta**; si cambias la referencia o las prendas,
-       los materiales de la ficha se recalculan. En lavandería la cesta se arma a mano.
-    4. Elige el producto que se obtendrá, adjunta evidencias si lo necesitas y guarda. Se descuenta el stock y se genera el código
-       de la orden (OP-0001, LV-0001...).
+    1. Indica el responsable de la lavandería y, si quieres, el taller. Elige la **Referencia de jean** de la lista (solo salen las
+       referencias activas). El código de la referencia (REF-0001) queda como lote con el que volverá al inventario.
+    2. Elige el **Modelo a crear**, que es el jean que se obtendrá al volver de lavandería.
+    3. En **Pantalones que se envían** agrega el pantalón genérico y la cantidad. Solo viajan las prendas cosidas: los botones y remaches
+       se colocan después, en terminación, y los químicos los pone la lavandería. Una orden envía un solo tipo de pantalón genérico.
+    4. Adjunta evidencias si lo necesitas y guarda. Se descuenta el stock y se genera el código de la orden (LV-0001...).
 
 **Historial**
 : El **Kardex de movimientos** (ingresos y salidas con saldo, quién registró y evidencias) y la lista de **Órdenes**
@@ -169,6 +165,22 @@ Menú **Producción y Trazabilidad → Órdenes y lotes**. Aquí se crea la orde
    con su merma. Si falta material no se crea nada y la pantalla dice cuál.
 5. **Órdenes recientes** lista las órdenes con sus lotes y su estado. **Anular** (exige el motivo) devuelve el material al almacén; los lotes quedan como historial.
    La orden también aparece en el historial de salidas de Inventario con el mismo código.
+
+### Control de tiempos por etapa
+
+En **Órdenes de producción → Órdenes recientes**, el botón **Seguimiento** de una orden abre sus lotes. Cada lote recorre tres etapas, siempre en
+este orden: **Corte, Confección y Terminación**. Una etapa solo empieza cuando la anterior terminó, y cuando termina la última el lote queda
+*Terminado*. La lavandería no es una etapa de este seguimiento: es un proceso externo (subcontratado) y se controla aparte, con sus propias órdenes
+de salida y entrada. El control de calidad y el empaque también tienen sus propios módulos.
+
+- **▶ Iniciar** arranca la siguiente etapa y empieza a contar el tiempo. Queda registrado quién lo hizo y a qué hora.
+- **⏸ Pausar** detiene el reloj; **▶ Reanudar** lo vuelve a poner en marcha. El tiempo en pausa **no cuenta**: el tiempo neto es solo el que la etapa estuvo corriendo.
+- **⏹ Terminar** cierra la etapa en curso (también si estaba en pausa) y deja listo el botón para iniciar la siguiente.
+- Solo se habilitan los botones que tienen sentido en ese momento, y el estado del lote se actualiza al instante.
+- El **estado del lote y de la orden** se calcula solo: *Planeada* (nada ha empezado), *En proceso*, *En pausa*, *Terminada* o *Cancelada* (si la orden se anuló).
+- **Historial** muestra cada inicio, pausa, reanudación y fin, con quién lo hizo y cuándo. Solo se agregan registros; nunca se editan.
+
+Quien tiene el rol de Gerente puede ver los tiempos pero no controlarlos. Una orden anulada no admite acciones.
 
 ## Preguntas frecuentes
 

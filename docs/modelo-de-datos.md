@@ -182,19 +182,46 @@ erDiagram
         decimal_5_2 merma
         varchar_120 observaciones
     }
+    OrdenProduccion {
+        bigint id PK
+        bigint orden_salida FK UK
+        varchar_20 codigo
+        bigint referencia FK
+        int cantidad
+        bigint creado_por FK
+    }
+    Lote {
+        bigint id PK
+        bigint orden FK
+        positivesmallinteger numero
+        varchar_24 codigo
+        int cantidad
+    }
+    LoteTalla {
+        bigint id PK
+        bigint lote FK
+        bigint variante FK
+        varchar_10 talla
+        varchar_60 color
+        int cantidad
+    }
     CustomUser |o--o{ Evidencia : "subido_por"
     CustomUser |o--o{ FichaTecnica : "actualizado_por"
     CustomUser |o--o{ Movimiento : "registrado_por"
+    CustomUser |o--o{ OrdenProduccion : "creado_por"
     CustomUser |o--o{ OrdenSalida : "registrado_por"
     CustomUser |o--o{ Referencia : "creado_por"
     CustomUser |o--o{ RolePermission : "granted_by"
     CustomUser ||--o{ PasswordResetToken : "user"
     FichaTecnica ||--o{ FichaLinea : "ficha"
+    Lote ||--o{ LoteTalla : "lote"
     ModulePermission ||--o{ RolePermission : "permission"
     Movimiento |o--o{ Evidencia : "movimiento"
+    OrdenProduccion ||--o{ Lote : "orden"
     OrdenSalida |o--o{ Evidencia : "orden"
     OrdenSalida |o--o{ Movimiento : "orden"
     OrdenSalida ||--o{ OrdenLinea : "orden"
+    OrdenSalida ||--o{ OrdenProduccion : "orden_salida"
     Producto ||--o{ FichaLinea : "producto"
     Producto ||--o{ Movimiento : "producto"
     Producto ||--o{ OrdenLinea : "producto"
@@ -203,10 +230,12 @@ erDiagram
     Referencia |o--o{ OrdenSalida : "referencia"
     Referencia ||--o{ FichaTecnica : "referencia"
     Referencia ||--o{ ImagenReferencia : "referencia"
+    Referencia ||--o{ OrdenProduccion : "referencia"
     Referencia ||--o{ Variante : "referencia"
     Role |o--o{ CustomUser : "requested_area"
     Role ||--o{ CustomUser : "role"
     Role ||--o{ RolePermission : "role"
+    Variante ||--o{ LoteTalla : "variante"
 ```
 
 ## Tablas
@@ -468,3 +497,41 @@ Un material de la ficha: cuánto se consume por prenda, con su merma (%) cuando 
 | `cantidad` | decimal(10,3) |  |  |
 | `merma` | decimal(5,2) |  |  |
 | `observaciones` | varchar(120) |  |  |
+
+### OrdenProduccion (`produccion_orden`)
+
+Orden para fabricar una cantidad de prendas de una referencia (RF11). Su código es el de la orden de salida.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `orden_salida` | bigint | FK, UK | → `OrdenSalida` |
+| `codigo` | varchar(20) |  |  |
+| `referencia` | bigint | FK | → `Referencia` |
+| `cantidad` | int |  |  |
+| `creado_por` | bigint | FK, nulo | → `CustomUser` |
+
+### Lote (`produccion_lote`)
+
+Parte de una orden de producción con identificador único (RF12).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `orden` | bigint | FK | → `OrdenProduccion` |
+| `numero` | positivesmallinteger |  |  |
+| `codigo` | varchar(24) |  |  |
+| `cantidad` | int |  |  |
+
+### LoteTalla (`produccion_lote_talla`)
+
+Prendas de una talla y color dentro de un lote. Talla y color se copian de la variante: si luego se
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `lote` | bigint | FK | → `Lote` |
+| `variante` | bigint | FK | → `Variante` |
+| `talla` | varchar(10) |  |  |
+| `color` | varchar(60) |  |  |
+| `cantidad` | int |  |  |

@@ -13,7 +13,7 @@ from django.apps import apps
 from django.core.management.base import BaseCommand
 from django.db import models
 
-PROJECT_APPS = ("core", "users", "inventory", "references")
+PROJECT_APPS = ("core", "users", "inventory", "references", "production")
 AUDIT_FIELDS = {"created_at", "updated_at", "deleted_at"}  # los trae BaseModel
 
 MERMAID_TYPES = {

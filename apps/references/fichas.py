@@ -150,6 +150,11 @@ def compute_requirements(reference, garments):
     lines = ficha_lines(reference)
     if not lines:
         fail("La referencia no tiene ficha técnica.", "referencia")
+    return requirements_for(lines, garments)
+
+
+def requirements_for(lines, garments):
+    """El cruce de `compute_requirements` sobre líneas de ficha ya cargadas (para no repetir la consulta)."""
     rows = []
     for line in lines:
         product = line.producto

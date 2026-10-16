@@ -139,6 +139,22 @@ de hasta 5 MB. Se puede **Ver**, **Reemplazar** o **Quitar**. Solo se adjunta cu
 Con la ficha lista, el Almacenista solo elige la referencia y las prendas al crear una orden de producción. Una ficha no se puede quitar
 ni una referencia archivar mientras tenga órdenes en proceso.
 
+### Planificar producción
+
+Menú **Producción y Trazabilidad → Planificar producción**. Antes de crear una orden, comprueba si hay material para las prendas que quieres fabricar:
+
+1. Elige la **Referencia de jean** (solo las activas con ficha técnica) y escribe las **Prendas a producir**.
+2. Si quieres dividir el total en lotes, usa **Repartir en partes iguales** o **+ Agregar lote** y escribe el tamaño de cada uno. Deben sumar
+   exactamente el total; la pantalla indica cuántas prendas faltan o sobran. Los lotes se registran al generar la orden (HU 4.2).
+3. **Disponibilidad de material** muestra, por material, lo que pide la ficha (con la merma), lo que hay y lo que falta, y dice cuántas prendas
+   se pueden fabricar con el stock actual y qué material lo limita. **Usar N** lleva el total a ese máximo.
+4. Con lotes, **Cobertura por lote** indica hasta qué lote alcanza el material. Los lotes comparten el mismo stock, así que un lote se cubre si
+   alcanza para él y los anteriores juntos.
+5. **Crear orden** solo se habilita cuando hay material y los lotes están bien repartidos; al lado se lee el motivo cuando está bloqueado. Si tu
+   rol registra salidas de inventario, abre la **Salida** con la referencia y las prendas ya cargadas; si no, pásale el plan a Almacén.
+
+La simulación no reserva ni descuenta stock: al crear la orden el sistema vuelve a verificar que haya material.
+
 ## Preguntas frecuentes
 
 **No veo un módulo del menú.** Tu rol no tiene permiso. Pídele a un administrador que lo ajuste en *Roles y permisos*.

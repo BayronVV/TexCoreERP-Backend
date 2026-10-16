@@ -7,7 +7,7 @@ from apps.inventory.models import Movimiento, OrdenSalida, Producto
 from apps.inventory.tests import make_user
 from apps.references.models import Referencia
 
-from .models import Lote, LoteTalla, OrdenProduccion
+from .models import EtapaLote, EventoEtapa, Lote, LoteTalla, OrdenProduccion
 
 KEYS = ("OPL-DEMO-CLASICO", "OPL-DEMO-MOM")
 
@@ -59,6 +59,27 @@ class DemoProductionOrdersTests(TestCase):
         self.seed()
         self.assertEqual((OrdenProduccion.objects.count(), Lote.objects.count(), LoteTalla.objects.count(),
                           OrdenSalida.objects.count(), Movimiento.objects.count()), snapshot)
+
+    def test_registra_los_tiempos_de_demostracion(self):
+        self.seed()
+        clasico, mom = demo(KEYS[0]), demo(KEYS[1])
+        first, second, third = clasico.lotes.all()
+        cutting = EtapaLote.objects.get(lote=first, etapa="CORTE")
+        self.assertEqual((cutting.estado, cutting.acumulado_s), ("COMPLETADA", 55 * 60))  # la pausa de 15 min no cuenta
+        self.assertEqual(EtapaLote.objects.get(lote=first, etapa="CONFECCION").estado, "PAUSADA")
+        self.assertEqual(EtapaLote.objects.get(lote=second, etapa="CORTE").estado, "PAUSADA")
+        self.assertEqual(EventoEtapa.objects.filter(etapa_lote__lote=third).count(), 0)
+        self.assertEqual(EtapaLote.objects.filter(lote__orden=mom, estado="COMPLETADA").count(), 3)
+
+    def test_los_tiempos_tambien_se_agregan_a_ordenes_ya_sembradas_y_no_se_repiten(self):
+        self.seed()
+        EventoEtapa.all_objects.all().hard_delete()
+        EtapaLote.all_objects.all().update(estado="PENDIENTE", acumulado_s=0, reanudada_at=None, inicio_at=None, fin_at=None)
+        self.seed()
+        total = EventoEtapa.objects.count()
+        self.assertGreater(total, 0)
+        self.seed()
+        self.assertEqual(EventoEtapa.objects.count(), total)
 
     def test_omite_la_orden_si_no_alcanza_el_material(self):
         Producto.objects.update(stock_actual=0)

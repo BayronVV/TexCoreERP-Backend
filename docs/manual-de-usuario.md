@@ -145,15 +145,30 @@ Menú **Producción y Trazabilidad → Planificar producción**. Antes de crear 
 
 1. Elige la **Referencia de jean** (solo las activas con ficha técnica) y escribe las **Prendas a producir**.
 2. Si quieres dividir el total en lotes, usa **Repartir en partes iguales** o **+ Agregar lote** y escribe el tamaño de cada uno. Deben sumar
-   exactamente el total; la pantalla indica cuántas prendas faltan o sobran. Los lotes se registran al generar la orden (HU 4.2).
+   exactamente el total; la pantalla indica cuántas prendas faltan o sobran. Los lotes se registran al crear la orden.
 3. **Disponibilidad de material** muestra, por material, lo que pide la ficha (con la merma), lo que hay y lo que falta, y dice cuántas prendas
    se pueden fabricar con el stock actual y qué material lo limita. **Usar N** lleva el total a ese máximo.
 4. Con lotes, **Cobertura por lote** indica hasta qué lote alcanza el material. Los lotes comparten el mismo stock, así que un lote se cubre si
    alcanza para él y los anteriores juntos.
 5. **Crear orden** solo se habilita cuando hay material y los lotes están bien repartidos; al lado se lee el motivo cuando está bloqueado. Si tu
-   rol registra salidas de inventario, abre la **Salida** con la referencia y las prendas ya cargadas; si no, pásale el plan a Almacén.
+   rol puede gestionar la producción, abre **Órdenes y lotes** con la referencia, las prendas y los lotes ya cargados.
 
 La simulación no reserva ni descuenta stock: al crear la orden el sistema vuelve a verificar que haya material.
+
+### Órdenes y lotes
+
+Menú **Producción y Trazabilidad → Órdenes y lotes**. Aquí se crea la orden de producción (RF11) y se divide en lotes con identificador único (RF12):
+
+1. Elige la **Referencia de jean**, las **Prendas a producir** y el **pantalón genérico** que se producirá. Responsable y observaciones son opcionales
+   (por defecto, el responsable eres tú).
+2. En **Lotes** divide el total por **cantidad de lotes** o por **prendas por lote** (el último lleva lo que sobre) y ajusta cada lote a mano si quieres.
+   Sin dividir se crea un único lote. Los lotes deben sumar exactamente el total (máximo 50).
+3. En **Tallas por lote** (opcional) agrega las tallas y colores de la referencia y cuántas prendas lleva cada uno; deben sumar las prendas del lote.
+   El **Resumen por talla** suma todos los lotes. Si cambias el reparto de lotes, las tallas se reinician para evitar datos que ya no cuadran.
+4. **Crear orden** genera el código (`OP-0001`) y el de cada lote (`OP-0001-L01`, `-L02`…) y **descuenta del almacén** el material de la ficha técnica,
+   con su merma. Si falta material no se crea nada y la pantalla dice cuál.
+5. **Órdenes recientes** lista las órdenes con sus lotes y su estado. **Anular** (exige el motivo) devuelve el material al almacén; los lotes quedan como historial.
+   La orden también aparece en el historial de salidas de Inventario con el mismo código.
 
 ## Preguntas frecuentes
 

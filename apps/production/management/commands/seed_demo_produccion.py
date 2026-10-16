@@ -33,6 +33,9 @@ ORDERS = [
             (0, "iniciar", 75), (0, "pausar", 130),  # confección pausada
             (1, "iniciar", 5), (1, "pausar", 20),  # corte pausado
         ],
+        # Tiempos recientes (HU 4.5), contados hacia atrás desde ahora: (lote, acción, minutos atrás). Así la demo siempre
+        # tiene un lote con alerta de atención (detenido hace 2 h 30 min) sin importar la hora a la que se siembre.
+        "recientes": [(2, "iniciar", 300), (2, "pausar", 150)],
     },
     {
         "key": "OPL-DEMO-MOM", "referencia": "Mom vintage tiro alto", "resultado": "Pantalón genérico stretch",
@@ -42,6 +45,7 @@ ORDERS = [
             (0, "iniciar", 0), (0, "completar", 50), (0, "iniciar", 60), (0, "completar", 190),
             (0, "iniciar", 200), (0, "completar", 260),  # corte, confección y terminación terminadas
         ],
+        "recientes": [(1, "iniciar", 45)],  # un lote con la etapa corriendo ahora mismo
     },
 ]
 
@@ -64,7 +68,7 @@ class Command(BaseCommand):
             raise CommandError("No hay usuarios: crea uno primero (por ejemplo con seed_admin).")
         created = sum(self._order(user, spec) for spec in ORDERS)
         tracked = sum(self._track(user, spec) for spec in ORDERS)
-        self.stdout.write(self.style.SUCCESS(f"Órdenes de producción nuevas: {created} · con tiempos registrados: {tracked}."))
+        self.stdout.write(self.style.SUCCESS(f"Órdenes de producción nuevas: {created} · lotes con tiempos registrados: {tracked}."))
 
     def _order(self, user, spec):
         marker = f"Orden de demostración {spec['key']}"
@@ -96,20 +100,29 @@ class Command(BaseCommand):
         return 1
 
     def _track(self, user, spec):
-        """Registra los tiempos de demostración en la orden, si existe y todavía no tiene ninguno (idempotente)."""
+        """Registra los tiempos de demostración de la orden y devuelve cuántos lotes quedaron con tiempos. Es idempotente por
+        lote: un lote que ya tiene movimientos no se toca, así se pueden agregar escenarios nuevos a órdenes ya sembradas.
+        """
         order = OrdenProduccion.objects.filter(
             orden_salida__observaciones=f"Orden de demostración {spec['key']}"
         ).first()
-        if order is None or not spec.get("tiempos") or EventoEtapa.objects.filter(etapa_lote__lote__orden=order).exists():
+        if order is None:
             return 0
         lots = list(order.lotes.all())
         base = timezone.localtime().replace(hour=8, minute=0, second=0, microsecond=0) - timedelta(days=spec["dias"])
-        try:
-            for lot_index, action, minutes in spec["tiempos"]:
-                tracking.act_on_lot(
-                    user=user, lot_id=lots[lot_index].id, action=action, now=base + timedelta(minutes=minutes),
-                )
-        except ValidationError as error:
-            self.stdout.write(f"No se registraron los tiempos de {spec['key']}: {error.detail}")
-            return 0
-        return 1
+        now = timezone.now()
+        steps = [(lot, action, base + timedelta(minutes=minutes)) for lot, action, minutes in spec.get("tiempos", [])]
+        steps += [(lot, action, now - timedelta(minutes=ago)) for lot, action, ago in spec.get("recientes", [])]
+        tracked = 0
+        for index in sorted({step[0] for step in steps}):
+            lot = lots[index]
+            if EventoEtapa.objects.filter(etapa_lote__lote=lot).exists():
+                continue
+            try:
+                for _, action, moment in (step for step in steps if step[0] == index):
+                    tracking.act_on_lot(user=user, lot_id=lot.id, action=action, now=moment)
+            except ValidationError as error:
+                self.stdout.write(f"No se registraron los tiempos de {lot.codigo}: {error.detail}")
+                continue
+            tracked += 1
+        return tracked

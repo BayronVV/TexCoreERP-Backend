@@ -182,6 +182,27 @@ de salida y entrada. El control de calidad y el empaque también tienen sus prop
 
 Quien tiene el rol de Gerente puede ver los tiempos pero no controlarlos. Una orden anulada no admite acciones.
 
+### Monitor de estado
+
+Menú **Producción y Trazabilidad → Monitor de estado**. Muestra **todos los lotes en producción** en cuatro columnas, sin tener que abrir orden por orden:
+
+- **Planeada**: lotes que todavía no empiezan. **En proceso**: con una etapa corriendo o entre una etapa y la siguiente. **En pausa**: con la etapa
+  en curso detenida. **Terminada**: con las tres etapas terminadas.
+- Cada tarjeta muestra el código del lote, la referencia, las prendas, la **etapa en curso** (Corte, Confección o Terminación), el **tiempo neto** (sin
+  pausas), cuánto hace que se movió y quién lo hizo. Dentro de cada columna, primero va lo que más tiempo lleva esperando; en Terminada, lo más reciente.
+- Cada columna cuenta todos sus lotes aunque solo se vean los primeros 50; para ver el resto, filtra por **Orden** o por **Referencia**.
+  La columna **Terminada** solo muestra lo de los **últimos 7 días**, para que no crezca sin fin.
+- **Alertas por tiempo:** un lote *detenido* (en pausa, o entre una etapa y la siguiente sin iniciar la siguiente) se marca con **Atención** (amarillo) a
+  partir de **2 horas** sin movimiento y con **Crítica** (rojo) a partir de **8 horas**, más o menos una jornada de trabajo. Arriba del tablero se resume
+  cuántos lotes hay en cada nivel. Estos tiempos son orientativos y se pueden ajustar. Un lote con una etapa corriendo o que aún no empieza no genera alerta.
+- **Ver canceladas:** por defecto los lotes de órdenes anuladas no aparecen; marca esta casilla para ver una columna **Cancelada** al final, solo de
+  consulta (sin botones ni arrastre).
+- **Mover un lote**: arrastra su tarjeta o pulsa sus botones (**Iniciar**, **Pausar**, **Reanudar**, **Terminar etapa**). El sistema aplica la acción
+  de la etapa en curso y comprueba que sea posible: a *En proceso* se inicia o reanuda, a *En pausa* se pausa, y a *Terminada* solo se puede llevar un
+  lote que esté en su última etapa (Terminación). Si el movimiento no es válido, la tarjeta no cambia y aparece el motivo.
+- El tablero se **actualiza solo cada 20 segundos** mientras la pestaña esté a la vista, y también con el botón **Actualizar**.
+- El **Gerente** ve el tablero pero no puede mover lotes. Los lotes de órdenes anuladas no aparecen.
+
 ## Preguntas frecuentes
 
 **No veo un módulo del menú.** Tu rol no tiene permiso. Pídele a un administrador que lo ajuste en *Roles y permisos*.

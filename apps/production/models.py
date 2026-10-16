@@ -110,6 +110,14 @@ class EtapaLote(BaseModel):
                 fields=["lote", "etapa"], condition=Q(deleted_at__isnull=True), name="uq_produccion_etapa_lote"
             ),
         ]
+        indexes = [
+            # Monitor de estado (HU 4.5): saber si un lote tiene etapas sin terminar y en qué estado están.
+            models.Index(fields=["lote", "estado"], name="ix_prod_etapa_lote_estado"),
+            # Solo las etapas en curso o pendientes: es un conjunto pequeño y es el que más se consulta.
+            models.Index(
+                fields=["estado"], condition=Q(deleted_at__isnull=True) & ~Q(estado="COMPLETADA"), name="ix_prod_etapa_abierta"
+            ),
+        ]
 
     def __str__(self):
         return f"{self.lote_id} {self.etapa}"
@@ -128,3 +136,4 @@ class EventoEtapa(BaseModel):
     class Meta:
         db_table = "produccion_evento_etapa"
         ordering = ["momento", "id"]
+        indexes = [models.Index(fields=["etapa_lote", "momento"], name="ix_prod_evento_etapa_momento")]

@@ -205,6 +205,30 @@ erDiagram
         varchar_60 color
         int cantidad
     }
+    EtapaLote {
+        bigint id PK
+        bigint lote FK
+        varchar_16 etapa
+        positivesmallinteger secuencia
+        varchar_10 estado
+        timestamp inicio_at
+        timestamp fin_at
+        timestamp reanudada_at
+        int acumulado_s
+        bigint responsable FK
+    }
+    EventoEtapa {
+        bigint id PK
+        bigint etapa_lote FK
+        varchar_10 accion
+        varchar_10 de_estado
+        varchar_10 a_estado
+        bigint usuario FK
+        timestamp momento
+        varchar_255 nota
+    }
+    CustomUser |o--o{ EtapaLote : "responsable"
+    CustomUser |o--o{ EventoEtapa : "usuario"
     CustomUser |o--o{ Evidencia : "subido_por"
     CustomUser |o--o{ FichaTecnica : "actualizado_por"
     CustomUser |o--o{ Movimiento : "registrado_por"
@@ -213,7 +237,9 @@ erDiagram
     CustomUser |o--o{ Referencia : "creado_por"
     CustomUser |o--o{ RolePermission : "granted_by"
     CustomUser ||--o{ PasswordResetToken : "user"
+    EtapaLote ||--o{ EventoEtapa : "etapa_lote"
     FichaTecnica ||--o{ FichaLinea : "ficha"
+    Lote ||--o{ EtapaLote : "lote"
     Lote ||--o{ LoteTalla : "lote"
     ModulePermission ||--o{ RolePermission : "permission"
     Movimiento |o--o{ Evidencia : "movimiento"
@@ -535,3 +561,35 @@ Prendas de una talla y color dentro de un lote. Talla y color se copian de la va
 | `talla` | varchar(10) |  |  |
 | `color` | varchar(60) |  |  |
 | `cantidad` | int |  |  |
+
+### EtapaLote (`produccion_etapa_lote`)
+
+Una etapa productiva de un lote (corte, confección, lavandería...) con su tiempo (HU 4.3 / RF13).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `lote` | bigint | FK | → `Lote` |
+| `etapa` | varchar(16) |  |  |
+| `secuencia` | positivesmallinteger |  |  |
+| `estado` | varchar(10) |  |  |
+| `inicio_at` | timestamp | nulo |  |
+| `fin_at` | timestamp | nulo |  |
+| `reanudada_at` | timestamp | nulo |  |
+| `acumulado_s` | int |  |  |
+| `responsable` | bigint | FK, nulo | → `CustomUser` |
+
+### EventoEtapa (`produccion_evento_etapa`)
+
+Historial de una etapa: quién la inició, pausó, reanudó o terminó, y cuándo. Solo se agregan filas, nunca se editan.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `etapa_lote` | bigint | FK | → `EtapaLote` |
+| `accion` | varchar(10) |  |  |
+| `de_estado` | varchar(10) |  |  |
+| `a_estado` | varchar(10) |  |  |
+| `usuario` | bigint | FK, nulo | → `CustomUser` |
+| `momento` | timestamp |  |  |
+| `nota` | varchar(255) |  |  |

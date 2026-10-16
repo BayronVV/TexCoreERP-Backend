@@ -70,13 +70,18 @@ En el **Inicio** aparecen los productos con existencias en el mínimo o por deba
 Cuatro pestañas:
 
 **Existencias**
-: Consulta cuánto hay de cada producto. Filtra por tipo o busca por nombre o código. Es solo lectura: los productos se crean en el Catálogo.
+: Consulta cuánto hay de cada producto y su **Costo promedio** (lo que cuesta cada unidad, calculado con el promedio ponderado de las compras). Un guion
+  significa que todavía no se conoce el costo. Filtra por tipo o busca por nombre o código. Es solo lectura: los productos se crean en el Catálogo.
 
 **Ingreso**
 : Registra lo que entra al almacén.
 
     - *Telas, hilos e insumos (compra)*: elige el **Producto**, el **Proveedor** de la lista (los de la misma categoría aparecen primero), la **Cantidad**, la **Fecha**, el **Lote** y, si quieres, la referencia de la compra.
     - *Pantalones genéricos o terminados*: solo entran al terminar una orden. Elige la **Orden de origen**; al recibirlo la orden se cierra.
+    - **Costo unitario (COP, opcional)**: lo que costó cada unidad en esa compra, mayor que cero y con hasta 4 decimales (punto para los decimales). El formulario
+      muestra el costo promedio actual y el valor de la compra (cantidad × costo). Con él el sistema recalcula el **costo promedio ponderado** del producto:
+      `(existencias × promedio + compra × costo) / (existencias + compra)`. Si lo que había no tenía costo, el de la compra manda. Una compra sin costo no cambia
+      el promedio. Sirve para costear las órdenes de producción.
     - Puedes adjuntar **Evidencias (foto o PDF)**. Pulsa **Guardar ingreso**.
     - Una cantidad de cero o negativa se rechaza con *«La cantidad debe ser mayor que cero.»*
 
@@ -91,7 +96,7 @@ Cuatro pestañas:
     4. Adjunta evidencias si lo necesitas y guarda. Se descuenta el stock y se genera el código de la orden (LV-0001...).
 
 **Historial**
-: El **Kardex de movimientos** (ingresos y salidas con saldo, quién registró y evidencias) y la lista de **Órdenes**
+: El **Kardex de movimientos** (ingresos y salidas con el costo unitario de cada compra, saldo, quién registró y evidencias) y la lista de **Órdenes**
   (En proceso, Completadas, Anuladas). Para corregir una orden en proceso usa **Anular orden**: escribe el motivo y
   **Anular y devolver stock**; las cantidades vuelven al inventario.
 

@@ -245,6 +245,14 @@ class CascadeTests(OrderBase):
         explicit = self.placed(10, responsable="  Marta Ruiz ", fecha_salida="2026-10-01")
         self.assertEqual((explicit["responsable"], explicit["fecha_salida"]), ("Marta Ruiz", "2026-10-01"))
 
+    def test_los_materiales_de_la_orden_traen_el_costo_unitario_de_su_linea(self):
+        self.tela.costo_promedio = Decimal("18500")
+        self.tela.save()
+        body = self.placed(100)
+        by_name = {m["nombre"]: m for m in body["materiales"]}
+        self.assertEqual(Decimal(by_name["Denim rígido 14 oz"]["costo_unitario"]), Decimal("18500"))
+        self.assertIsNone(by_name["Botón 17 mm"]["costo_unitario"])  # sin costo conocido: se dice, no se inventa
+
 
 class EndpointTests(OrderBase):
     def test_la_respuesta_trae_la_orden_con_lotes_y_materiales(self):

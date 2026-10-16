@@ -210,7 +210,8 @@ class OrdenProduccionSerializer(serializers.ModelSerializer):
         """Lo que se descontó del almacén por esta orden (las líneas de la salida)."""
         return [
             {"producto": line.producto_id, "codigo": line.producto.codigo, "nombre": line.producto.nombre,
-             "unidad": line.producto.unidad, "cantidad": str(line.cantidad)}
+             "unidad": line.producto.unidad, "cantidad": str(line.cantidad),
+             "costo_unitario": None if line.costo_unitario is None else str(line.costo_unitario)}
             for line in obj.orden_salida.lineas.all()
         ]
 

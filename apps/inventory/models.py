@@ -84,6 +84,9 @@ class Producto(BaseModel):
     unidad = models.CharField(max_length=10, choices=catalog.UNITS)
     stock_actual = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     stock_minimo = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # Costo por unidad con promedio ponderado móvil: se recalcula en cada compra que trae costo. Cero significa que todavía
+    # no se conoce (no hay compras con costo): el costeo de las órdenes lo señala en lugar de inventar un valor.
+    costo_promedio = models.DecimalField(max_digits=14, decimal_places=4, default=0)
     descripcion = models.CharField(max_length=255, blank=True)
     # Ancho útil del rollo en metros (lo necesita el corte computarizado). Solo telas.
     ancho_util = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True)
@@ -105,6 +108,7 @@ class Producto(BaseModel):
             ),
             models.CheckConstraint(condition=Q(stock_actual__gte=0), name="ck_producto_stock_no_negativo"),
             models.CheckConstraint(condition=Q(stock_minimo__gte=0), name="ck_producto_minimo_no_negativo"),
+            models.CheckConstraint(condition=Q(costo_promedio__gte=0), name="ck_producto_costo_no_negativo"),
         ]
 
     def __str__(self):
@@ -159,12 +163,18 @@ class OrdenLinea(BaseModel):
     orden = models.ForeignKey(OrdenSalida, on_delete=models.PROTECT, related_name="lineas")
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name="+")
     cantidad = models.DecimalField(max_digits=12, decimal_places=2)
+    # Foto del costo promedio del producto al crear la orden: si luego sube el precio, el costo de esta orden no cambia.
+    # Vacío si el producto todavía no tenía costo conocido.
+    costo_unitario = models.DecimalField(max_digits=14, decimal_places=4, null=True, blank=True)
 
     class Meta:
         db_table = "inventario_orden_linea"
         ordering = ["id"]
         constraints = [
             models.CheckConstraint(condition=Q(cantidad__gt=0), name="ck_orden_linea_cantidad_positiva"),
+            models.CheckConstraint(
+                condition=Q(costo_unitario__isnull=True) | Q(costo_unitario__gt=0), name="ck_orden_linea_costo_positivo"
+            ),
             models.UniqueConstraint(
                 fields=["orden", "producto"], condition=Q(deleted_at__isnull=True), name="uq_orden_linea_producto"
             ),
@@ -177,6 +187,8 @@ class Movimiento(BaseModel):
     tipo = models.CharField(max_length=8, choices=catalog.MOVEMENT_TYPES)
     motivo = models.CharField(max_length=15, choices=catalog.MOVEMENT_REASONS)
     cantidad = models.DecimalField(max_digits=12, decimal_places=2)
+    # Compras y devoluciones por anulación: lo que costó cada unidad. Es el dato original, sirve para cualquier método de costeo.
+    costo_unitario = models.DecimalField(max_digits=14, decimal_places=4, null=True, blank=True)
     stock_antes = models.DecimalField(max_digits=12, decimal_places=2)
     stock_despues = models.DecimalField(max_digits=12, decimal_places=2)
     fecha = models.DateField()
@@ -198,6 +210,9 @@ class Movimiento(BaseModel):
         indexes = [models.Index(fields=["producto", "-created_at"], name="ix_mov_producto_fecha")]
         constraints = [
             models.CheckConstraint(condition=Q(cantidad__gt=0), name="ck_movimiento_cantidad_positiva"),
+            models.CheckConstraint(
+                condition=Q(costo_unitario__isnull=True) | Q(costo_unitario__gt=0), name="ck_movimiento_costo_positivo"
+            ),
         ]
 
 

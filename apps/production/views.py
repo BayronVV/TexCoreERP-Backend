@@ -3,16 +3,18 @@ from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.inventory.services import fail
 from apps.inventory.views import apply_filters, limited
 from apps.references import fichas
 
-from . import catalog, services, tracking
+from . import catalog, monitor, services, tracking
 from .models import EventoEtapa, Lote, OrdenProduccion
 from .serializers import (
     AccionLoteSerializer,
     AnulacionProduccionSerializer,
     EventoEtapaSerializer,
     LoteSerializer,
+    MonitorSerializer,
     OrdenProduccionInputSerializer,
     OrdenProduccionSerializer,
     SimulacionInputSerializer,
@@ -148,3 +150,49 @@ class LoteHistorialView(generics.ListAPIView):
         return EventoEtapa.objects.filter(etapa_lote__lote_id=self.kwargs["pk"]).select_related(
             "etapa_lote", "usuario"
         ).order_by("momento", "id")
+
+
+def _query_int(request, name, default=None, minimum=1, maximum=None):
+    """Entero opcional de la query string; un valor mal formado responde 400 en lugar de fallar."""
+    raw = request.query_params.get(name)
+    if raw in (None, ""):
+        return default
+    if not raw.isdigit() or int(raw) < minimum or (maximum is not None and int(raw) > maximum):
+        limits = f" entre {minimum} y {maximum}" if maximum is not None else ""
+        fail(f"`{name}` debe ser un número entero{limits}.", name)
+    return int(raw)
+
+
+def _query_bool(request, name):
+    """Booleano opcional de la query string (`1`/`true` o `0`/`false`); cualquier otra cosa responde 400."""
+    raw = request.query_params.get(name)
+    if raw in (None, "", "0", "false"):
+        return False
+    if raw not in ("1", "true"):
+        fail(f"`{name}` debe ser 1 o 0.", name)
+    return True
+
+
+@extend_schema(
+    tags=["produccion"], summary="Monitor de estado: los lotes agrupados por columna (HU 4.5, TE-126)",
+    responses={200: MonitorSerializer},
+    description="Los lotes en producción en cuatro columnas: Planeada, En proceso, En pausa y Terminada, cada una con su total "
+                "y, como máximo, `limite` tarjetas (por defecto 50, hasta 200). Los más antiguos en su columna van primero; en "
+                "Terminada, los más recientes, y solo los de los últimos `terminadas_dias` días (7 por defecto, hasta 90). Los "
+                "lotes de órdenes anuladas no aparecen salvo con `canceladas=1`, que añade una columna aparte, sin acciones. "
+                "Filtros: `orden` y `referencia` (ids); los totales respetan el filtro. Cada tarjeta trae `alerta` (ATENCION desde "
+                "2 h detenido, CRITICA desde 8 h) y la respuesta resume las alertas de todos los lotes activos. El estado de cada "
+                "lote se calcula a partir de sus etapas.",
+)
+class MonitorView(APIView):
+    required_permissions = catalog.PRODUCTION_VIEW
+
+    def get(self, request):
+        board = monitor.build_board(
+            limit=_query_int(request, "limite", monitor.DEFAULT_LIMIT, 1, monitor.MAX_LIMIT),
+            order_id=_query_int(request, "orden"),
+            reference_id=_query_int(request, "referencia"),
+            done_days=_query_int(request, "terminadas_dias", monitor.DEFAULT_DONE_DAYS, 1, monitor.MAX_DONE_DAYS),
+            include_cancelled=_query_bool(request, "canceladas"),
+        )
+        return Response(MonitorSerializer(board, context={"now": board["generado_at"]}).data)

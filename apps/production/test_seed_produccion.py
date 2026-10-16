@@ -68,8 +68,20 @@ class DemoProductionOrdersTests(TestCase):
         self.assertEqual((cutting.estado, cutting.acumulado_s), ("COMPLETADA", 55 * 60))  # la pausa de 15 min no cuenta
         self.assertEqual(EtapaLote.objects.get(lote=first, etapa="CONFECCION").estado, "PAUSADA")
         self.assertEqual(EtapaLote.objects.get(lote=second, etapa="CORTE").estado, "PAUSADA")
-        self.assertEqual(EventoEtapa.objects.filter(etapa_lote__lote=third).count(), 0)
+        self.assertEqual(EventoEtapa.objects.filter(etapa_lote__lote=third).count(), 2)  # iniciado y pausado hace unas horas
         self.assertEqual(EtapaLote.objects.filter(lote__orden=mom, estado="COMPLETADA").count(), 3)
+
+    def test_la_demo_trae_un_lote_con_alerta_de_atencion_y_otro_corriendo(self):
+        from . import monitor
+        self.seed()
+        clasico, mom = demo(KEYS[0]), demo(KEYS[1])
+        paused = EtapaLote.objects.get(lote=clasico.lotes.all()[2], etapa="CORTE")
+        self.assertEqual(paused.estado, "PAUSADA")
+        running = EtapaLote.objects.get(lote=mom.lotes.all()[1], etapa="CORTE")
+        self.assertEqual(running.estado, "EN_PROCESO")
+        board = monitor.build_board()
+        self.assertGreaterEqual(board["alertas"]["atencion"], 1)  # el pausado hace 2 h 30 min
+        self.assertGreaterEqual(board["alertas"]["critica"], 1)  # los detenidos desde hace días
 
     def test_los_tiempos_tambien_se_agregan_a_ordenes_ya_sembradas_y_no_se_repiten(self):
         self.seed()
@@ -80,6 +92,20 @@ class DemoProductionOrdersTests(TestCase):
         self.assertGreater(total, 0)
         self.seed()
         self.assertEqual(EventoEtapa.objects.count(), total)
+
+    def test_agrega_los_escenarios_nuevos_a_una_orden_que_ya_tenia_tiempos(self):
+        """Una orden sembrada antes de la HU 4.5 recibe solo los lotes que todavía no tienen movimientos."""
+        self.seed()
+        clasico = demo(KEYS[0])
+        third = clasico.lotes.all()[2]
+        EventoEtapa.all_objects.filter(etapa_lote__lote=third).hard_delete()
+        EtapaLote.all_objects.filter(lote=third).update(
+            estado="PENDIENTE", acumulado_s=0, reanudada_at=None, inicio_at=None, fin_at=None
+        )
+        first_events = EventoEtapa.objects.filter(etapa_lote__lote=clasico.lotes.all()[0]).count()
+        self.seed()
+        self.assertEqual(EtapaLote.objects.get(lote=third, etapa="CORTE").estado, "PAUSADA")
+        self.assertEqual(EventoEtapa.objects.filter(etapa_lote__lote=clasico.lotes.all()[0]).count(), first_events)
 
     def test_omite_la_orden_si_no_alcanza_el_material(self):
         Producto.objects.update(stock_actual=0)

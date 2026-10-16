@@ -23,7 +23,7 @@ class ProductoSerializer(serializers.ModelSerializer):
         model = Producto
         fields = [
             "id", "codigo", "nombre", "tipo", "tipo_nombre", "categoria", "categoria_nombre", "unidad",
-            "stock_actual", "stock_minimo", "bajo_minimo", "descripcion", "ancho_util", "color",
+            "stock_actual", "stock_minimo", "bajo_minimo", "costo_promedio", "descripcion", "ancho_util", "color",
             "composicion", "tiene_imagen", "imagen_version",
         ]
         read_only_fields = fields
@@ -158,8 +158,8 @@ class MovimientoSerializer(serializers.ModelSerializer):
         model = Movimiento
         fields = [
             "id", "producto", "producto_codigo", "producto_nombre", "unidad", "tipo", "motivo",
-            "cantidad", "stock_antes", "stock_despues", "fecha", "proveedor", "proveedor_nombre", "orden_compra",
-            "lote", "orden", "orden_codigo", "observaciones", "registrado_por_nombre",
+            "cantidad", "costo_unitario", "stock_antes", "stock_despues", "fecha", "proveedor", "proveedor_nombre",
+            "orden_compra", "lote", "orden", "orden_codigo", "observaciones", "registrado_por_nombre",
             "evidencias", "created_at",
         ]
 
@@ -211,6 +211,7 @@ class OrdenSerializer(serializers.ModelSerializer):
                 "nombre": line.producto.nombre,
                 "unidad": line.producto.unidad,
                 "cantidad": line.cantidad,
+                "costo_unitario": line.costo_unitario,
             }
             for line in obj.lineas.all()
         ]
@@ -237,6 +238,10 @@ class IngresoInputSerializer(serializers.Serializer):
     lote = serializers.CharField(max_length=60, required=False, allow_blank=True, default="")
     orden = OptionalIdField(required=False, allow_null=True, default=None)
     observaciones = serializers.CharField(max_length=1000, required=False, allow_blank=True, default="")
+    costo_unitario = serializers.DecimalField(
+        max_digits=14, decimal_places=4, required=False, allow_null=True, default=None,
+        help_text="Solo compras. Costo por unidad, mayor que cero y con hasta 4 decimales; actualiza el costo promedio.",
+    )
 
 
 class LineaInputSerializer(serializers.Serializer):

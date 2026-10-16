@@ -33,6 +33,20 @@ T, H, C, B, E, Q, O = (
 )
 G, F = catalog.CAT_GENERIC, catalog.CAT_FINISHED
 
+# Costos de demostración (HU 4.6), orientativos y en pesos: precio por unidad base de cada categoría (metro, kilo, pieza). Una
+# compra en rollo o en caja multiplica por lo que trae; la segunda compra de un producto sube 5 % para que se vea el promedio.
+DEMO_COST = {T: Decimal("21000"), H: Decimal("42000"), C: Decimal("900"), B: Decimal("420"), E: Decimal("160"),
+             Q: Decimal("18000"), O: Decimal("2500")}
+PACK_SIZE = {"rollo": 50, "caja": 100}
+
+
+def demo_cost(category, unit, index):
+    """Costo unitario de la compra número `index` (desde 0) de un producto de la categoría, o `None` si no se define."""
+    base = DEMO_COST.get(category)
+    if base is None:
+        return None
+    return (base * PACK_SIZE.get(unit, 1) * (1 + Decimal("0.05") * index)).quantize(Decimal("0.01"))
+
 # NIT, razón social, categoría, contacto, teléfono, correo, ciudad, dirección
 SUPPLIERS = [
     ("900.412.778-3", "Denim Andino S.A.S.", T, "Paola Jiménez", "601 555 0142", "ventas@denimandino.co", "Bogotá", "Zona Industrial Puente Aranda"),
@@ -294,11 +308,11 @@ class Command(BaseCommand):
                 services.set_product_image(product, SimpleUploadedFile("demo.png", data, "image/png"))
                 counts["images"] += 1
             if purchases and not Movimiento.objects.filter(producto=product).exists():
-                for nit, quantity, lot, days in purchases:
+                for index, (nit, quantity, lot, days) in enumerate(purchases):
                     services.register_entry(
                         user=user, producto_id=product.id, cantidad=quantity, fecha=today - timedelta(days=days),
                         proveedor_id=suppliers[nit].id, lote=lot, orden_compra=f"OC-{lot[-4:]}",
-                        observaciones="Compra de demostración",
+                        observaciones="Compra de demostración", costo_unitario=demo_cost(category, unit, index),
                     )
                     counts["entries"] += 1
         return counts

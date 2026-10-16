@@ -6,7 +6,7 @@ Los productos se bloquean siempre en orden de id para que dos órdenes que tocan
 los mismos productos no se queden esperándose una a la otra.
 """
 import re
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from django.db import IntegrityError, transaction
 from django.utils import timezone
@@ -73,6 +73,37 @@ def lock_products(ids):
     return products
 
 
+COST_PLACES = Decimal("0.0001")  # los costos unitarios guardan 4 decimales; los totales se redondean a 2 al final
+MAX_COST = Decimal("9999999999.9999")
+
+
+def parse_cost(value, field="costo_unitario"):
+    """Costo unitario de una compra: `None` si no se indicó; si se indicó, un número mayor que cero con hasta 4 decimales."""
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        cost = Decimal(str(value).strip())
+    except InvalidOperation:
+        fail("El costo debe ser un número.", field)
+    if not cost.is_finite() or cost <= 0:
+        fail("El costo debe ser mayor que cero.", field)
+    if cost != cost.quantize(COST_PLACES):
+        fail("El costo admite hasta 4 decimales.", field)
+    if cost > MAX_COST:
+        fail("El costo es demasiado grande.", field)
+    return cost.quantize(COST_PLACES)
+
+
+def weighted_average(stock, average, quantity, cost):
+    """Costo promedio ponderado móvil tras una compra: (existencias × promedio + compra × costo) / (existencias + compra).
+    Si lo que ya había no tiene costo conocido (promedio cero, o no había nada), el costo de la compra manda: mezclarlo con un
+    cero diluiría el promedio y daría un costo falso.
+    """
+    if average <= 0 or stock <= 0:
+        return cost
+    return ((stock * average + quantity * cost) / (stock + quantity)).quantize(COST_PLACES, rounding=ROUND_HALF_UP)
+
+
 def _apply_movement(product, kind, reason, quantity, **fields):
     """Cambia el saldo del producto (ya bloqueado) y deja la fila del kardex."""
     before = product.stock_actual
@@ -83,7 +114,7 @@ def _apply_movement(product, kind, reason, quantity, **fields):
             "cantidad",
         )
     product.stock_actual = after
-    product.save(update_fields=["stock_actual", "updated_at"])
+    product.save(update_fields=["stock_actual", "costo_promedio", "updated_at"])
     return Movimiento.objects.create(
         producto=product, tipo=kind, motivo=reason, cantidad=quantity,
         stock_antes=before, stock_despues=after, **fields,
@@ -304,15 +335,19 @@ def restore_supplier(supplier):
 
 @transaction.atomic
 def register_entry(*, user, producto_id, cantidad, fecha, proveedor_id=None, orden_compra="", lote="",
-                   orden_id=None, observaciones=""):
+                   orden_id=None, observaciones="", costo_unitario=None):
     """Registra un ingreso al almacén (HU 2.3) y devuelve el movimiento del kardex.
 
-    - Materia prima e insumos: compra con proveedor de la lista y lote obligatorios.
-    - Pantalón genérico o terminado: solo entra cerrando la orden que lo fabricó; la orden pasa a COMPLETADA.
+    - Materia prima e insumos: compra con proveedor de la lista y lote obligatorios. Puede traer el costo unitario: queda
+      en el movimiento y actualiza el costo promedio ponderado del producto.
+    - Pantalón genérico o terminado: solo entra cerrando la orden que lo fabricó; la orden pasa a COMPLETADA. No lleva costo.
     """
     check_date(fecha)
     product = lock_products([producto_id])[producto_id]
     quantity = parse_quantity(cantidad, product.unidad)
+    cost = parse_cost(costo_unitario)
+    if cost is not None and product.tipo not in catalog.PURCHASED_TYPES:
+        fail("Solo las compras de materia prima e insumos llevan costo.", "costo_unitario")
 
     if product.tipo in catalog.PURCHASED_TYPES:
         if not proveedor_id:
@@ -324,11 +359,13 @@ def register_entry(*, user, producto_id, cantidad, fecha, proveedor_id=None, ord
             fail("El lote es obligatorio para materia prima e insumos.", "lote")
         if orden_id:
             fail("Las compras no se asocian a una orden de salida.", "orden")
+        if cost is not None:  # el promedio se calcula con las existencias de antes de esta compra
+            product.costo_promedio = weighted_average(product.stock_actual, product.costo_promedio, quantity, cost)
         return _apply_movement(
             product, catalog.ENTRY, catalog.REASON_PURCHASE, quantity,
             fecha=fecha, proveedor=supplier, proveedor_nombre=supplier.razon_social,
             orden_compra=orden_compra.strip(),
-            lote=lote.strip(), observaciones=observaciones.strip(), registrado_por=user,
+            lote=lote.strip(), observaciones=observaciones.strip(), registrado_por=user, costo_unitario=cost,
         )
 
     # Pantalón genérico o terminado: solo entra cerrando la orden que lo fabricó.
@@ -430,7 +467,9 @@ def create_order(*, user, tipo, fecha_salida, responsable, referencia_id, produc
     )
     for line in lineas:
         product = products[line["producto"]]
-        OrdenLinea.objects.create(orden=order, producto=product, cantidad=quantities[product.id])
+        OrdenLinea.objects.create(
+            orden=order, producto=product, cantidad=quantities[product.id], costo_unitario=product.costo_promedio or None
+        )
         _apply_movement(
             product, catalog.EXIT, catalog.REASON_ORDER_EXIT, quantities[product.id],
             fecha=fecha_salida, orden=order, lote=order.ficha_tecnica, registrado_por=user,
@@ -453,10 +492,16 @@ def cancel_order(*, user, order_id, motivo):
     lines = list(order.lineas.select_related("producto"))
     products = lock_products([line.producto_id for line in lines])
     for line in lines:
+        product = products[line.producto_id]
+        if line.costo_unitario is not None:  # vuelve al costo con que salió y entra en el promedio como una compra más
+            product.costo_promedio = weighted_average(
+                product.stock_actual, product.costo_promedio, line.cantidad, line.costo_unitario
+            )
         _apply_movement(
-            products[line.producto_id], catalog.ENTRY, catalog.REASON_CANCELLATION, line.cantidad,
+            product, catalog.ENTRY, catalog.REASON_CANCELLATION, line.cantidad,
             fecha=timezone.localdate(), orden=order, lote=order.ficha_tecnica,
             observaciones=f"Anulación de {order.codigo}: {motivo.strip()}", registrado_por=user,
+            costo_unitario=line.costo_unitario,
         )
     order.estado = catalog.STATUS_CANCELLED
     order.anulada_at = timezone.now()

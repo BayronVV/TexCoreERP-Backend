@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     "apps.core",
     "apps.users",
     "apps.inventory",
+    "apps.references",
 ]
 
 MIDDLEWARE = [
@@ -174,6 +175,9 @@ SPECTACULAR_SETTINGS = {
         "TipoMovimientoEnum": "apps.inventory.catalog.MOVEMENT_TYPES",
         "CategoriaProductoEnum": "apps.inventory.catalog.CATEGORY_CHOICES",
         "CategoriaProveedorEnum": "apps.inventory.catalog.SUPPLIER_CATEGORY_CHOICES",
+        "EstadoOrdenEnum": "apps.inventory.catalog.ORDER_STATUSES",
+        "EstadoReferenciaEnum": "apps.references.catalog.STATES",
+        "AjusteReferenciaEnum": "apps.references.catalog.FITS",
     },
     "SWAGGER_UI_SETTINGS": {"persistAuthorization": True, "displayRequestDuration": True},
 }

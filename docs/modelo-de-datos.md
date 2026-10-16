@@ -81,6 +81,7 @@ erDiagram
         varchar_10 unidad
         decimal_12_2 stock_actual
         decimal_12_2 stock_minimo
+        decimal_14_4 costo_promedio
         varchar_255 descripcion
         decimal_4_2 ancho_util
         varchar_60 color
@@ -112,6 +113,7 @@ erDiagram
         bigint orden FK
         bigint producto FK
         decimal_12_2 cantidad
+        decimal_14_4 costo_unitario
     }
     Movimiento {
         bigint id PK
@@ -119,6 +121,7 @@ erDiagram
         varchar_8 tipo
         varchar_15 motivo
         decimal_12_2 cantidad
+        decimal_14_4 costo_unitario
         decimal_12_2 stock_antes
         decimal_12_2 stock_despues
         date fecha
@@ -378,6 +381,7 @@ Producto del catálogo (HU 2.2): materia prima, insumo, pantalón genérico o te
 | `unidad` | varchar(10) |  |  |
 | `stock_actual` | decimal(12,2) |  |  |
 | `stock_minimo` | decimal(12,2) |  |  |
+| `costo_promedio` | decimal(14,4) |  |  |
 | `descripcion` | varchar(255) |  |  |
 | `ancho_util` | decimal(4,2) | nulo |  |
 | `color` | varchar(60) |  |  |
@@ -419,6 +423,7 @@ Línea de la cesta de una orden: un producto y la cantidad que sale.
 | `orden` | bigint | FK | → `OrdenSalida` |
 | `producto` | bigint | FK | → `Producto` |
 | `cantidad` | decimal(12,2) |  |  |
+| `costo_unitario` | decimal(14,4) | nulo |  |
 
 ### Movimiento (`inventario_movimiento`)
 
@@ -431,6 +436,7 @@ Fila del kardex: cada ingreso o salida con el saldo antes y después, el usuario
 | `tipo` | varchar(8) |  |  |
 | `motivo` | varchar(15) |  |  |
 | `cantidad` | decimal(12,2) |  |  |
+| `costo_unitario` | decimal(14,4) | nulo |  |
 | `stock_antes` | decimal(12,2) |  |  |
 | `stock_despues` | decimal(12,2) |  |  |
 | `fecha` | date |  |  |
@@ -564,7 +570,7 @@ Prendas de una talla y color dentro de un lote. Talla y color se copian de la va
 
 ### EtapaLote (`produccion_etapa_lote`)
 
-Una etapa productiva de un lote (corte, confección, lavandería...) con su tiempo (HU 4.3 / RF13).
+Una etapa productiva de un lote (corte, confección, terminación...) con su tiempo (HU 4.3 / RF13).
 
 | Campo | Tipo | Restricciones | Relación |
 |---|---|---|---|

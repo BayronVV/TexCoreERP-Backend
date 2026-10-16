@@ -50,7 +50,7 @@ Los detalles de cada endpoint (parámetros, cuerpos y respuestas) están en Swag
 | `proveedores` | `/api/inventario/proveedores/…` | TE-45 |
 | `catalogo` | `/api/inventario/catalogo/…`, `/api/inventario/metadatos/` | TE-46 |
 | `inventario` | `/api/inventario/productos/`, `/api/inventario/alertas/` | TE-47, TE-48 |
-| `movimientos` | `/api/inventario/movimientos/`, `/api/inventario/ingresos/` | TE-47 |
+| `movimientos` | `/api/inventario/movimientos/`, `/api/inventario/ingresos/` (las compras aceptan `costo_unitario`: actualiza el costo promedio ponderado del producto) | TE-47, TE-56 |
 | `ordenes` | `/api/inventario/ordenes/…` (crear, consultar, anular) | TE-47 |
 | `evidencias` | `/api/inventario/movimientos/<id>/evidencias/`, `/api/inventario/ordenes/<id>/evidencias/`, `/api/inventario/evidencias/<id>/archivo/` | TE-47 |
 | `referencias` | `/api/referencias/…` (catálogo de jeans: variantes, estado e imágenes), `/api/referencias/metadatos/` | TE-49 |

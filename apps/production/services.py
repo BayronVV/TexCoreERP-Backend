@@ -8,13 +8,18 @@ vista previa y el guardado. El consumo sale de la ficha técnica (`references.fi
 import re
 from decimal import ROUND_FLOOR
 
+from django.db import transaction
+from django.utils import timezone
+
 from apps.inventory import catalog as inventory_catalog
+from apps.inventory import services as inventory_services
 from apps.inventory.services import fail
 from apps.references import catalog as reference_catalog
 from apps.references import fichas
-from apps.references.models import Referencia
+from apps.references.models import Referencia, Variante
 
 from . import catalog
+from .models import Lote, LoteTalla, OrdenProduccion
 
 
 def get_reference(reference_id):
@@ -110,3 +115,106 @@ def simulate(reference, garments, lots=None):
         "lotes": coverage,
         "lotes_cubiertos": sum(1 for lot in coverage if lot["cubierto"]) if coverage else None,
     }
+
+
+# --- Órdenes de producción y lotes (HU 4.2 / RF11 y RF12) ----------------------------------------------
+
+def _whole(value, message, field):
+    """Entero positivo a partir de lo que llegue en el JSON (rechaza booleanos, decimales y texto)."""
+    text = "" if isinstance(value, bool) else str(value).strip()
+    if not re.fullmatch(r"\d+", text) or int(text) < 1:
+        fail(message, field)
+    return int(text)
+
+
+def clean_sizes(sizes, number, quantity, variants):
+    """Valida las tallas de un lote: variantes de la referencia, sin repetir, cantidades enteras mayores que
+    cero y que sumen justo las prendas del lote. Devuelve `[(variante, cantidad)]` (vacío si no se indicaron).
+    """
+    if sizes in (None, []):
+        return []
+    if not isinstance(sizes, list):
+        fail(f"Las tallas del lote {number} deben ser una lista.", "lotes")
+    picked, total = {}, 0
+    for item in sizes:
+        if not isinstance(item, dict):
+            fail(f"Cada talla del lote {number} necesita la variante y la cantidad.", "lotes")
+        variant = variants.get(item.get("variante")) if isinstance(item.get("variante"), int) else None
+        if variant is None or isinstance(item.get("variante"), bool):
+            fail(f"Una talla del lote {number} no es una variante de la referencia.", "lotes")
+        if variant.id in picked:
+            fail(f"La talla {variant.talla} {variant.color} se repite en el lote {number}.", "lotes")
+        amount = _whole(item.get("cantidad"), f"La cantidad de {variant.talla} {variant.color} en el lote {number} "
+                                               "debe ser un entero mayor que cero.", "lotes")
+        picked[variant.id] = (variant, amount)
+        total += amount
+    if total != quantity:
+        word = "faltan" if quantity > total else "sobran"
+        fail(f"Las tallas del lote {number} suman {total} y el lote es de {quantity}: {word} {abs(quantity - total)}.",
+             "lotes")
+    return list(picked.values())
+
+
+def clean_order_lots(lots, total, reference):
+    """Lotes de una orden con sus tallas: `[{cantidad, tallas: [(variante, cantidad)]}]`.
+    Sin `lotes` se crea un único lote con todo el total. Cada elemento es `{cantidad, tallas?}`; los tamaños
+    siguen las mismas reglas que la simulación (`clean_lots`).
+    """
+    if lots is None:
+        return [{"cantidad": total, "tallas": []}]
+    if not isinstance(lots, list) or not lots:
+        fail("Indica al menos un lote.", "lotes")
+    if not all(isinstance(item, dict) for item in lots):
+        fail("Cada lote debe indicar su cantidad de prendas.", "lotes")
+    sizes = clean_lots([item.get("cantidad") for item in lots], total)
+    variants = {variant.id: variant for variant in Variante.objects.filter(referencia=reference)}
+    return [
+        {"cantidad": size, "tallas": clean_sizes(item.get("tallas"), number, size, variants)}
+        for number, (item, size) in enumerate(zip(lots, sizes), start=1)
+    ]
+
+
+@transaction.atomic
+def create_production_order(*, user, referencia_id, cantidad, producto_resultado_id, lotes=None, fecha_salida=None,
+                            responsable="", observaciones=""):
+    """Crea la orden de producción de `cantidad` prendas de una referencia, dividida en lotes con sus tallas.
+
+    Todo ocurre en una sola transacción: la salida de inventario (que descuenta el material de la ficha y
+    guarda el estado y el consecutivo OP) y, colgando de ella, la orden, sus lotes y sus tallas. Si algo falla,
+    como falta de material, no queda nada ni se gasta el número.
+    """
+    garments = fichas.parse_garments(cantidad)
+    reference = get_reference(referencia_id)
+    ficha = fichas.ficha_lines(reference)
+    if not ficha:
+        fail("La referencia no tiene ficha técnica: defínela antes de crear la orden.", "referencia")
+    parts = clean_order_lots(lotes, garments, reference)
+
+    exit_order = inventory_services.create_order(
+        user=user, tipo=inventory_catalog.ORDER_PRODUCTION, fecha_salida=fecha_salida or timezone.localdate(),
+        responsable=responsable.strip() or user.get_full_name() or user.email, referencia_id=reference.id,
+        producto_resultado_id=producto_resultado_id, cantidad_prendas=garments, observaciones=observaciones,
+        lineas=[{"producto": line.producto_id, "cantidad": fichas.required_total(line, garments)} for line in ficha],
+    )
+    order = OrdenProduccion.objects.create(
+        orden_salida=exit_order, codigo=exit_order.codigo, referencia=reference, cantidad=garments, creado_por=user,
+    )
+    for number, part in enumerate(parts, start=1):
+        lot = Lote.objects.create(
+            orden=order, numero=number, codigo=f"{order.codigo}-L{number:02d}", cantidad=part["cantidad"],
+        )
+        LoteTalla.objects.bulk_create([
+            LoteTalla(lote=lot, variante=variant, talla=variant.talla, color=variant.color, cantidad=amount)
+            for variant, amount in part["tallas"]
+        ])
+    return order
+
+
+@transaction.atomic
+def cancel_production_order(*, user, order_id, motivo):
+    """Anula la orden de producción: devuelve el material al inventario (la salida pasa a ANULADA)."""
+    order = OrdenProduccion.objects.filter(pk=order_id).first()
+    if order is None:
+        fail("La orden no existe.", "orden")
+    inventory_services.cancel_order(user=user, order_id=order.orden_salida_id, motivo=motivo)
+    return order

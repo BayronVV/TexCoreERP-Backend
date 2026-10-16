@@ -56,6 +56,7 @@ Los detalles de cada endpoint (parámetros, cuerpos y respuestas) están en Swag
 | `referencias` | `/api/referencias/…` (catálogo de jeans: variantes, estado e imágenes), `/api/referencias/metadatos/` | TE-49 |
 | `fichas` | `/api/referencias/<id>/ficha/` (consumo por unidad), `/api/referencias/<id>/ficha/documento/` (PDF), `/api/inventario/fichas-tecnicas/` y `…/<id>/consumo/?cantidad=N` (consumo contra el stock) | TE-50 |
 | `produccion` | `/api/produccion/simulacion/` (simula la producción contra el stock: viable, faltantes, máximo producible y lotes) | TE-51 |
+| `produccion` | `/api/produccion/ordenes/` (crear y listar órdenes con lotes y tallas), `/api/produccion/ordenes/<id>/`, `/api/produccion/ordenes/<id>/anular/` | TE-52 |
 | `salud` | `/api/health/`, `/api/health/db/` | — |
 
 ## Ejemplo: registrar un ingreso

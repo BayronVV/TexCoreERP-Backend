@@ -18,7 +18,7 @@ from apps.references import catalog as reference_catalog
 from apps.references import fichas
 from apps.references.models import Referencia, Variante
 
-from . import catalog
+from . import catalog, tracking
 from .models import Lote, LoteTalla, OrdenProduccion
 
 
@@ -199,14 +199,17 @@ def create_production_order(*, user, referencia_id, cantidad, producto_resultado
     order = OrdenProduccion.objects.create(
         orden_salida=exit_order, codigo=exit_order.codigo, referencia=reference, cantidad=garments, creado_por=user,
     )
+    created_lots = []
     for number, part in enumerate(parts, start=1):
         lot = Lote.objects.create(
             orden=order, numero=number, codigo=f"{order.codigo}-L{number:02d}", cantidad=part["cantidad"],
         )
+        created_lots.append(lot)
         LoteTalla.objects.bulk_create([
             LoteTalla(lote=lot, variante=variant, talla=variant.talla, color=variant.color, cantidad=amount)
             for variant, amount in part["tallas"]
         ])
+    tracking.create_stages(created_lots)  # cada lote nace con sus etapas pendientes (HU 4.3)
     return order
 
 

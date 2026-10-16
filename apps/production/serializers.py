@@ -1,9 +1,11 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.inventory import catalog as inventory_catalog
 from apps.references.ficha_serializers import ConsumoLineaSerializer
 
-from .models import Lote, LoteTalla, OrdenProduccion
+from . import catalog, tracking
+from .models import EtapaLote, EventoEtapa, Lote, LoteTalla, OrdenProduccion
 
 
 class SimulacionInputSerializer(serializers.Serializer):
@@ -69,12 +71,92 @@ class LoteTallaSerializer(serializers.ModelSerializer):
         fields = ["variante", "talla", "color", "cantidad"]
 
 
+class EtapaLoteSerializer(serializers.ModelSerializer):
+    """Una etapa del lote con su tiempo neto (sin pausas) hasta este momento."""
+    etapa_nombre = serializers.CharField(source="get_etapa_display", read_only=True)
+    estado_nombre = serializers.CharField(source="get_estado_display", read_only=True)
+    en_curso_desde = serializers.DateTimeField(
+        source="reanudada_at", read_only=True,
+        help_text="Inicio del intervalo que está corriendo (vacío si no corre). Sirve para mostrar el reloj en vivo.",
+    )
+    tiempo_neto_segundos = serializers.SerializerMethodField()
+    responsable_nombre = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EtapaLote
+        fields = [
+            "id", "etapa", "etapa_nombre", "secuencia", "estado", "estado_nombre", "inicio_at", "fin_at",
+            "en_curso_desde", "tiempo_neto_segundos", "responsable_nombre",
+        ]
+
+    def get_tiempo_neto_segundos(self, obj) -> int:
+        return tracking.net_seconds(obj)
+
+    def get_responsable_nombre(self, obj) -> str:
+        return (obj.responsable.get_full_name() or obj.responsable.email) if obj.responsable else ""
+
+
 class LoteSerializer(serializers.ModelSerializer):
+    """Lote con sus tallas, su estado derivado (RF15), sus etapas con tiempos (RF13) y las acciones que admite ahora."""
     tallas = LoteTallaSerializer(many=True, read_only=True)
+    etapas = EtapaLoteSerializer(many=True, read_only=True)
+    estado = serializers.SerializerMethodField()
+    estado_nombre = serializers.SerializerMethodField()
+    etapa_actual = serializers.SerializerMethodField()
+    tiempo_neto_segundos = serializers.SerializerMethodField()
+    acciones = serializers.SerializerMethodField()
 
     class Meta:
         model = Lote
-        fields = ["id", "numero", "codigo", "cantidad", "tallas"]
+        fields = [
+            "id", "numero", "codigo", "cantidad", "tallas", "estado", "estado_nombre", "etapa_actual",
+            "tiempo_neto_segundos", "acciones", "etapas",
+        ]
+
+    @staticmethod
+    def _cancelled(obj):
+        return obj.orden.orden_salida.estado == inventory_catalog.STATUS_CANCELLED
+
+    @staticmethod
+    def _states(obj):
+        return [stage.estado for stage in obj.etapas.all()]
+
+    def get_estado(self, obj) -> str:
+        return tracking.lot_state(self._states(obj), self._cancelled(obj))
+
+    def get_estado_nombre(self, obj) -> str:
+        return catalog.STATE_NAMES[self.get_estado(obj)]
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_etapa_actual(self, obj):
+        stage = tracking.current_stage(list(obj.etapas.all()))
+        return stage.etapa if stage else None
+
+    def get_tiempo_neto_segundos(self, obj) -> int:
+        return sum(tracking.net_seconds(stage) for stage in obj.etapas.all())
+
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_acciones(self, obj):
+        return tracking.available_actions(self._states(obj), self._cancelled(obj))
+
+
+class EventoEtapaSerializer(serializers.ModelSerializer):
+    etapa = serializers.CharField(source="etapa_lote.etapa", read_only=True)
+    etapa_nombre = serializers.CharField(source="etapa_lote.get_etapa_display", read_only=True)
+    accion_nombre = serializers.CharField(source="get_accion_display", read_only=True)
+    usuario_nombre = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EventoEtapa
+        fields = ["id", "etapa", "etapa_nombre", "accion", "accion_nombre", "de_estado", "a_estado", "momento",
+                  "usuario_nombre", "nota"]
+
+    def get_usuario_nombre(self, obj) -> str:
+        return (obj.usuario.get_full_name() or obj.usuario.email) if obj.usuario else ""
+
+
+class AccionLoteSerializer(serializers.Serializer):
+    nota = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
 
 
 class OrdenProduccionSerializer(serializers.ModelSerializer):
@@ -93,6 +175,9 @@ class OrdenProduccionSerializer(serializers.ModelSerializer):
     creado_por_nombre = serializers.SerializerMethodField()
     materiales = serializers.SerializerMethodField()
     lotes = LoteSerializer(many=True, read_only=True)
+    estado_produccion = serializers.SerializerMethodField(help_text="Planeada, en proceso, en pausa, terminada o cancelada")
+    estado_produccion_nombre = serializers.SerializerMethodField()
+    tiempo_neto_segundos = serializers.SerializerMethodField()
 
     class Meta:
         model = OrdenProduccion
@@ -100,8 +185,21 @@ class OrdenProduccionSerializer(serializers.ModelSerializer):
             "id", "codigo", "orden_salida", "estado", "estado_nombre", "referencia", "referencia_codigo",
             "referencia_nombre", "cantidad", "fecha_salida", "responsable", "observaciones", "producto_resultado",
             "producto_resultado_nombre", "motivo_anulacion", "anulada_at", "creado_por_nombre", "created_at",
-            "materiales", "lotes",
+            "materiales", "estado_produccion", "estado_produccion_nombre", "tiempo_neto_segundos", "lotes",
         ]
+
+    def get_estado_produccion(self, obj) -> str:
+        if obj.orden_salida.estado == inventory_catalog.STATUS_CANCELLED:
+            return catalog.STATE_CANCELLED
+        return tracking.order_state(
+            tracking.lot_state([stage.estado for stage in lot.etapas.all()]) for lot in obj.lotes.all()
+        )
+
+    def get_estado_produccion_nombre(self, obj) -> str:
+        return catalog.STATE_NAMES[self.get_estado_produccion(obj)]
+
+    def get_tiempo_neto_segundos(self, obj) -> int:
+        return sum(tracking.net_seconds(stage) for lot in obj.lotes.all() for stage in lot.etapas.all())
 
     def get_creado_por_nombre(self, obj) -> str:
         return (obj.creado_por.get_full_name() or obj.creado_por.email) if obj.creado_por else ""

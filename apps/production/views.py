@@ -6,10 +6,13 @@ from rest_framework.views import APIView
 from apps.inventory.views import apply_filters, limited
 from apps.references import fichas
 
-from . import catalog, services
-from .models import OrdenProduccion
+from . import catalog, services, tracking
+from .models import EventoEtapa, Lote, OrdenProduccion
 from .serializers import (
+    AccionLoteSerializer,
     AnulacionProduccionSerializer,
+    EventoEtapaSerializer,
+    LoteSerializer,
     OrdenProduccionInputSerializer,
     OrdenProduccionSerializer,
     SimulacionInputSerializer,
@@ -45,7 +48,7 @@ ORDERS_READ_WRITE = {"GET": catalog.PRODUCTION_VIEW, "POST": catalog.PRODUCTION_
 def order_queryset():
     return OrdenProduccion.objects.select_related(
         "orden_salida__producto_resultado", "referencia", "creado_por"
-    ).prefetch_related("lotes__tallas", "orden_salida__lineas__producto")
+    ).prefetch_related("lotes__tallas", "lotes__etapas__responsable", "orden_salida__lineas__producto")
 
 
 @extend_schema(tags=["produccion"])
@@ -106,3 +109,42 @@ class OrdenProduccionAnularView(APIView):
         data.is_valid(raise_exception=True)
         services.cancel_production_order(user=request.user, order_id=pk, motivo=data.validated_data["motivo"])
         return Response(OrdenProduccionSerializer(order_queryset().get(pk=pk)).data)
+
+
+def lot_queryset():
+    return Lote.objects.select_related("orden__orden_salida").prefetch_related("tallas", "etapas__responsable")
+
+
+@extend_schema(
+    tags=["produccion"], summary="Controlar el tiempo de un lote: iniciar, pausar, reanudar o completar (HU 4.3, TE-118)",
+    request=AccionLoteSerializer, responses={200: LoteSerializer},
+    description="Los botones Play, Pausa y Stop de cada lote. `iniciar` arranca la siguiente etapa (corte, confección, "
+                "terminación); `pausar` y `reanudar` cierran y abren un intervalo "
+                "de tiempo; `completar` termina la etapa en curso. El tiempo neto de cada etapa no cuenta las pausas. Una "
+                "etapa solo empieza cuando la anterior terminó y una orden anulada no admite acciones.",
+)
+class LoteAccionView(APIView):
+    required_permissions = catalog.PRODUCTION_MANAGE
+
+    def post(self, request, pk, accion):
+        data = AccionLoteSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        tracking.act_on_lot(user=request.user, lot_id=pk, action=accion, note=data.validated_data["nota"])
+        return Response(LoteSerializer(lot_queryset().get(pk=pk)).data)
+
+
+@extend_schema(
+    tags=["produccion"], summary="Historial de tiempos de un lote (trazabilidad)",
+    responses={200: EventoEtapaSerializer(many=True)},
+    description="Cada inicio, pausa, reanudación y fin de las etapas del lote, con quién lo hizo y cuándo. Solo se agregan "
+                "registros, nunca se editan.",
+)
+class LoteHistorialView(generics.ListAPIView):
+    required_permissions = catalog.PRODUCTION_VIEW
+    serializer_class = EventoEtapaSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return EventoEtapa.objects.filter(etapa_lote__lote_id=self.kwargs["pk"]).select_related(
+            "etapa_lote", "usuario"
+        ).order_by("momento", "id")

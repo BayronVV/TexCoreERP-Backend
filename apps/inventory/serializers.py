@@ -182,6 +182,8 @@ class OrdenSerializer(serializers.ModelSerializer):
     tipo_nombre = serializers.CharField(source="get_tipo_display", read_only=True)
     estado_nombre = serializers.CharField(source="get_estado_display", read_only=True)
     producto_resultado_nombre = serializers.CharField(source="producto_resultado.nombre", read_only=True)
+    referencia_codigo = serializers.CharField(source="referencia.codigo", read_only=True, default="")
+    referencia_nombre = serializers.CharField(source="referencia.nombre", read_only=True, default="")
     registrado_por_nombre = serializers.SerializerMethodField()
     lineas = serializers.SerializerMethodField()
     evidencias = EvidenciaSerializer(many=True, read_only=True)
@@ -190,7 +192,8 @@ class OrdenSerializer(serializers.ModelSerializer):
         model = OrdenSalida
         fields = [
             "id", "codigo", "tipo", "tipo_nombre", "estado", "estado_nombre", "fecha_salida",
-            "responsable", "destino", "ficha_tecnica", "producto_resultado",
+            "responsable", "destino", "referencia", "referencia_codigo", "referencia_nombre",
+            "ficha_tecnica", "producto_resultado",
             "producto_resultado_nombre", "cantidad_prendas", "observaciones", "lineas",
             "evidencias", "registrado_por_nombre", "completada_at", "anulada_at",
             "motivo_anulacion", "created_at",
@@ -248,7 +251,7 @@ class OrdenInputSerializer(serializers.Serializer):
     fecha_salida = serializers.DateField()
     responsable = serializers.CharField(max_length=120)
     destino = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
-    ficha_tecnica = serializers.CharField(max_length=60)
+    referencia = serializers.IntegerField()
     producto_resultado = serializers.IntegerField()
     cantidad_prendas = serializers.DecimalField(
         max_digits=12, decimal_places=2, required=False, allow_null=True, default=None
@@ -259,11 +262,6 @@ class OrdenInputSerializer(serializers.Serializer):
     def validate_responsable(self, value):
         if not value.strip():
             raise serializers.ValidationError("Escribe quién se encarga.")
-        return value
-
-    def validate_ficha_tecnica(self, value):
-        if not value.strip():
-            raise serializers.ValidationError("Escribe la ficha técnica.")
         return value
 
 

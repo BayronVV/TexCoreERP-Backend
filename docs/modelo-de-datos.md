@@ -97,6 +97,7 @@ erDiagram
         date fecha_salida
         varchar_120 responsable
         varchar_120 destino
+        bigint referencia FK
         varchar_60 ficha_tecnica
         bigint producto_resultado FK
         decimal_12_2 cantidad_prendas
@@ -162,21 +163,45 @@ erDiagram
         int version
         boolean principal
     }
+    FichaTecnica {
+        bigint id PK
+        bigint referencia FK
+        varchar_15 lavado
+        varchar_500 notas
+        bigint actualizado_por FK
+        bytea documento
+        varchar_120 documento_nombre
+        int documento_tamano
+        int documento_version
+    }
+    FichaLinea {
+        bigint id PK
+        bigint ficha FK
+        bigint producto FK
+        decimal_10_3 cantidad
+        decimal_5_2 merma
+        varchar_120 observaciones
+    }
     CustomUser |o--o{ Evidencia : "subido_por"
+    CustomUser |o--o{ FichaTecnica : "actualizado_por"
     CustomUser |o--o{ Movimiento : "registrado_por"
     CustomUser |o--o{ OrdenSalida : "registrado_por"
     CustomUser |o--o{ Referencia : "creado_por"
     CustomUser |o--o{ RolePermission : "granted_by"
     CustomUser ||--o{ PasswordResetToken : "user"
+    FichaTecnica ||--o{ FichaLinea : "ficha"
     ModulePermission ||--o{ RolePermission : "permission"
     Movimiento |o--o{ Evidencia : "movimiento"
     OrdenSalida |o--o{ Evidencia : "orden"
     OrdenSalida |o--o{ Movimiento : "orden"
     OrdenSalida ||--o{ OrdenLinea : "orden"
+    Producto ||--o{ FichaLinea : "producto"
     Producto ||--o{ Movimiento : "producto"
     Producto ||--o{ OrdenLinea : "producto"
     Producto ||--o{ OrdenSalida : "producto_resultado"
     Proveedor |o--o{ Movimiento : "proveedor"
+    Referencia |o--o{ OrdenSalida : "referencia"
+    Referencia ||--o{ FichaTecnica : "referencia"
     Referencia ||--o{ ImagenReferencia : "referencia"
     Referencia ||--o{ Variante : "referencia"
     Role |o--o{ CustomUser : "requested_area"
@@ -319,6 +344,7 @@ Orden de producción (OP) o de lavandería (LV) que saca materiales del almacén
 | `fecha_salida` | date |  |  |
 | `responsable` | varchar(120) |  |  |
 | `destino` | varchar(120) |  |  |
+| `referencia` | bigint | FK, nulo | → `Referencia` |
 | `ficha_tecnica` | varchar(60) |  |  |
 | `producto_resultado` | bigint | FK | → `Producto` |
 | `cantidad_prendas` | decimal(12,2) | nulo |  |
@@ -413,3 +439,32 @@ Foto del prototipo. Se guarda en la base y se sirve con sesión (como la del cat
 | `tipo` | varchar(20) |  |  |
 | `version` | int |  |  |
 | `principal` | boolean |  |  |
+
+### FichaTecnica (`referencias_ficha`)
+
+Ficha técnica de consumo por unidad (HU 3.2): qué materiales y cuánto lleva una prenda
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `referencia` | bigint | FK | → `Referencia` |
+| `lavado` | varchar(15) |  |  |
+| `notas` | varchar(500) |  |  |
+| `actualizado_por` | bigint | FK, nulo | → `CustomUser` |
+| `documento` | bytea | nulo |  |
+| `documento_nombre` | varchar(120) |  |  |
+| `documento_tamano` | int |  |  |
+| `documento_version` | int |  |  |
+
+### FichaLinea (`referencias_ficha_linea`)
+
+Un material de la ficha: cuánto se consume por prenda, con su merma (%) cuando aplica
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `ficha` | bigint | FK | → `FichaTecnica` |
+| `producto` | bigint | FK | → `Producto` |
+| `cantidad` | decimal(10,3) |  |  |
+| `merma` | decimal(5,2) |  |  |
+| `observaciones` | varchar(120) |  |  |

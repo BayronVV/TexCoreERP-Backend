@@ -23,6 +23,7 @@ from django.utils import timezone
 
 from apps.inventory import catalog, services
 from apps.inventory.models import Movimiento, OrdenSalida, Producto, Proveedor
+from apps.references.models import Referencia
 
 T, H, C, B, E, Q, O = (
     catalog.CAT_FABRIC, catalog.CAT_THREAD, catalog.CAT_ZIPPER, catalog.CAT_BUTTON,
@@ -180,39 +181,39 @@ def reference_image(category, color):
 # completada, en proceso y anulada, para ver el flujo completo conectado.
 ORDERS = [
     {
-        "key": "FT-1427-A", "tipo": catalog.ORDER_PRODUCTION, "dias": 10, "responsable": "Marta Ruiz (producción)",
+        "key": "FT-1427-A", "referencia": "Clásico 5 bolsillos frosteado", "tipo": catalog.ORDER_PRODUCTION, "dias": 10, "responsable": "Marta Ruiz (producción)",
         "resultado": "Pantalón genérico rígido", "prendas": 150, "recibe": (148, 6),
         "lineas": [("Denim rígido índigo 14 oz", 420), ("Hilo poliéster 40/2 azul índigo", 3),
                    ("Cierre metálico 18 cm níquel", 150), ("Botón metálico 17 mm níquel", 150),
                    ("Remache cobre 9 mm", 600)],
     },
     {
-        "key": "FT-1431-B", "tipo": catalog.ORDER_PRODUCTION, "dias": 7, "responsable": "Marta Ruiz (producción)",
+        "key": "FT-1431-B", "referencia": "Skinny negro stretch", "tipo": catalog.ORDER_PRODUCTION, "dias": 7, "responsable": "Marta Ruiz (producción)",
         "resultado": "Pantalón genérico stretch", "prendas": 200, "recibe": (196, 3),
         "lineas": [("Denim negro stretch 11 oz", 560), ("Hilo poliéster 40/2 negro", 4),
                    ("Cierre de nylon 16 cm negro", 200), ("Botón a presión 15 mm negro mate", 200),
                    ("Remache níquel 9 mm", 800)],
     },
     {
-        "key": "FT-1436-C", "tipo": catalog.ORDER_PRODUCTION, "dias": 3, "responsable": "Jorge Santos (corte)",
+        "key": "FT-1436-C", "referencia": "Slim blanco roto", "tipo": catalog.ORDER_PRODUCTION, "dias": 3, "responsable": "Jorge Santos (corte)",
         "resultado": "Pantalón genérico rígido", "prendas": 90, "recibe": None,  # queda en proceso
         "lineas": [("Denim blanco roto 9 oz", 130), ("Hilo algodón 20/3 crudo", 2), ("Hilo poliéster naranja (puntada decorativa)", 2),
                    ("Cierre metálico 15 cm latón antiguo", 90)],
     },
     {
-        "key": "REF-1427-LV1", "tipo": catalog.ORDER_LAUNDRY, "dias": 6, "responsable": "Lavandería Sol del Norte",
+        "key": "REF-1427-LV1", "referencia": "Clásico 5 bolsillos frosteado", "tipo": catalog.ORDER_LAUNDRY, "dias": 6, "responsable": "Lavandería Sol del Norte",
         "destino": "Lavandería Sol del Norte", "resultado": "REF-1427 Clásico 5 bolsillos frosteado", "recibe": (97, 1),
         "lineas": [("Pantalón genérico rígido", 100), ("Suavizante enzimático", 12), ("Permanganato de potasio", 4),
                    ("Etiqueta tejida de marca", 100)],
     },
     {
-        "key": "REF-N22-LV2", "tipo": catalog.ORDER_LAUNDRY, "dias": 2, "responsable": "Lavandería Sol del Norte",
+        "key": "REF-N22-LV2", "referencia": "Skinny negro stretch", "tipo": catalog.ORDER_LAUNDRY, "dias": 2, "responsable": "Lavandería Sol del Norte",
         "destino": "Lavandería Sol del Norte", "resultado": "REF-N22 Skinny negro stretch", "recibe": None,
         "lineas": [("Pantalón genérico stretch", 120), ("Hipoclorito de sodio", 25), ("Etiqueta tejida de marca", 120),
                    ("Hang tag de cartón", 120)],
     },
     {
-        "key": "FT-1440-X", "tipo": catalog.ORDER_PRODUCTION, "dias": 1, "responsable": "Jorge Santos (corte)",
+        "key": "FT-1440-X", "referencia": "Clásico 5 bolsillos frosteado", "tipo": catalog.ORDER_PRODUCTION, "dias": 1, "responsable": "Jorge Santos (corte)",
         "resultado": "Pantalón genérico rígido", "prendas": 20, "anular": "Orden duplicada: se registró dos veces por error",
         "lineas": [("Drill caqui 8 oz", 40), ("Cierre metálico 15 cm latón antiguo", 20)],
     },
@@ -231,6 +232,7 @@ class Command(BaseCommand):
 
         suppliers = self._suppliers()
         created = self._products(user, suppliers, today)
+        call_command("seed_demo_referencias", verbosity=0)  # las órdenes se hacen sobre referencias con ficha
         orders = self._orders(user, today)
         self.stdout.write(self.style.SUCCESS(
             f"Productos nuevos: {created['products']} · compras registradas: {created['entries']} · "
@@ -284,8 +286,12 @@ class Command(BaseCommand):
     def _orders(self, user, today):
         created = 0
         by_name = {p.nombre.casefold(): p for p in Producto.objects.all()}
+        references = {r.nombre.casefold(): r for r in Referencia.objects.all()}
         for spec in ORDERS:
-            if OrdenSalida.objects.filter(ficha_tecnica=spec["key"]).exists():
+            marker = f"Orden de demostración {spec['key']}"
+            # Las órdenes sembradas antes de las referencias se reconocen por su ficha escrita a mano.
+            known = OrdenSalida.objects.filter(observaciones=marker) | OrdenSalida.objects.filter(ficha_tecnica=spec["key"])
+            if known.exists():
                 continue
             lines = [
                 {"producto": by_name[name.casefold()].id, "cantidad": quantity}
@@ -293,10 +299,10 @@ class Command(BaseCommand):
             ]
             order = services.create_order(
                 user=user, tipo=spec["tipo"], fecha_salida=today - timedelta(days=spec["dias"]),
-                responsable=spec["responsable"], ficha_tecnica=spec["key"],
+                responsable=spec["responsable"], referencia_id=references[spec["referencia"].casefold()].id,
                 producto_resultado_id=by_name[spec["resultado"].casefold()].id, lineas=lines,
                 destino=spec.get("destino", ""), cantidad_prendas=spec.get("prendas"),
-                observaciones="Orden de demostración",
+                observaciones=marker,
             )
             created += 1
             if spec.get("recibe"):

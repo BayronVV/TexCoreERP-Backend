@@ -12,6 +12,9 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from apps.references import catalog as reference_catalog
+from apps.references.models import Referencia
+
 from . import catalog
 from .models import Consecutivo, Evidencia, Movimiento, OrdenLinea, OrdenSalida, Producto, Proveedor
 
@@ -361,15 +364,25 @@ def register_entry(*, user, producto_id, cantidad, fecha, proveedor_id=None, ord
 # --- Órdenes de salida ---------------------------------------------------------
 
 @transaction.atomic
-def create_order(*, user, tipo, fecha_salida, responsable, ficha_tecnica, producto_resultado_id, lineas,
+def create_order(*, user, tipo, fecha_salida, responsable, referencia_id, producto_resultado_id, lineas,
                  destino="", cantidad_prendas=None, observaciones=""):
-    """Crea una orden OP (producción) o LV (lavandería) con su cesta de materiales.
+    """Crea una orden OP (producción) o LV (lavandería) de una referencia de jean, con su cesta de materiales.
 
-    Valida el tipo de cada producto y su stock (si falta material el error trae `faltantes`), genera el código
-    consecutivo y descuenta el stock registrando una salida por línea.
+    La referencia debe estar activa; en producción además necesita ficha técnica y la cantidad de prendas es
+    obligatoria. Valida el tipo de cada producto y su stock (si falta material el error trae `faltantes`),
+    genera el código consecutivo y descuenta el stock registrando una salida por línea. El código de la
+    referencia queda como lote de esas salidas.
     """
     rules = catalog.ORDER_RULES[tipo]
     check_date(fecha_salida, "fecha_salida")
+    reference = Referencia.objects.filter(pk=referencia_id, estado=reference_catalog.ACTIVE).first()
+    if reference is None:
+        fail("La referencia no existe o no está activa.", "referencia")
+    if tipo == catalog.ORDER_PRODUCTION:
+        if not reference.fichas.exists():
+            fail("La referencia no tiene ficha técnica: defínela antes de crear la orden.", "referencia")
+        if cantidad_prendas in (None, ""):
+            fail("Indica cuántas prendas se van a producir.", "cantidad_prendas")
 
     ids = [line["producto"] for line in lineas]
     if len(ids) != len(set(ids)):
@@ -411,8 +424,8 @@ def create_order(*, user, tipo, fecha_salida, responsable, ficha_tecnica, produc
 
     order = OrdenSalida.objects.create(
         codigo=next_code(catalog.ORDER_PREFIX[tipo]), tipo=tipo, fecha_salida=fecha_salida,
-        responsable=responsable.strip(), destino=destino.strip(), ficha_tecnica=ficha_tecnica.strip(),
-        producto_resultado=result, cantidad_prendas=planned,
+        responsable=responsable.strip(), destino=destino.strip(), referencia=reference,
+        ficha_tecnica=reference.codigo, producto_resultado=result, cantidad_prendas=planned,
         observaciones=observaciones.strip(), registrado_por=user,
     )
     for line in lineas:

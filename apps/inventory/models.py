@@ -123,8 +123,13 @@ class OrdenSalida(BaseModel):
     fecha_salida = models.DateField()
     responsable = models.CharField(max_length=120)
     destino = models.CharField(max_length=120, blank=True)
-    # Hasta que exista el módulo de fichas técnicas es un código escrito a mano.
-    ficha_tecnica = models.CharField(max_length=60)
+    # Referencia de jean que se fabrica o lava (HU 3.2). Las órdenes anteriores al catálogo de
+    # referencias no la tienen: conservan el código escrito a mano en `ficha_tecnica`.
+    referencia = models.ForeignKey(
+        "references.Referencia", on_delete=models.PROTECT, null=True, blank=True, related_name="ordenes"
+    )
+    # Código de la referencia (REF-0001) en las órdenes nuevas; texto libre en las antiguas. Es el lote del kardex.
+    ficha_tecnica = models.CharField(max_length=60, blank=True, default="")
     producto_resultado = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name="ordenes_resultado")
     # Producción: pantalones que se planea fabricar (opcional). Lavandería: los que se envían.
     cantidad_prendas = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)

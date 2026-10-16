@@ -20,9 +20,11 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 
 from apps.inventory import catalog, services
 from apps.inventory.models import Movimiento, OrdenSalida, Producto, Proveedor
+from apps.references import fichas
 from apps.references.models import Referencia
 
 T, H, C, B, E, Q, O = (
@@ -217,6 +219,24 @@ ORDERS = [
         "resultado": "Pantalón genérico rígido", "prendas": 20, "anular": "Orden duplicada: se registró dos veces por error",
         "lineas": [("Drill caqui 8 oz", 40), ("Cierre metálico 15 cm latón antiguo", 20)],
     },
+    # Órdenes del flujo nuevo (HU 3.2): los materiales salen de la ficha técnica de la referencia, con la cantidad
+    # que calcula el sistema. Son opcionales: si el stock no alcanza o falta la ficha, se omiten en lugar de fallar.
+    {
+        "key": "OP-DEMO-CLASICO", "referencia": "Clásico 5 bolsillos frosteado", "tipo": catalog.ORDER_PRODUCTION, "dias": 5,
+        "responsable": "Marta Ruiz (producción)", "resultado": "Pantalón genérico rígido", "prendas": 60,
+        "desde_ficha": True, "recibe": (58, 3), "opcional": True,
+    },
+    {
+        "key": "OP-DEMO-MOM", "referencia": "Mom vintage tiro alto", "tipo": catalog.ORDER_PRODUCTION, "dias": 2,
+        "responsable": "Jorge Santos (corte)", "resultado": "Pantalón genérico stretch", "prendas": 50,
+        "desde_ficha": True, "opcional": True,  # queda en proceso
+    },
+    {
+        "key": "LV-DEMO-CLASICO", "referencia": "Clásico 5 bolsillos frosteado", "tipo": catalog.ORDER_LAUNDRY, "dias": 1,
+        "responsable": "Lavandería Sol del Norte", "destino": "Lavandería Sol del Norte",
+        "resultado": "REF-1427 Clásico 5 bolsillos frosteado", "opcional": True,  # queda en proceso
+        "lineas": [("Pantalón genérico rígido", 40), ("Etiqueta tejida de marca", 40), ("Hang tag de cartón", 40)],
+    },
 ]
 
 
@@ -293,17 +313,31 @@ class Command(BaseCommand):
             known = OrdenSalida.objects.filter(observaciones=marker) | OrdenSalida.objects.filter(ficha_tecnica=spec["key"])
             if known.exists():
                 continue
-            lines = [
-                {"producto": by_name[name.casefold()].id, "cantidad": quantity}
-                for name, quantity in spec["lineas"]
-            ]
-            order = services.create_order(
-                user=user, tipo=spec["tipo"], fecha_salida=today - timedelta(days=spec["dias"]),
-                responsable=spec["responsable"], referencia_id=references[spec["referencia"].casefold()].id,
-                producto_resultado_id=by_name[spec["resultado"].casefold()].id, lineas=lines,
-                destino=spec.get("destino", ""), cantidad_prendas=spec.get("prendas"),
-                observaciones=marker,
-            )
+            reference = references[spec["referencia"].casefold()]
+            try:
+                if spec.get("desde_ficha"):
+                    plan = fichas.compute_requirements(reference, spec["prendas"])
+                    if not plan["viable"]:
+                        self.stdout.write(f"Omitida {spec['key']}: no alcanza el material para {spec['prendas']} prendas.")
+                        continue
+                    lines = [{"producto": row["producto"], "cantidad": row["requerido"]} for row in plan["lineas"]]
+                else:
+                    lines = [
+                        {"producto": by_name[name.casefold()].id, "cantidad": quantity}
+                        for name, quantity in spec["lineas"]
+                    ]
+                order = services.create_order(
+                    user=user, tipo=spec["tipo"], fecha_salida=today - timedelta(days=spec["dias"]),
+                    responsable=spec["responsable"], referencia_id=reference.id,
+                    producto_resultado_id=by_name[spec["resultado"].casefold()].id, lineas=lines,
+                    destino=spec.get("destino", ""), cantidad_prendas=spec.get("prendas"),
+                    observaciones=marker,
+                )
+            except ValidationError as error:
+                if not spec.get("opcional"):
+                    raise
+                self.stdout.write(f"Omitida {spec['key']}: {error.detail}")
+                continue
             created += 1
             if spec.get("recibe"):
                 quantity, days_back = spec["recibe"]

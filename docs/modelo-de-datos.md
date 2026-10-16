@@ -139,9 +139,33 @@ erDiagram
         int tamano
         bigint subido_por FK
     }
+    Referencia {
+        bigint id PK
+        varchar_20 codigo
+        varchar_150 nombre
+        varchar_500 descripcion
+        varchar_15 ajuste
+        varchar_15 estado
+        bigint creado_por FK
+    }
+    Variante {
+        bigint id PK
+        bigint referencia FK
+        varchar_10 talla
+        varchar_60 color
+    }
+    ImagenReferencia {
+        bigint id PK
+        bigint referencia FK
+        bytea imagen
+        varchar_20 tipo
+        int version
+        boolean principal
+    }
     CustomUser |o--o{ Evidencia : "subido_por"
     CustomUser |o--o{ Movimiento : "registrado_por"
     CustomUser |o--o{ OrdenSalida : "registrado_por"
+    CustomUser |o--o{ Referencia : "creado_por"
     CustomUser |o--o{ RolePermission : "granted_by"
     CustomUser ||--o{ PasswordResetToken : "user"
     ModulePermission ||--o{ RolePermission : "permission"
@@ -153,6 +177,8 @@ erDiagram
     Producto ||--o{ OrdenLinea : "producto"
     Producto ||--o{ OrdenSalida : "producto_resultado"
     Proveedor |o--o{ Movimiento : "proveedor"
+    Referencia ||--o{ ImagenReferencia : "referencia"
+    Referencia ||--o{ Variante : "referencia"
     Role |o--o{ CustomUser : "requested_area"
     Role ||--o{ CustomUser : "role"
     Role ||--o{ RolePermission : "role"
@@ -349,3 +375,41 @@ Foto o PDF adjunto a un movimiento o a una orden.
 | `content_type` | varchar(40) |  |  |
 | `tamano` | int |  |  |
 | `subido_por` | bigint | FK, nulo | → `CustomUser` |
+
+### Referencia (`referencias_referencia`)
+
+Un modelo de jean del catálogo de la empresa.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(20) |  |  |
+| `nombre` | varchar(150) |  |  |
+| `descripcion` | varchar(500) |  |  |
+| `ajuste` | varchar(15) |  |  |
+| `estado` | varchar(15) |  |  |
+| `creado_por` | bigint | FK, nulo | → `CustomUser` |
+
+### Variante (`referencias_variante`)
+
+Talla y color en que se fabrica una referencia.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `referencia` | bigint | FK | → `Referencia` |
+| `talla` | varchar(10) |  |  |
+| `color` | varchar(60) |  |  |
+
+### ImagenReferencia (`referencias_imagen`)
+
+Foto del prototipo. Se guarda en la base y se sirve con sesión (como la del catálogo de insumos).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `referencia` | bigint | FK | → `Referencia` |
+| `imagen` | bytea |  |  |
+| `tipo` | varchar(20) |  |  |
+| `version` | int |  |  |
+| `principal` | boolean |  |  |

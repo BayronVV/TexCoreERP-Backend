@@ -84,9 +84,15 @@ Cuatro pestañas:
 : Crea una orden que saca materiales del almacén.
 
     1. Elige el tipo: **Producción (OP)** o **Lavandería (LV)**.
-    2. Indica el responsable, la ficha técnica y el producto que se obtendrá.
-    3. Arma la **Cesta de la orden** con **Agregar a la cesta**. Si no hay stock suficiente el sistema lo avisa y muestra qué falta.
-    4. Adjunta evidencias si lo necesitas y guarda. Se descuenta el stock y se genera el código de la orden (OP-0001, LV-0001...).
+    2. Indica el responsable y elige la **Referencia de jean** de la lista (solo salen las referencias activas). El código de la
+       referencia (REF-0001) queda como lote con el que volverá al inventario. Para producción la referencia necesita ficha técnica;
+       las que no la tienen aparecen deshabilitadas.
+    3. En producción escribe las **Prendas a producir**: la **Cesta de la orden** se llena sola con los materiales de la ficha
+       (con la merma incluida y redondeados hacia arriba), marcados con *Ficha*. Si falta stock el sistema lo avisa y muestra cuánto.
+       Puedes ajustar las cantidades o agregar otros productos con **Agregar a la cesta**; si cambias la referencia o las prendas,
+       los materiales de la ficha se recalculan. En lavandería la cesta se arma a mano.
+    4. Elige el producto que se obtendrá, adjunta evidencias si lo necesitas y guarda. Se descuenta el stock y se genera el código
+       de la orden (OP-0001, LV-0001...).
 
 **Historial**
 : El **Kardex de movimientos** (ingresos y salidas con saldo, quién registró y evidencias) y la lista de **Órdenes**
@@ -105,6 +111,33 @@ La categoría y la unidad no se pueden cambiar cuando el producto ya tiene movim
 El **Directorio de proveedores** guarda NIT, razón social, contacto, ciudad y el tipo de insumo que suministran.
 El NIT no puede repetirse entre proveedores activos. Un proveedor se puede **archivar** (deja de salir en los ingresos
 pero conserva su historial) y **Restaurar**.
+
+## 6. Jefe de producción: referencias y fichas técnicas
+
+Menú **Referencias de Jean → Catálogo de jeans**.
+
+### Referencias
+
+Cada referencia es un modelo de jean: nombre, tipo de ajuste, descripción, **tallas y colores** (se crea una combinación por cada
+talla y color que escribas) y hasta cinco **fotos del prototipo**, una principal. Nace como *Borrador* y se **Activa** cuando tiene
+al menos una combinación y una foto. Una referencia activa se **Descontinúa** en lugar de borrarse; solo las que no están activas
+se pueden **Archivar**.
+
+### Ficha técnica de consumo por unidad
+
+Desde la tarjeta de la referencia, **Ficha técnica**. Define cuánto lleva **una prenda**:
+
+1. Elige el **Tipo de lavado** (opcional) y las notas de la ficha.
+2. Con **+ Agregar material** añade cada materia prima o insumo del catálogo de inventario, con la **Cantidad por prenda** y la
+   **Merma %** (por ejemplo el desperdicio de corte de la tela). La columna *Con merma* muestra el consumo real por prenda.
+   Un material no se puede repetir; las piezas enteras (botones, cierres, remaches) llevan cantidades enteras y no llevan merma.
+3. **Guardar ficha**. La lista completa reemplaza a la anterior.
+
+Debajo hay un espacio para adjuntar el **PDF de la ficha técnica extensa** (geometral, secuencia de confección, tabla de medidas),
+de hasta 5 MB. Se puede **Ver**, **Reemplazar** o **Quitar**. Solo se adjunta cuando la ficha ya está guardada.
+
+Con la ficha lista, el Almacenista solo elige la referencia y las prendas al crear una orden de producción. Una ficha no se puede quitar
+ni una referencia archivar mientras tenga órdenes en proceso.
 
 ## Preguntas frecuentes
 

@@ -230,6 +230,13 @@ erDiagram
         timestamp momento
         varchar_255 nota
     }
+    TarifaManoObra {
+        bigint id PK
+        varchar_16 etapa
+        decimal_12_4 costo_minuto
+        date vigente_desde
+        bigint creado_por FK
+    }
     CustomUser |o--o{ EtapaLote : "responsable"
     CustomUser |o--o{ EventoEtapa : "usuario"
     CustomUser |o--o{ Evidencia : "subido_por"
@@ -239,6 +246,7 @@ erDiagram
     CustomUser |o--o{ OrdenSalida : "registrado_por"
     CustomUser |o--o{ Referencia : "creado_por"
     CustomUser |o--o{ RolePermission : "granted_by"
+    CustomUser |o--o{ TarifaManoObra : "creado_por"
     CustomUser ||--o{ PasswordResetToken : "user"
     EtapaLote ||--o{ EventoEtapa : "etapa_lote"
     FichaTecnica ||--o{ FichaLinea : "ficha"
@@ -599,3 +607,15 @@ Historial de una etapa: quién la inició, pausó, reanudó o terminó, y cuánd
 | `usuario` | bigint | FK, nulo | → `CustomUser` |
 | `momento` | timestamp |  |  |
 | `nota` | varchar(255) |  |  |
+
+### TarifaManoObra (`produccion_tarifa_mano_obra`)
+
+Tarifa de mano de obra por minuto para una etapa productiva (HU 4.6 / RF16, TE-129).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `etapa` | varchar(16) |  |  |
+| `costo_minuto` | decimal(12,4) |  |  |
+| `vigente_desde` | date |  |  |
+| `creado_por` | bigint | FK, nulo | → `CustomUser` |

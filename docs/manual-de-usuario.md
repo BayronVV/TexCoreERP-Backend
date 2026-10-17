@@ -208,6 +208,22 @@ Menú **Producción y Trazabilidad → Monitor de estado**. Muestra **todos los 
 - El tablero se **actualiza solo cada 20 segundos** mientras la pestaña esté a la vista, y también con el botón **Actualizar**.
 - El **Gerente** ve el tablero pero no puede mover lotes. Los lotes de órdenes anuladas no aparecen.
 
+### Liquidación de órdenes y costeo (HU 4.6)
+
+Menú **Producción y Trazabilidad → Liquidación de Órdenes**. Permite consultar la conciliación financiera real de cada orden de producción (RF16), calculando el costo de materiales y el costo de mano de obra invertido:
+
+1. **Selección de orden:** elige una orden de producción para consultar su desglose de costos. La pantalla muestra la referencia, la cantidad de prendas fabricadas, el estado de producción y si está anulada.
+2. **Costo de materiales:** corresponde a la suma de las cantidades reales consumidas por orden multiplicadas por la foto del costo unitario tomada al descontar el material (`OrdenLinea.costo_unitario`, basado en el costo promedio ponderado de compra).
+   - *Prorrateo por lote:* como los materiales se descuentan para la orden completa, a cada lote se le asigna material en estricta proporción a sus prendas: `total_materiales × prendas_del_lote / prendas_de_la_orden`.
+   - Si algún material no tiene costo registrado, se marca claramente como *Sin costo* y se genera una advertencia.
+3. **Costo de mano de obra:** para cada lote y etapa (Corte, Confección y Terminación), toma el tiempo neto registrado (en segundos, sin pausas), lo convierte a minutos y lo multiplica por la **tarifa por minuto** vigente a la fecha de finalización de la etapa (o la fecha actual si la etapa sigue en curso).
+   - Si una etapa está en curso, su costo se marca como *provisional* porque el tiempo neto sigue sumando minutos.
+   - Si una etapa acumula tiempo pero no existe una tarifa vigente para esa etapa, se marca como *Sin tarifa* y se genera una advertencia.
+4. **Tarifas de mano de obra (gestión):** en la pestaña de tarifas, quienes tienen permiso de gestión pueden consultar el histórico y registrar una nueva vigencia de costo por minuto por etapa (`Corte`, `Confección` o `Terminación`) indicando su fecha de inicio (por defecto hoy). El sistema no sobreescribe ni elimina tarifas pasadas, conservando la trazabilidad histórica de costos.
+5. **Totales, costo por prenda y distribución:** la liquidación resume el costo total de materiales, el total de mano de obra, el costo por prenda fabricada y la distribución porcentual (% Materiales vs % Mano de Obra) mediante una gráfica comparativa.
+   - Si faltan tarifas o costos de materiales, el sistema advierte que el cálculo es *parcial* (`completo: false`).
+   - Si la orden fue anulada, los costos se reflejan en cero ya que los insumos y materiales fueron devueltos al almacén.
+
 ## Preguntas frecuentes
 
 **No veo un módulo del menú.** Tu rol no tiene permiso. Pídele a un administrador que lo ajuste en *Roles y permisos*.

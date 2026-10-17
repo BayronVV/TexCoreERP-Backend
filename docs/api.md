@@ -59,6 +59,8 @@ Los detalles de cada endpoint (parámetros, cuerpos y respuestas) están en Swag
 | `produccion` | `/api/produccion/ordenes/` (crear y listar órdenes con lotes y tallas), `/api/produccion/ordenes/<id>/`, `/api/produccion/ordenes/<id>/anular/` | TE-52 |
 | `produccion` | `/api/produccion/lotes/<id>/<accion>/` (`iniciar`, `pausar`, `reanudar`, `completar`: el tiempo por etapa de cada lote) y `/api/produccion/lotes/<id>/historial/` | TE-53 |
 | `produccion` | `/api/produccion/monitor/` (los lotes agrupados por columna: Planeada, En proceso, En pausa y Terminada, con totales, límite por columna, filtros por orden y referencia, alertas de lotes detenidos, ventana de días de la columna Terminada y columna opcional de canceladas) | TE-55 |
+| `produccion` | `/api/produccion/tarifas/` (historial de tarifas de mano de obra por minuto por etapa y registro de nuevas vigencias) | TE-56, TE-129 |
+| `produccion` | `/api/produccion/ordenes/<id>/costos/` (liquidación financiera: costo real de materiales vs mano de obra por lote y etapa, distribución y costo por prenda) | TE-56, TE-130 |
 | `salud` | `/api/health/`, `/api/health/db/` | — |
 
 ## Ejemplo: registrar un ingreso

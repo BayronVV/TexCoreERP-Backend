@@ -137,3 +137,33 @@ class EventoEtapa(BaseModel):
         db_table = "produccion_evento_etapa"
         ordering = ["momento", "id"]
         indexes = [models.Index(fields=["etapa_lote", "momento"], name="ix_prod_evento_etapa_momento")]
+
+
+class TarifaManoObra(BaseModel):
+    """Tarifa de mano de obra por minuto para una etapa productiva (HU 4.6 / RF16, TE-129).
+
+    Es provisional por etapa; cuando exista la HU 4.4 se ampliará por operario. Guarda el historial de vigencias:
+    nunca se edita ni borra una tarifa ya creada, se agrega una nueva con su fecha `vigente_desde`.
+    """
+    etapa = models.CharField(max_length=16, choices=catalog.STAGES)
+    costo_minuto = models.DecimalField(
+        max_digits=12, decimal_places=4, help_text="Costo en COP por minuto de trabajo (> 0)"
+    )
+    vigente_desde = models.DateField(help_text="Fecha a partir de la cual rige esta tarifa")
+    creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True)
+
+    class Meta:
+        db_table = "produccion_tarifa_mano_obra"
+        ordering = ["etapa", "-vigente_desde", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(costo_minuto__gt=0), name="ck_produccion_tarifa_costo_minuto_positivo"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["etapa", "vigente_desde"], name="ix_prod_tarifa_etapa_vigencia"),
+        ]
+
+    def __str__(self):
+        return f"{self.etapa} - {self.costo_minuto}/min desde {self.vigente_desde}"
+

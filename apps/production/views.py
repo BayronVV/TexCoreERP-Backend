@@ -1,3 +1,5 @@
+from django.http import Http404
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import generics, status
 from rest_framework.response import Response
@@ -7,18 +9,21 @@ from apps.inventory.services import fail
 from apps.inventory.views import apply_filters, limited
 from apps.references import fichas
 
-from . import catalog, monitor, services, tracking
-from .models import EventoEtapa, Lote, OrdenProduccion
+from . import catalog, costing, monitor, services, tracking
+from .models import EventoEtapa, Lote, OrdenProduccion, TarifaManoObra
 from .serializers import (
     AccionLoteSerializer,
     AnulacionProduccionSerializer,
     EventoEtapaSerializer,
     LoteSerializer,
     MonitorSerializer,
+    OrdenCostosRespuestaSerializer,
     OrdenProduccionInputSerializer,
     OrdenProduccionSerializer,
     SimulacionInputSerializer,
     SimulacionSalidaSerializer,
+    TarifaManoObraInputSerializer,
+    TarifaManoObraSerializer,
 )
 
 
@@ -196,3 +201,70 @@ class MonitorView(APIView):
             include_cancelled=_query_bool(request, "canceladas"),
         )
         return Response(MonitorSerializer(board, context={"now": board["generado_at"]}).data)
+
+
+# --- Tarifas de mano de obra y costos de producción (HU 4.6, TE-129 / TE-130) ---
+
+TARIFAS_PERMISSIONS = {"GET": catalog.PRODUCTION_VIEW, "POST": catalog.PRODUCTION_MANAGE}
+
+
+@extend_schema(tags=["produccion"])
+class TarifasView(APIView):
+    required_permissions = TARIFAS_PERMISSIONS
+
+    @extend_schema(
+        summary="Listar el historial de tarifas de mano de obra por minuto (HU 4.6, TE-129)",
+        responses={200: TarifaManoObraSerializer(many=True)},
+        description="Devuelve el historial de tarifas vigentes por etapa (corte, confección, terminación). Las tarifas nunca "
+                    "se modifican ni borran: para actualizar un precio se crea una nueva vigencia con `POST`.",
+    )
+    def get(self, request):
+        tarifas = TarifaManoObra.objects.filter(deleted_at__isnull=True).order_by("etapa", "-vigente_desde", "-id")
+        return Response(TarifaManoObraSerializer(tarifas, many=True).data)
+
+    @extend_schema(
+        summary="Registrar una nueva vigencia de tarifa de mano de obra (HU 4.6, TE-129)",
+        request=TarifaManoObraInputSerializer,
+        responses={201: TarifaManoObraSerializer},
+        description="Agrega una tarifa por minuto para una etapa productiva a partir de una fecha de vigencia (por defecto hoy). "
+                    "Se utiliza para costear las etapas que finalicen en esa vigencia o sigan en curso.",
+    )
+    def post(self, request):
+        data = TarifaManoObraInputSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        vigente_desde = data.validated_data.get("vigente_desde") or timezone.localdate()
+        tarifa = TarifaManoObra.objects.create(
+            etapa=data.validated_data["etapa"],
+            costo_minuto=data.validated_data["costo_minuto"],
+            vigente_desde=vigente_desde,
+            creado_por=request.user,
+        )
+        return Response(TarifaManoObraSerializer(tarifa).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(
+    tags=["produccion"],
+    summary="Costos y liquidación financiera de una orden de producción (HU 4.6, TE-130)",
+    responses={200: OrdenCostosRespuestaSerializer},
+    description="Calcula los costos reales de la orden: materiales consumidos (según costo de compra/promedio de cada línea) "
+                    "y mano de obra de cada etapa de cada lote (tiempo neto invertido × tarifa por minuto vigente). Prorratea "
+                    "materiales a los lotes en proporción a sus prendas. Informa si el costeo está `completo` o es parcial con "
+                    "`advertencias` si faltan tarifas o costos de material. Una orden anulada devuelve costos en cero.",
+)
+class OrdenProduccionCostosView(APIView):
+    required_permissions = catalog.PRODUCTION_VIEW
+
+    def get(self, request, pk):
+        try:
+            order = OrdenProduccion.objects.select_related(
+                "referencia", "orden_salida"
+            ).prefetch_related(
+                "orden_salida__lineas__producto",
+                "lotes__etapas",
+            ).get(pk=pk, deleted_at__isnull=True)
+        except OrdenProduccion.DoesNotExist:
+            raise Http404("La orden de producción no existe.")
+
+        result = costing.calculate_order_costs(order)
+        return Response(result)
+

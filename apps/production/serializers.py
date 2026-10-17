@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -6,7 +8,7 @@ from apps.inventory import catalog as inventory_catalog
 from apps.references.ficha_serializers import ConsumoLineaSerializer
 
 from . import catalog, monitor, tracking
-from .models import EtapaLote, EventoEtapa, Lote, LoteTalla, OrdenProduccion
+from .models import EtapaLote, EventoEtapa, Lote, LoteTalla, OrdenProduccion, TarifaManoObra
 
 
 class SimulacionInputSerializer(serializers.Serializer):
@@ -335,3 +337,121 @@ class MonitorSerializer(serializers.Serializer):
         child=serializers.IntegerField(), help_text="Lotes activos detenidos: `atencion` (desde 2 h) y `critica` (desde 8 h)"
     )
     columnas = ColumnaMonitorSerializer(many=True)
+
+
+# --- Tarifas de mano de obra y costos de producción (HU 4.6, TE-129 / TE-130) ---
+
+class TarifaManoObraSerializer(serializers.ModelSerializer):
+    """Tarifa de mano de obra por minuto para una etapa productiva."""
+    etapa_nombre = serializers.CharField(source="get_etapa_display", read_only=True)
+    costo_minuto = serializers.SerializerMethodField()
+    creado_por_nombre = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TarifaManoObra
+        fields = [
+            "id", "etapa", "etapa_nombre", "costo_minuto", "vigente_desde",
+            "creado_por", "creado_por_nombre", "created_at",
+        ]
+        read_only_fields = ["id", "etapa_nombre", "costo_minuto", "creado_por", "creado_por_nombre", "created_at"]
+
+    def get_costo_minuto(self, obj) -> str:
+        return f"{obj.costo_minuto:.4f}"
+
+    def get_creado_por_nombre(self, obj) -> str:
+        return (obj.creado_por.get_full_name() or obj.creado_por.email) if obj.creado_por else ""
+
+
+class TarifaManoObraInputSerializer(serializers.Serializer):
+    """Datos para registrar una nueva vigencia de tarifa de mano de obra."""
+    etapa = serializers.ChoiceField(choices=catalog.STAGES)
+    costo_minuto = serializers.DecimalField(
+        max_digits=12, decimal_places=4, min_value=Decimal("0.0001"),
+        help_text="Costo por minuto en COP (mayor que cero, hasta 4 decimales)",
+    )
+    vigente_desde = serializers.DateField(
+        required=False, allow_null=True, default=None,
+        help_text="Fecha de vigencia (opcional, por defecto hoy)",
+    )
+
+
+class OrdenCostosInfoSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    codigo = serializers.CharField()
+    referencia_codigo = serializers.CharField()
+    referencia_nombre = serializers.CharField()
+    cantidad = serializers.IntegerField()
+    estado_produccion = serializers.CharField()
+    anulada = serializers.BooleanField()
+
+
+class MaterialLineaCostoSerializer(serializers.Serializer):
+    producto = serializers.IntegerField()
+    codigo = serializers.CharField()
+    nombre = serializers.CharField()
+    unidad = serializers.CharField()
+    cantidad = serializers.CharField()
+    costo_unitario = serializers.CharField(allow_null=True)
+    costo = serializers.CharField()
+    sin_costo = serializers.BooleanField()
+
+
+class MaterialesCostosSerializer(serializers.Serializer):
+    lineas = MaterialLineaCostoSerializer(many=True)
+    total = serializers.CharField()
+
+
+class EtapaLoteCostoSerializer(serializers.Serializer):
+    etapa = serializers.CharField()
+    etapa_nombre = serializers.CharField()
+    estado = serializers.CharField()
+    segundos_netos = serializers.IntegerField()
+    tarifa_minuto = serializers.CharField(allow_null=True)
+    costo = serializers.CharField()
+    sin_tarifa = serializers.BooleanField()
+    provisional = serializers.BooleanField()
+
+
+class LoteCostoSerializer(serializers.Serializer):
+    lote = serializers.IntegerField()
+    codigo = serializers.CharField()
+    cantidad = serializers.IntegerField()
+    materiales_asignados = serializers.CharField()
+    etapas = EtapaLoteCostoSerializer(many=True)
+    total = serializers.CharField()
+
+
+class EtapaResumenCostoSerializer(serializers.Serializer):
+    etapa = serializers.CharField()
+    etapa_nombre = serializers.CharField()
+    segundos_netos = serializers.IntegerField()
+    costo = serializers.CharField()
+
+
+class ManoObraCostosSerializer(serializers.Serializer):
+    por_lote = LoteCostoSerializer(many=True)
+    por_etapa = EtapaResumenCostoSerializer(many=True)
+    total = serializers.CharField()
+
+
+class TotalesCostosSerializer(serializers.Serializer):
+    materiales = serializers.CharField()
+    mano_obra = serializers.CharField()
+    total = serializers.CharField()
+    costo_por_prenda = serializers.CharField()
+
+
+class DistribucionCostosSerializer(serializers.Serializer):
+    materiales_pct = serializers.CharField()
+    mano_obra_pct = serializers.CharField()
+
+
+class OrdenCostosRespuestaSerializer(serializers.Serializer):
+    orden = OrdenCostosInfoSerializer()
+    completo = serializers.BooleanField()
+    advertencias = serializers.ListField(child=serializers.CharField())
+    materiales = MaterialesCostosSerializer()
+    mano_obra = ManoObraCostosSerializer()
+    totales = TotalesCostosSerializer()
+    distribucion = DistribucionCostosSerializer()
+

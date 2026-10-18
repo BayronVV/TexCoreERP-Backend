@@ -268,6 +268,48 @@ erDiagram
         timestamp fin_at
         bigint asignada_por FK
     }
+    OrdenCompra {
+        bigint id PK
+        varchar_20 codigo
+        bigint proveedor FK
+        date fecha
+        date fecha_esperada
+        varchar_120 condiciones_pago
+        varchar_500 notas
+        varchar_16 estado
+        bigint creado_por FK
+        bigint aprobado_por FK
+        timestamp aprobada_at
+        varchar_255 motivo_cierre
+        timestamp cerrada_at
+    }
+    LineaCompra {
+        bigint id PK
+        bigint orden FK
+        bigint producto FK
+        decimal_12_2 cantidad_pedida
+        decimal_14_4 precio_pactado
+    }
+    Recepcion {
+        bigint id PK
+        varchar_20 codigo
+        bigint orden FK
+        bigint proveedor FK
+        varchar_40 documento
+        date fecha
+        varchar_500 observaciones
+        bigint recibido_por FK
+    }
+    RecepcionLinea {
+        bigint id PK
+        bigint recepcion FK
+        bigint linea_compra FK
+        bigint producto FK
+        bigint movimiento FK UK
+        decimal_12_2 cantidad
+        varchar_60 lote
+        decimal_14_4 costo_unitario
+    }
     CustomUser |o--o{ AsignacionEtapa : "asignada_por"
     CustomUser |o--o{ EtapaLote : "responsable"
     CustomUser |o--o{ EventoEtapa : "usuario"
@@ -275,8 +317,11 @@ erDiagram
     CustomUser |o--o{ FichaTecnica : "actualizado_por"
     CustomUser |o--o{ Movimiento : "registrado_por"
     CustomUser |o--o{ Operario : "usuario"
+    CustomUser |o--o{ OrdenCompra : "aprobado_por"
+    CustomUser |o--o{ OrdenCompra : "creado_por"
     CustomUser |o--o{ OrdenProduccion : "creado_por"
     CustomUser |o--o{ OrdenSalida : "registrado_por"
+    CustomUser |o--o{ Recepcion : "recibido_por"
     CustomUser |o--o{ Referencia : "creado_por"
     CustomUser |o--o{ RolePermission : "granted_by"
     CustomUser |o--o{ TarifaManoObra : "creado_por"
@@ -284,22 +329,31 @@ erDiagram
     EtapaLote ||--o{ AsignacionEtapa : "etapa_lote"
     EtapaLote ||--o{ EventoEtapa : "etapa_lote"
     FichaTecnica ||--o{ FichaLinea : "ficha"
+    LineaCompra |o--o{ RecepcionLinea : "linea_compra"
     Lote ||--o{ EtapaLote : "lote"
     Lote ||--o{ LoteTalla : "lote"
     Maquina |o--o{ AsignacionEtapa : "maquina"
     ModulePermission ||--o{ RolePermission : "permission"
     Movimiento |o--o{ Evidencia : "movimiento"
+    Movimiento ||--o{ RecepcionLinea : "movimiento"
     Operario |o--o{ AsignacionEtapa : "operario"
+    OrdenCompra |o--o{ Recepcion : "orden"
+    OrdenCompra ||--o{ LineaCompra : "orden"
     OrdenProduccion ||--o{ Lote : "orden"
     OrdenSalida |o--o{ Evidencia : "orden"
     OrdenSalida |o--o{ Movimiento : "orden"
     OrdenSalida ||--o{ OrdenLinea : "orden"
     OrdenSalida ||--o{ OrdenProduccion : "orden_salida"
     Producto ||--o{ FichaLinea : "producto"
+    Producto ||--o{ LineaCompra : "producto"
     Producto ||--o{ Movimiento : "producto"
     Producto ||--o{ OrdenLinea : "producto"
     Producto ||--o{ OrdenSalida : "producto_resultado"
+    Producto ||--o{ RecepcionLinea : "producto"
     Proveedor |o--o{ Movimiento : "proveedor"
+    Proveedor ||--o{ OrdenCompra : "proveedor"
+    Proveedor ||--o{ Recepcion : "proveedor"
+    Recepcion ||--o{ RecepcionLinea : "recepcion"
     Referencia |o--o{ OrdenSalida : "referencia"
     Referencia ||--o{ FichaTecnica : "referencia"
     Referencia ||--o{ ImagenReferencia : "referencia"
@@ -701,3 +755,65 @@ Quién trabajó una etapa de un lote y con qué máquina, y entre cuándo (HU 4.
 | `inicio_at` | timestamp |  |  |
 | `fin_at` | timestamp | nulo |  |
 | `asignada_por` | bigint | FK, nulo | → `CustomUser` |
+
+### OrdenCompra (`compras_orden`)
+
+Pedido de materiales a un proveedor. No es factura ni remisión: confirma lo pedido.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(20) |  |  |
+| `proveedor` | bigint | FK | → `Proveedor` |
+| `fecha` | date |  |  |
+| `fecha_esperada` | date | nulo |  |
+| `condiciones_pago` | varchar(120) |  |  |
+| `notas` | varchar(500) |  |  |
+| `estado` | varchar(16) |  |  |
+| `creado_por` | bigint | FK, nulo | → `CustomUser` |
+| `aprobado_por` | bigint | FK, nulo | → `CustomUser` |
+| `aprobada_at` | timestamp | nulo |  |
+| `motivo_cierre` | varchar(255) |  |  |
+| `cerrada_at` | timestamp | nulo |  |
+
+### LineaCompra (`compras_linea`)
+
+Un material pedido en la orden. La cantidad recibida no se guarda aquí: se suma de las recepciones.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `orden` | bigint | FK | → `OrdenCompra` |
+| `producto` | bigint | FK | → `Producto` |
+| `cantidad_pedida` | decimal(12,2) |  |  |
+| `precio_pactado` | decimal(14,4) | nulo |  |
+
+### Recepcion (`compras_recepcion`)
+
+Entrega de mercancía recibida en el almacén: con una orden de compra o suelta (varios productos de un proveedor).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(20) |  |  |
+| `orden` | bigint | FK, nulo | → `OrdenCompra` |
+| `proveedor` | bigint | FK | → `Proveedor` |
+| `documento` | varchar(40) |  |  |
+| `fecha` | date |  |  |
+| `observaciones` | varchar(500) |  |  |
+| `recibido_por` | bigint | FK, nulo | → `CustomUser` |
+
+### RecepcionLinea (`compras_recepcion_linea`)
+
+Un producto recibido en una recepción, con su lote y su costo real, enlazado al movimiento del kardex.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `recepcion` | bigint | FK | → `Recepcion` |
+| `linea_compra` | bigint | FK, nulo | → `LineaCompra` |
+| `producto` | bigint | FK | → `Producto` |
+| `movimiento` | bigint | FK, UK | → `Movimiento` |
+| `cantidad` | decimal(12,2) |  |  |
+| `lote` | varchar(60) |  |  |
+| `costo_unitario` | decimal(14,4) | nulo |  |

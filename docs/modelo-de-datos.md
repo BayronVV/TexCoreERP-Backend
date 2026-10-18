@@ -237,23 +237,59 @@ erDiagram
         date vigente_desde
         bigint creado_por FK
     }
+    Operario {
+        bigint id PK
+        varchar_20 codigo
+        varchar_120 nombres
+        varchar_20 documento
+        json etapas
+        varchar_8 tipo_pago
+        boolean activo
+        bigint usuario FK
+    }
+    Maquina {
+        bigint id PK
+        varchar_20 codigo
+        varchar_14 tipo
+        varchar_120 marca_modelo
+        varchar_60 serial
+        varchar_80 ubicacion
+        varchar_14 estado
+        json etapas
+        varchar_255 observaciones
+        boolean activo
+    }
+    AsignacionEtapa {
+        bigint id PK
+        bigint etapa_lote FK
+        bigint operario FK
+        bigint maquina FK
+        timestamp inicio_at
+        timestamp fin_at
+        bigint asignada_por FK
+    }
+    CustomUser |o--o{ AsignacionEtapa : "asignada_por"
     CustomUser |o--o{ EtapaLote : "responsable"
     CustomUser |o--o{ EventoEtapa : "usuario"
     CustomUser |o--o{ Evidencia : "subido_por"
     CustomUser |o--o{ FichaTecnica : "actualizado_por"
     CustomUser |o--o{ Movimiento : "registrado_por"
+    CustomUser |o--o{ Operario : "usuario"
     CustomUser |o--o{ OrdenProduccion : "creado_por"
     CustomUser |o--o{ OrdenSalida : "registrado_por"
     CustomUser |o--o{ Referencia : "creado_por"
     CustomUser |o--o{ RolePermission : "granted_by"
     CustomUser |o--o{ TarifaManoObra : "creado_por"
     CustomUser ||--o{ PasswordResetToken : "user"
+    EtapaLote ||--o{ AsignacionEtapa : "etapa_lote"
     EtapaLote ||--o{ EventoEtapa : "etapa_lote"
     FichaTecnica ||--o{ FichaLinea : "ficha"
     Lote ||--o{ EtapaLote : "lote"
     Lote ||--o{ LoteTalla : "lote"
+    Maquina |o--o{ AsignacionEtapa : "maquina"
     ModulePermission ||--o{ RolePermission : "permission"
     Movimiento |o--o{ Evidencia : "movimiento"
+    Operario |o--o{ AsignacionEtapa : "operario"
     OrdenProduccion ||--o{ Lote : "orden"
     OrdenSalida |o--o{ Evidencia : "orden"
     OrdenSalida |o--o{ Movimiento : "orden"
@@ -619,3 +655,49 @@ Tarifa de mano de obra por minuto para una etapa productiva (HU 4.6 / RF16, TE-1
 | `costo_minuto` | decimal(12,4) |  |  |
 | `vigente_desde` | date |  |  |
 | `creado_por` | bigint | FK, nulo | → `CustomUser` |
+
+### Operario (`produccion_operario`)
+
+Persona que trabaja en el taller. Es un catálogo simple: no exige un usuario del sistema (si el PM confirma que
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(20) |  |  |
+| `nombres` | varchar(120) |  |  |
+| `documento` | varchar(20) |  |  |
+| `etapas` | json |  |  |
+| `tipo_pago` | varchar(8) |  |  |
+| `activo` | boolean |  |  |
+| `usuario` | bigint | FK, nulo | → `CustomUser` |
+
+### Maquina (`produccion_maquina`)
+
+Máquina del taller. El estado guarda solo lo físico (disponible, en mantenimiento, fuera de servicio): que esté
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(20) |  |  |
+| `tipo` | varchar(14) |  |  |
+| `marca_modelo` | varchar(120) |  |  |
+| `serial` | varchar(60) |  |  |
+| `ubicacion` | varchar(80) |  |  |
+| `estado` | varchar(14) |  |  |
+| `etapas` | json |  |  |
+| `observaciones` | varchar(255) |  |  |
+| `activo` | boolean |  |  |
+
+### AsignacionEtapa (`produccion_asignacion_etapa`)
+
+Quién trabajó una etapa de un lote y con qué máquina, y entre cuándo (HU 4.4 / RF14).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `etapa_lote` | bigint | FK | → `EtapaLote` |
+| `operario` | bigint | FK, nulo | → `Operario` |
+| `maquina` | bigint | FK, nulo | → `Maquina` |
+| `inicio_at` | timestamp |  |  |
+| `fin_at` | timestamp | nulo |  |
+| `asignada_por` | bigint | FK, nulo | → `CustomUser` |

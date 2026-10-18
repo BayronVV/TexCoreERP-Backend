@@ -167,3 +167,94 @@ class TarifaManoObra(BaseModel):
     def __str__(self):
         return f"{self.etapa} - {self.costo_minuto}/min desde {self.vigente_desde}"
 
+
+
+# --- Asignación de recursos (HU 4.4 / RF14) ---
+
+class Operario(BaseModel):
+    """Persona que trabaja en el taller. Es un catálogo simple: no exige un usuario del sistema (si el PM confirma que
+    los operarios usan el sistema, `usuario` los enlaza). Solo se guardan los datos que producción necesita; la nómina,
+    la salud y los datos sensibles quedan fuera. Un operario con historial no se borra: se desactiva.
+    """
+    codigo = models.CharField(max_length=20)
+    nombres = models.CharField(max_length=120)
+    documento = models.CharField(max_length=20, blank=True, help_text="Cédula, solo dígitos (opcional)")
+    etapas = models.JSONField(default=list, help_text="Etapas en las que puede trabajar: CORTE, CONFECCION, TERMINACION")
+    tipo_pago = models.CharField(max_length=8, choices=catalog.PAY_TYPES, default=catalog.PAY_TIME)
+    activo = models.BooleanField(default=True)
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True, blank=True)
+
+    class Meta:
+        db_table = "produccion_operario"
+        ordering = ["nombres", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["codigo"], condition=Q(deleted_at__isnull=True), name="uq_produccion_operario_codigo_activo"
+            ),
+            models.UniqueConstraint(
+                fields=["documento"], condition=Q(deleted_at__isnull=True) & ~Q(documento=""),
+                name="uq_produccion_operario_documento_activo",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.codigo} {self.nombres}"
+
+
+class Maquina(BaseModel):
+    """Máquina del taller. El estado guarda solo lo físico (disponible, en mantenimiento, fuera de servicio): que esté
+    ocupada se calcula con las asignaciones abiertas de las etapas en curso.
+    """
+    codigo = models.CharField(max_length=20)
+    tipo = models.CharField(max_length=14, choices=catalog.MACHINE_TYPES)
+    marca_modelo = models.CharField(max_length=120, blank=True)
+    serial = models.CharField(max_length=60, blank=True)
+    ubicacion = models.CharField(max_length=80, blank=True, help_text="Línea o zona del taller")
+    estado = models.CharField(max_length=14, choices=catalog.MACHINE_STATES, default=catalog.MACHINE_AVAILABLE)
+    etapas = models.JSONField(default=list, help_text="Etapas en las que se usa: CORTE, CONFECCION, TERMINACION")
+    observaciones = models.CharField(max_length=255, blank=True)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "produccion_maquina"
+        ordering = ["codigo", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["codigo"], condition=Q(deleted_at__isnull=True), name="uq_produccion_maquina_codigo_activo"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.codigo} {self.get_tipo_display()}"
+
+
+class AsignacionEtapa(BaseModel):
+    """Quién trabajó una etapa de un lote y con qué máquina, y entre cuándo (HU 4.4 / RF14).
+
+    Cada etapa tiene como máximo una asignación abierta (`fin_at` vacío). Reasignar cierra la abierta y abre otra, así
+    queda el historial de quién trabajó y cuándo; terminar la etapa también la cierra. Operario y máquina son opcionales
+    por separado, pero una asignación lleva al menos uno.
+    """
+    etapa_lote = models.ForeignKey(EtapaLote, on_delete=models.PROTECT, related_name="asignaciones")
+    operario = models.ForeignKey(Operario, on_delete=models.PROTECT, related_name="asignaciones", null=True, blank=True)
+    maquina = models.ForeignKey(Maquina, on_delete=models.PROTECT, related_name="asignaciones", null=True, blank=True)
+    inicio_at = models.DateTimeField()
+    fin_at = models.DateTimeField(null=True, blank=True)
+    asignada_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True)
+
+    class Meta:
+        db_table = "produccion_asignacion_etapa"
+        ordering = ["inicio_at", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["etapa_lote"], condition=Q(fin_at__isnull=True) & Q(deleted_at__isnull=True),
+                name="uq_produccion_asignacion_abierta",
+            ),
+            models.CheckConstraint(
+                condition=Q(operario__isnull=False) | Q(maquina__isnull=False), name="ck_produccion_asignacion_recurso"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["operario", "fin_at"], name="ix_prod_asignacion_operario"),
+            models.Index(fields=["maquina", "fin_at"], name="ix_prod_asignacion_maquina"),
+        ]

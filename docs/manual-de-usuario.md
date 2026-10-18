@@ -208,6 +208,29 @@ Menú **Producción y Trazabilidad → Monitor de estado**. Muestra **todos los 
 - El tablero se **actualiza solo cada 20 segundos** mientras la pestaña esté a la vista, y también con el botón **Actualizar**.
 - El **Gerente** ve el tablero pero no puede mover lotes. Los lotes de órdenes anuladas no aparecen.
 
+### Operarios y máquinas (asignación de recursos)
+
+Menú **Producción y Trazabilidad → Recursos**. Es el catálogo de las personas y las máquinas del taller, con dos pestañas: **Operarios** y **Máquinas**.
+Los operarios **no necesitan una cuenta del sistema**: basta con registrarlos aquí.
+
+- **Operarios:** se registran con nombre, documento (opcional), las **etapas en las que pueden trabajar** (Corte, Confección, Terminación) y cómo se les
+  paga (por pieza, por tiempo o salario; solo informativo, la nómina no se maneja aquí). El código `OPE-0001` se genera solo. Por privacidad no se
+  guardan teléfono, dirección, salud ni salario.
+- **Máquinas:** se registran con su tipo (plana, fileteadora, collarín, presilladora, ojaladora, botonadora, remachadora, cortadora de tela u otra),
+  marca y modelo, serial, ubicación o línea y las etapas en las que se usan. El código `MAQ-0001` se genera solo. Su **estado** es físico:
+  *Disponible*, *En mantenimiento* o *Fuera de servicio*. Que una máquina esté **ocupada** no se anota a mano: se calcula con las etapas en curso.
+- **Nada se borra:** un operario o una máquina se **desactiva** para que no se pueda asignar, y se conserva su historial.
+- **Asignar:** en el **Seguimiento** de una orden, cada etapa de cada lote tiene un menú de **Operario** y otro de **Máquina**, que solo ofrecen los
+  habilitados para esa etapa. La asignación se guarda sin recargar la pantalla. Se puede cambiar mientras la etapa no haya terminado; **quitar** deja la
+  etapa sin responsable. Cada cambio cierra la asignación anterior y abre otra, así queda **quién trabajó cada etapa y cuándo**.
+- **Qué se rechaza:** un operario o una máquina inactivos o que no sirven para esa etapa, una máquina en mantenimiento o fuera de servicio, una etapa que
+  ya terminó y una orden anulada.
+- **Qué solo se avisa:** si el operario o la máquina ya están en otra etapa que está en curso, el sistema lo indica en amarillo pero **deja asignar**, porque
+  en un taller las máquinas se comparten por turnos. Lo mismo al pasar una máquina a mantenimiento mientras está en una etapa en curso: avisa y no cierra nada.
+- **Se libera solo:** al terminar la etapa o anular la orden, el operario y la máquina quedan libres y la asignación pasa al historial.
+- El **Monitor de estado** muestra, en cada tarjeta, el operario y la máquina de la etapa en curso.
+- El **Gerente** puede ver el catálogo y las asignaciones, pero no cambiarlos.
+
 ### Liquidación de órdenes y costeo (HU 4.6)
 
 Menú **Producción y Trazabilidad → Liquidación de Órdenes**. Permite consultar la conciliación financiera real de cada orden de producción (RF16), calculando el costo de materiales y el costo de mano de obra invertido:

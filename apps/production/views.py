@@ -1,3 +1,4 @@
+from django.db.models import Q
 from django.http import Http404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
@@ -9,14 +10,22 @@ from apps.inventory.services import fail
 from apps.inventory.views import apply_filters, limited
 from apps.references import fichas
 
-from . import catalog, costing, monitor, services, tracking
-from .models import EventoEtapa, Lote, OrdenProduccion, TarifaManoObra
+from . import catalog, costing, monitor, resources, services, tracking
+from .models import AsignacionEtapa, EventoEtapa, Lote, Maquina, Operario, OrdenProduccion, TarifaManoObra
 from .serializers import (
     AccionLoteSerializer,
     AnulacionProduccionSerializer,
+    AsignacionHistorialSerializer,
+    AsignacionRespuestaSerializer,
+    AsignarInputSerializer,
+    DesvincularInputSerializer,
     EventoEtapaSerializer,
     LoteSerializer,
+    MaquinaInputSerializer,
+    MaquinaSerializer,
     MonitorSerializer,
+    OperarioInputSerializer,
+    OperarioSerializer,
     OrdenCostosRespuestaSerializer,
     OrdenProduccionInputSerializer,
     OrdenProduccionSerializer,
@@ -55,7 +64,10 @@ ORDERS_READ_WRITE = {"GET": catalog.PRODUCTION_VIEW, "POST": catalog.PRODUCTION_
 def order_queryset():
     return OrdenProduccion.objects.select_related(
         "orden_salida__producto_resultado", "referencia", "creado_por"
-    ).prefetch_related("lotes__tallas", "lotes__etapas__responsable", "orden_salida__lineas__producto")
+    ).prefetch_related(
+        "lotes__tallas", "lotes__etapas__responsable", resources.open_assignments("lotes__etapas__"),
+        "orden_salida__lineas__producto",
+    )
 
 
 @extend_schema(tags=["produccion"])
@@ -119,7 +131,9 @@ class OrdenProduccionAnularView(APIView):
 
 
 def lot_queryset():
-    return Lote.objects.select_related("orden__orden_salida").prefetch_related("tallas", "etapas__responsable")
+    return Lote.objects.select_related("orden__orden_salida").prefetch_related(
+        "tallas", "etapas__responsable", resources.open_assignments()
+    )
 
 
 @extend_schema(
@@ -268,3 +282,221 @@ class OrdenProduccionCostosView(APIView):
         result = costing.calculate_order_costs(order)
         return Response(result)
 
+
+# --- Asignación de recursos: operarios, máquinas y su asignación a las etapas (HU 4.4, TE-119 a TE-122) ---
+
+RESOURCES_PERMISSIONS = {"GET": catalog.PRODUCTION_VIEW, "POST": catalog.PRODUCTION_MANAGE}
+RESOURCE_DETAIL_PERMISSIONS = {"GET": catalog.PRODUCTION_VIEW, "PATCH": catalog.PRODUCTION_MANAGE}
+
+
+def _flag(request, name):
+    """Filtro `activo=1|0` de la query string; vacío si no se envía."""
+    raw = request.query_params.get(name)
+    if raw in (None, ""):
+        return None
+    if raw not in ("1", "0", "true", "false"):
+        fail(f"`{name}` debe ser 1 o 0.", name)
+    return raw in ("1", "true")
+
+
+def _stage_filter(queryset, request):
+    stage = request.query_params.get("etapa")
+    if not stage:
+        return queryset
+    if stage not in catalog.STAGE_ORDER:
+        fail(f"`etapa` debe ser una de: {', '.join(catalog.STAGE_ORDER)}.", "etapa")
+    # `etapas` es una lista JSON pequeña: se filtra aquí porque `contains` sobre JSON no existe en SQLite.
+    return queryset.filter(pk__in=[item.pk for item in queryset if stage in item.etapas])
+
+
+def _saved(serializer_class, instance, warnings, busy_function, status_code=status.HTTP_200_OK):
+    data = serializer_class(instance, context={"busy": busy_function()}).data
+    return Response({**data, "advertencias": warnings}, status=status_code)
+
+
+@extend_schema(tags=["recursos"])
+class OperarioListCreateView(generics.ListAPIView):
+    required_permissions = RESOURCES_PERMISSIONS
+    serializer_class = OperarioSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        queryset = Operario.objects.all()
+        active = _flag(self.request, "activo")
+        if active is not None:
+            queryset = queryset.filter(activo=active)
+        queryset = _stage_filter(queryset, self.request)
+        text = self.request.query_params.get("q", "").strip()
+        if text:
+            queryset = queryset.filter(Q(nombres__icontains=text) | Q(codigo__icontains=text) | Q(documento__icontains=text))
+        return queryset
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "busy": resources.busy_by_operator()}
+
+    @extend_schema(
+        summary="Listar los operarios (filtros: activo, etapa, q)",
+        description="Catálogo de operarios del taller. `etapa` deja solo los habilitados para esa etapa y cada operario trae "
+                    "`ocupado_en` (las etapas en curso a las que está asignado). No exige que el operario tenga usuario del sistema.",
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Crear un operario (HU 4.4, TE-121)", request=OperarioInputSerializer, responses={201: OperarioSerializer},
+        description="Código automático `OPE-0001`. Se exige el nombre y al menos una etapa; el documento es opcional y único.",
+    )
+    def post(self, request):
+        data = OperarioInputSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        operator = resources.create_operator(data=data.validated_data)
+        return _saved(OperarioSerializer, operator, [], resources.busy_by_operator, status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["recursos"])
+class OperarioDetailView(generics.RetrieveUpdateAPIView):
+    required_permissions = RESOURCE_DETAIL_PERMISSIONS
+    serializer_class = OperarioSerializer
+    queryset = Operario.objects.all()
+    http_method_names = ["get", "patch", "head", "options"]
+
+    @extend_schema(
+        summary="Editar un operario o desactivarlo (HU 4.4, TE-121)", request=OperarioInputSerializer,
+        responses={200: OperarioSerializer},
+        description="Un operario no se borra: se desactiva con `activo=false` para conservar su historial. Si sigue asignado a "
+                    "una etapa en curso, la respuesta trae `advertencias`; no se le cierra nada por su cuenta.",
+    )
+    def patch(self, request, pk):
+        operator = generics.get_object_or_404(self.get_queryset(), pk=pk)
+        data = OperarioInputSerializer(data=request.data, partial=True)
+        data.is_valid(raise_exception=True)
+        operator, warnings = resources.update_operator(operator, data=data.validated_data)
+        return _saved(OperarioSerializer, operator, warnings, resources.busy_by_operator)
+
+
+@extend_schema(tags=["recursos"])
+class MaquinaListCreateView(generics.ListAPIView):
+    required_permissions = RESOURCES_PERMISSIONS
+    serializer_class = MaquinaSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        queryset = Maquina.objects.all()
+        active = _flag(self.request, "activo")
+        if active is not None:
+            queryset = queryset.filter(activo=active)
+        queryset = _stage_filter(queryset, self.request)
+        params = self.request.query_params
+        if params.get("estado"):
+            queryset = queryset.filter(estado=params["estado"])
+        if params.get("tipo"):
+            queryset = queryset.filter(tipo=params["tipo"])
+        text = params.get("q", "").strip()
+        if text:
+            queryset = queryset.filter(
+                Q(codigo__icontains=text) | Q(marca_modelo__icontains=text) | Q(ubicacion__icontains=text) | Q(serial__icontains=text)
+            )
+        return queryset
+
+    def get_serializer_context(self):
+        return {**super().get_serializer_context(), "busy": resources.busy_by_machine()}
+
+    @extend_schema(
+        summary="Listar las máquinas (filtros: activo, etapa, estado, tipo, q)",
+        description="Catálogo de máquinas del taller. Cada una trae su estado físico, `asignable` (activa y disponible) y "
+                    "`ocupada_en` (las etapas en curso a las que está asignada, que se calcula y no se guarda).",
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Crear una máquina (HU 4.4, TE-121)", request=MaquinaInputSerializer, responses={201: MaquinaSerializer},
+        description="Código automático `MAQ-0001`. Se exige el tipo y al menos una etapa en la que se usa.",
+    )
+    def post(self, request):
+        data = MaquinaInputSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        machine = resources.create_machine(data=data.validated_data)
+        return _saved(MaquinaSerializer, machine, [], resources.busy_by_machine, status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["recursos"])
+class MaquinaDetailView(generics.RetrieveUpdateAPIView):
+    required_permissions = RESOURCE_DETAIL_PERMISSIONS
+    serializer_class = MaquinaSerializer
+    queryset = Maquina.objects.all()
+    http_method_names = ["get", "patch", "head", "options"]
+
+    @extend_schema(
+        summary="Editar una máquina, cambiar su estado o desactivarla (HU 4.4, TE-121)", request=MaquinaInputSerializer,
+        responses={200: MaquinaSerializer},
+        description="El estado es físico: disponible, en mantenimiento o fuera de servicio. Si la máquina deja de estar "
+                    "disponible mientras está en una etapa en curso, la respuesta trae `advertencias`; no se cierra nada por su cuenta.",
+    )
+    def patch(self, request, pk):
+        machine = generics.get_object_or_404(self.get_queryset(), pk=pk)
+        data = MaquinaInputSerializer(data=request.data, partial=True)
+        data.is_valid(raise_exception=True)
+        machine, warnings = resources.update_machine(machine, data=data.validated_data)
+        return _saved(MaquinaSerializer, machine, warnings, resources.busy_by_machine)
+
+
+def _assignment_response(lot_id, warnings):
+    return Response({"lote": LoteSerializer(lot_queryset().get(pk=lot_id)).data, "advertencias": warnings})
+
+
+@extend_schema(
+    tags=["recursos"], summary="Asignar o reasignar el operario y la máquina de una etapa del lote (HU 4.4, TE-122)",
+    request=AsignarInputSerializer, responses={200: AsignacionRespuestaSerializer},
+    description="Pone, cambia o quita el operario y la máquina de una etapa (corte, confección o terminación). La clave que no "
+                "se envía se deja como está y `null` la quita. Reasignar cierra la asignación anterior y abre otra, así queda el "
+                "historial. Se rechaza un operario o una máquina inactivos o no habilitados para la etapa, una máquina en "
+                "mantenimiento o fuera de servicio, una etapa ya terminada y una orden anulada. Si el recurso ya está en otra "
+                "etapa en curso solo se avisa en `advertencias`.",
+)
+class LoteAsignarView(APIView):
+    required_permissions = catalog.PRODUCTION_MANAGE
+
+    def post(self, request, pk):
+        data = AsignarInputSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        changes = {key: data.validated_data[key] for key in ("operario", "maquina") if key in data.validated_data}
+        if not changes:
+            fail("Indica el operario, la máquina o ambos (usa null para quitar uno).", "operario")
+        _, warnings = resources.assign(
+            user=request.user, lot_id=pk, stage_code=data.validated_data["etapa"], changes=changes
+        )
+        return _assignment_response(pk, warnings)
+
+
+@extend_schema(
+    tags=["recursos"], summary="Desvincular el operario, la máquina o ambos de una etapa del lote (HU 4.4, TE-122)",
+    request=DesvincularInputSerializer, responses={200: AsignacionRespuestaSerializer},
+    description="Quita de la etapa el `operario`, la `maquina` o `ambos`. La asignación se cierra y queda en el historial.",
+)
+class LoteDesvincularView(APIView):
+    required_permissions = catalog.PRODUCTION_MANAGE
+
+    def post(self, request, pk):
+        data = DesvincularInputSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        _, warnings = resources.unlink(
+            user=request.user, lot_id=pk, stage_code=data.validated_data["etapa"], resource=data.validated_data["recurso"]
+        )
+        return _assignment_response(pk, warnings)
+
+
+@extend_schema(
+    tags=["recursos"], summary="Historial de asignaciones de un lote (trazabilidad)",
+    responses={200: AsignacionHistorialSerializer(many=True)},
+    description="Quién trabajó cada etapa del lote, con qué máquina y entre qué momentos. `vigente` indica la asignación abierta.",
+)
+class LoteAsignacionesView(generics.ListAPIView):
+    required_permissions = catalog.PRODUCTION_VIEW
+    serializer_class = AsignacionHistorialSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return AsignacionEtapa.objects.filter(etapa_lote__lote_id=self.kwargs["pk"]).select_related(
+            "etapa_lote", "operario", "maquina", "asignada_por"
+        ).order_by("inicio_at", "id")

@@ -17,7 +17,7 @@ from django.utils import timezone
 from apps.inventory import catalog as inventory_catalog
 from apps.inventory.services import fail
 
-from . import catalog
+from . import catalog, resources
 from .models import EtapaLote, EventoEtapa, Lote
 
 # Qué estado de etapa admite cada acción y en cuál queda.
@@ -159,6 +159,8 @@ def act_on_lot(*, user, lot_id, action, note="", now=None):
         etapa_lote=stage, accion=action, de_estado=before, a_estado=target, usuario=user, momento=now,
         nota=note.strip()[:255],
     )
+    if action == catalog.ACTION_COMPLETE:
+        resources.close_for_stage(stage, now)  # el operario y la máquina quedan libres, con su historial
     return lot
 
 

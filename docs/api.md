@@ -63,6 +63,8 @@ Los detalles de cada endpoint (parámetros, cuerpos y respuestas) están en Swag
 | `produccion` | `/api/produccion/ordenes/<id>/costos/` (liquidación financiera: costo real de materiales vs mano de obra por lote y etapa, distribución y costo por prenda) | TE-56, TE-130 |
 | `recursos` | `/api/produccion/operarios/` y `/api/produccion/operarios/<id>/` (catálogo de operarios: crear, editar, activar o desactivar), `/api/produccion/maquinas/` y `/api/produccion/maquinas/<id>/` (catálogo de máquinas con su estado físico). Las listas traen `ocupado_en` / `ocupada_en`, que se calcula con las etapas en curso | TE-54, TE-121 |
 | `recursos` | `/api/produccion/lotes/<id>/asignar/` (asigna, reasigna o quita el operario y la máquina de una etapa), `/api/produccion/lotes/<id>/desvincular/` y `/api/produccion/lotes/<id>/asignaciones/` (historial). Las etapas del lote y las tarjetas del monitor traen la asignación vigente | TE-54, TE-122 |
+| `compras` | `/api/compras/ordenes/` y `/api/compras/ordenes/<id>/` (órdenes de compra de materiales: crear, listar con filtros y editar mientras son borrador), `/api/compras/ordenes/<id>/aprobar/`, `cancelar/` y `cerrar/` (aprobación del Gerente, cancelación y cierre con motivo) | — |
+| `compras` | `/api/compras/recepciones/` (recibir mercancía con varios productos a la vez, contra una orden aprobada o suelta; cada fila entra al almacén con la misma regla del ingreso: stock, costo promedio y kardex) y `/api/compras/metadatos/` (estados y tolerancia de exceso) | — |
 | `salud` | `/api/health/`, `/api/health/db/` | — |
 
 ## Ejemplo: registrar un ingreso

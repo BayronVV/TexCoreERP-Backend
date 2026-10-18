@@ -7,8 +7,18 @@ from rest_framework import serializers
 from apps.inventory import catalog as inventory_catalog
 from apps.references.ficha_serializers import ConsumoLineaSerializer
 
-from . import catalog, monitor, tracking
-from .models import EtapaLote, EventoEtapa, Lote, LoteTalla, OrdenProduccion, TarifaManoObra
+from . import catalog, monitor, resources, tracking
+from .models import (
+    AsignacionEtapa,
+    EtapaLote,
+    EventoEtapa,
+    Lote,
+    LoteTalla,
+    Maquina,
+    Operario,
+    OrdenProduccion,
+    TarifaManoObra,
+)
 
 
 class SimulacionInputSerializer(serializers.Serializer):
@@ -74,6 +84,27 @@ class LoteTallaSerializer(serializers.ModelSerializer):
         fields = ["variante", "talla", "color", "cantidad"]
 
 
+class RecursoOperarioSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    codigo = serializers.CharField()
+    nombres = serializers.CharField()
+
+
+class RecursoMaquinaSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    codigo = serializers.CharField()
+    tipo = serializers.CharField()
+    tipo_nombre = serializers.CharField()
+
+
+class AsignacionActualSerializer(serializers.Serializer):
+    """Quién y con qué máquina trabaja la etapa ahora."""
+    id = serializers.IntegerField()
+    operario = RecursoOperarioSerializer(allow_null=True)
+    maquina = RecursoMaquinaSerializer(allow_null=True)
+    desde = serializers.DateTimeField()
+
+
 class EtapaLoteSerializer(serializers.ModelSerializer):
     """Una etapa del lote con su tiempo neto (sin pausas) hasta este momento."""
     etapa_nombre = serializers.CharField(source="get_etapa_display", read_only=True)
@@ -84,13 +115,31 @@ class EtapaLoteSerializer(serializers.ModelSerializer):
     )
     tiempo_neto_segundos = serializers.SerializerMethodField()
     responsable_nombre = serializers.SerializerMethodField()
+    asignacion = serializers.SerializerMethodField(help_text="Operario y máquina que la trabajan ahora (HU 4.4); vacío si no hay")
 
     class Meta:
         model = EtapaLote
         fields = [
             "id", "etapa", "etapa_nombre", "secuencia", "estado", "estado_nombre", "inicio_at", "fin_at",
-            "en_curso_desde", "tiempo_neto_segundos", "responsable_nombre",
+            "en_curso_desde", "tiempo_neto_segundos", "responsable_nombre", "asignacion",
         ]
+
+    @extend_schema_field(AsignacionActualSerializer(allow_null=True))
+    def get_asignacion(self, obj):
+        row = resources.open_assignment_of(obj)
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "operario": None if row.operario is None else {
+                "id": row.operario_id, "codigo": row.operario.codigo, "nombres": row.operario.nombres,
+            },
+            "maquina": None if row.maquina is None else {
+                "id": row.maquina_id, "codigo": row.maquina.codigo, "tipo": row.maquina.tipo,
+                "tipo_nombre": row.maquina.get_tipo_display(),
+            },
+            "desde": row.inicio_at,
+        }
 
     def get_tiempo_neto_segundos(self, obj) -> int:
         return tracking.net_seconds(obj)
@@ -244,6 +293,8 @@ class TarjetaLoteSerializer(serializers.Serializer):
     tiempo_neto_segundos = serializers.SerializerMethodField()
     en_curso_desde = serializers.SerializerMethodField()
     responsable_nombre = serializers.SerializerMethodField()
+    operario_nombre = serializers.SerializerMethodField(help_text="Operario asignado a la etapa en curso (HU 4.4); vacío si no hay")
+    maquina_codigo = serializers.SerializerMethodField(help_text="Máquina asignada a la etapa en curso (HU 4.4); vacío si no hay")
     ultimo_movimiento = serializers.DateTimeField(allow_null=True)
     espera_segundos = serializers.SerializerMethodField(
         help_text="Segundos detenido (en pausa o entre etapas) desde su último movimiento; vacío si no está detenido"
@@ -303,6 +354,16 @@ class TarjetaLoteSerializer(serializers.Serializer):
         stage = self._current(obj)
         user = stage.responsable if stage else None
         return (user.get_full_name() or user.email) if user else ""
+
+    def get_operario_nombre(self, obj) -> str:
+        stage = self._current(obj)
+        row = resources.open_assignment_of(stage) if stage else None
+        return row.operario.nombres if row and row.operario else ""
+
+    def get_maquina_codigo(self, obj) -> str:
+        stage = self._current(obj)
+        row = resources.open_assignment_of(stage) if stage else None
+        return row.maquina.codigo if row and row.maquina else ""
 
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_espera_segundos(self, obj):
@@ -455,3 +516,114 @@ class OrdenCostosRespuestaSerializer(serializers.Serializer):
     totales = TotalesCostosSerializer()
     distribucion = DistribucionCostosSerializer()
 
+
+
+# --- Asignación de recursos (HU 4.4 / RF14) ---
+
+class OperarioSerializer(serializers.ModelSerializer):
+    """Operario con las etapas en las que puede trabajar y dónde está ocupado ahora."""
+    tipo_pago_nombre = serializers.CharField(source="get_tipo_pago_display", read_only=True)
+    ocupado_en = serializers.SerializerMethodField(help_text="Etapas en curso a las que está asignado, p. ej. `OP-0001-L01 · Corte`")
+
+    class Meta:
+        model = Operario
+        fields = ["id", "codigo", "nombres", "documento", "etapas", "tipo_pago", "tipo_pago_nombre", "activo", "ocupado_en", "created_at"]
+
+    def get_ocupado_en(self, obj) -> list[str]:
+        busy = self.context.get("busy")
+        if busy is None:
+            busy = resources.busy_by_operator()
+        return busy.get(obj.pk, [])
+
+
+class OperarioInputSerializer(serializers.Serializer):
+    """Datos de un operario. En `PATCH` solo se envía lo que cambia."""
+    nombres = serializers.CharField(max_length=120)
+    documento = serializers.RegexField(
+        r"^\d{5,15}$", required=False, allow_blank=True, error_messages={"invalid": "El documento son de 5 a 15 dígitos."},
+    )
+    etapas = serializers.ListField(child=serializers.CharField(), help_text="Etapas en las que puede trabajar: CORTE, CONFECCION, TERMINACION")
+    tipo_pago = serializers.ChoiceField(choices=catalog.PAY_TYPES, required=False)
+    activo = serializers.BooleanField(required=False)
+
+
+class MaquinaSerializer(serializers.ModelSerializer):
+    """Máquina con su estado físico y dónde está ocupada ahora."""
+    tipo_nombre = serializers.CharField(source="get_tipo_display", read_only=True)
+    estado_nombre = serializers.CharField(source="get_estado_display", read_only=True)
+    asignable = serializers.SerializerMethodField(help_text="Está activa y disponible: se puede asignar a una etapa")
+    ocupada_en = serializers.SerializerMethodField(help_text="Etapas en curso a las que está asignada, p. ej. `OP-0001-L01 · Confección`")
+
+    class Meta:
+        model = Maquina
+        fields = [
+            "id", "codigo", "tipo", "tipo_nombre", "marca_modelo", "serial", "ubicacion", "estado", "estado_nombre", "etapas",
+            "observaciones", "activo", "asignable", "ocupada_en", "created_at",
+        ]
+
+    def get_asignable(self, obj) -> bool:
+        return obj.activo and obj.estado == catalog.MACHINE_AVAILABLE
+
+    def get_ocupada_en(self, obj) -> list[str]:
+        busy = self.context.get("busy")
+        if busy is None:
+            busy = resources.busy_by_machine()
+        return busy.get(obj.pk, [])
+
+
+class MaquinaInputSerializer(serializers.Serializer):
+    """Datos de una máquina. En `PATCH` solo se envía lo que cambia."""
+    tipo = serializers.ChoiceField(choices=catalog.MACHINE_TYPES)
+    marca_modelo = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    serial = serializers.CharField(max_length=60, required=False, allow_blank=True)
+    ubicacion = serializers.CharField(max_length=80, required=False, allow_blank=True)
+    estado = serializers.ChoiceField(choices=catalog.MACHINE_STATES, required=False)
+    etapas = serializers.ListField(child=serializers.CharField(), help_text="Etapas en las que se usa: CORTE, CONFECCION, TERMINACION")
+    observaciones = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    activo = serializers.BooleanField(required=False)
+
+
+class AsignarInputSerializer(serializers.Serializer):
+    """Pone, cambia o quita el operario y la máquina de una etapa. La clave que no se envía se deja como está; `null` la quita."""
+    etapa = serializers.CharField()
+    operario = serializers.IntegerField(required=False, allow_null=True)
+    maquina = serializers.IntegerField(required=False, allow_null=True)
+
+
+class DesvincularInputSerializer(serializers.Serializer):
+    etapa = serializers.CharField()
+    recurso = serializers.ChoiceField(choices=[catalog.RESOURCE_OPERATOR, catalog.RESOURCE_MACHINE, catalog.RESOURCE_BOTH])
+
+
+class AsignacionRespuestaSerializer(serializers.Serializer):
+    lote = LoteSerializer()
+    advertencias = serializers.ListField(child=serializers.CharField(), help_text="Avisos que no bloquean (recurso ocupado en otra etapa)")
+
+
+class RecursoGuardadoSerializer(serializers.Serializer):
+    """Respuesta de crear o editar un operario o una máquina: el registro y los avisos que no bloquean."""
+    advertencias = serializers.ListField(child=serializers.CharField())
+
+
+class AsignacionHistorialSerializer(serializers.ModelSerializer):
+    etapa = serializers.CharField(source="etapa_lote.etapa", read_only=True)
+    etapa_nombre = serializers.CharField(source="etapa_lote.get_etapa_display", read_only=True)
+    operario_codigo = serializers.CharField(source="operario.codigo", default="", read_only=True)
+    operario_nombre = serializers.CharField(source="operario.nombres", default="", read_only=True)
+    maquina_codigo = serializers.CharField(source="maquina.codigo", default="", read_only=True)
+    maquina_tipo_nombre = serializers.CharField(source="maquina.get_tipo_display", default="", read_only=True)
+    asignada_por_nombre = serializers.SerializerMethodField()
+    vigente = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AsignacionEtapa
+        fields = [
+            "id", "etapa", "etapa_nombre", "operario_codigo", "operario_nombre", "maquina_codigo", "maquina_tipo_nombre",
+            "inicio_at", "fin_at", "vigente", "asignada_por_nombre",
+        ]
+
+    def get_asignada_por_nombre(self, obj) -> str:
+        return (obj.asignada_por.get_full_name() or obj.asignada_por.email) if obj.asignada_por else ""
+
+    def get_vigente(self, obj) -> bool:
+        return obj.fin_at is None

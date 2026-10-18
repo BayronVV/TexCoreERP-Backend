@@ -61,3 +61,47 @@ STATES = [
 STATE_NAMES = dict(STATES)
 STAGE_NAMES = dict(STAGES)
 STAGE_STATE_NAMES = dict(STAGE_STATES)
+
+# --- Asignación de recursos (HU 4.4 / RF14): operarios y máquinas ---
+
+OPERATOR_PREFIX = "OPE"
+MACHINE_PREFIX = "MAQ"
+
+# Cómo se le paga a un operario. Es solo informativo: la nómina no se maneja aquí.
+PAY_PIECE = "PIEZA"
+PAY_TIME = "TIEMPO"
+PAY_SALARY = "SALARIO"
+PAY_TYPES = [(PAY_PIECE, "Por pieza"), (PAY_TIME, "Por tiempo"), (PAY_SALARY, "Salario")]
+
+# Tipos de máquina de una confección de jeans.
+MACHINE_TYPES = [
+    ("PLANA", "Plana de una aguja"),
+    ("PLANA_DOBLE", "Plana de dos agujas"),
+    ("FILETEADORA", "Fileteadora"),
+    ("COLLARIN", "Collarín"),
+    ("PRESILLADORA", "Presilladora"),
+    ("OJALADORA", "Ojaladora"),
+    ("BOTONADORA", "Botonadora"),
+    ("REMACHADORA", "Remachadora"),
+    ("CORTADORA", "Cortadora de tela"),
+    ("OTRA", "Otra"),
+]
+
+# Estado de una máquina. «Ocupada» no se guarda: sale de las asignaciones abiertas de las etapas en curso.
+MACHINE_AVAILABLE = "DISPONIBLE"
+MACHINE_MAINTENANCE = "MANTENIMIENTO"
+MACHINE_OUT = "FUERA_SERVICIO"
+MACHINE_STATES = [
+    (MACHINE_AVAILABLE, "Disponible"),
+    (MACHINE_MAINTENANCE, "En mantenimiento"),
+    (MACHINE_OUT, "Fuera de servicio"),
+]
+
+PAY_TYPE_NAMES = dict(PAY_TYPES)
+MACHINE_TYPE_NAMES = dict(MACHINE_TYPES)
+MACHINE_STATE_NAMES = dict(MACHINE_STATES)
+
+# Qué recurso se quita al desvincular.
+RESOURCE_OPERATOR = "operario"
+RESOURCE_MACHINE = "maquina"
+RESOURCE_BOTH = "ambos"

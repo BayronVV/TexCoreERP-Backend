@@ -18,7 +18,7 @@ from apps.references import catalog as reference_catalog
 from apps.references import fichas
 from apps.references.models import Referencia, Variante
 
-from . import catalog, tracking
+from . import catalog, resources, tracking
 from .models import Lote, LoteTalla, OrdenProduccion
 
 
@@ -220,4 +220,5 @@ def cancel_production_order(*, user, order_id, motivo):
     if order is None:
         fail("La orden no existe.", "orden")
     inventory_services.cancel_order(user=user, order_id=order.orden_salida_id, motivo=motivo)
+    resources.close_for_order(order)  # los operarios y máquinas quedan libres, con su historial
     return order

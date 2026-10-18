@@ -24,7 +24,7 @@ from django.utils import timezone
 
 from apps.inventory import catalog as inventory_catalog
 
-from . import catalog, tracking
+from . import catalog, resources, tracking
 from .models import EtapaLote, EventoEtapa, Lote
 
 COLUMNS = [catalog.STATE_PLANNED, catalog.STATE_RUNNING, catalog.STATE_PAUSED, catalog.STATE_DONE]
@@ -94,7 +94,7 @@ def build_board(*, limit=DEFAULT_LIMIT, order_id=None, reference_id=None, done_d
     now = now or timezone.now()
     has_open = Exists(EtapaLote.objects.filter(lote=OuterRef("pk")).exclude(estado=catalog.STAGE_DONE))
     has_any = Exists(EtapaLote.objects.filter(lote=OuterRef("pk")))
-    prefetch = ("etapas__responsable",)
+    prefetch = ("etapas__responsable", resources.open_assignments())
 
     active = list(_base(order_id, reference_id).filter(has_open | ~has_any).prefetch_related(*prefetch))
     done = _base(order_id, reference_id).filter(

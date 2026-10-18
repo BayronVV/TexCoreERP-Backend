@@ -43,7 +43,7 @@ class SeedDataTests(TestCase):
         almacenista = Role.objects.get(code="ALMACENISTA")
         self.assertEqual(
             set(almacenista.permissions.values_list("code", flat=True)),
-            {"inventario.ver", "inventario.gestionar", "referencias.ver"},
+            {"inventario.ver", "inventario.gestionar", "referencias.ver", "compras.ver"},
         )
 
     def test_admin_tiene_todos_los_permisos(self):
@@ -68,7 +68,7 @@ class LoginAndMeTests(TestCase):
         me = client.get(reverse("me"))
         self.assertEqual(me.status_code, 200)
         self.assertEqual(me.data["role"], "ALMACENISTA")
-        self.assertEqual(me.data["permissions"], ["inventario.gestionar", "inventario.ver", "referencias.ver"])
+        self.assertEqual(me.data["permissions"], ["compras.ver", "inventario.gestionar", "inventario.ver", "referencias.ver"])
 
     def test_usuario_inactivo_no_inicia_sesion(self):
         make_user("off@t.co", "VENDEDOR", is_active=False)

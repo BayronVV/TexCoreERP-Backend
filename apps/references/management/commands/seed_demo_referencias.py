@@ -92,6 +92,7 @@ def jean_image(color, back=False):
 
 
 class Command(BaseCommand):
+    """Comando de gestión: siembra referencias de jean de demostración con fotos y fichas (solo con `DJANGO_DEBUG=true`)."""
     help = "Carga referencias de jean de demostración (solo con DJANGO_DEBUG=true)."
 
     def handle(self, *args, **options):

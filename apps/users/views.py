@@ -1,3 +1,4 @@
+"""Vistas de seguridad: registro, sesión JWT, recuperación de contraseña, usuarios, roles y permisos."""
 import ipaddress
 
 from django.conf import settings
@@ -51,6 +52,7 @@ def _client_ip(request):
     description="La cuenta nace con el rol `PENDING` y sin permisos hasta que un Administrador la apruebe.",
 )
 class UserRegisterView(generics.CreateAPIView):
+    """Solicitud pública de cuenta: queda en rol `PENDING` hasta que un administrador la apruebe."""
     queryset = User.objects.all()
     permission_classes = [permissions.AllowAny]
     serializer_class = UserRegistrationSerializer
@@ -64,6 +66,7 @@ class UserRegisterView(generics.CreateAPIView):
     "401 si las credenciales son inválidas o la cuenta está inactiva; 429 si se supera el límite de intentos.",
 )
 class CustomTokenObtainPairView(TokenObtainPairView):
+    """Inicio de sesión: entrega los tokens `access` y `refresh` (límite de intentos por IP)."""
     serializer_class = CustomTokenObtainPairSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
@@ -74,7 +77,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     description="Entrega un `access` nuevo y un `refresh` nuevo (rotativo). 401 si el usuario ya no está activo o cambió su contraseña.",
 )
 class CustomTokenRefreshView(TokenRefreshView):
-    pass
+    """Renueva el `access` y entrega un `refresh` nuevo (la sesión vence tras 30 minutos sin uso)."""
 
 
 @extend_schema(tags=["auth"], summary="Usuario de la sesión y sus permisos")
@@ -98,6 +101,7 @@ class MeView(generics.RetrieveAPIView):
         description="Envía un enlace para que la persona defina su contraseña. `email_sent` indica si el correo salió."),
 )
 class UserListCreateView(generics.ListCreateAPIView):
+    """Lista los usuarios (con filtros) y crea uno enviándole la invitación para definir su contraseña."""
     required_permissions = {"GET": catalog.USERS_VIEW, "POST": catalog.USERS_MANAGE}
 
     def get_queryset(self):
@@ -128,6 +132,7 @@ class UserListCreateView(generics.ListCreateAPIView):
         description="Siempre debe quedar al menos un Administrador activo."),
 )
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Consulta, cambia el rol, activa o desactiva, o elimina (borrado lógico) un usuario."""
     http_method_names = DETAIL_METHODS
     required_permissions = {
         "GET": catalog.USERS_VIEW,
@@ -205,6 +210,7 @@ def _roles_with_counts():
         description="El código es inmutable (mayúsculas, números o guion bajo). Requiere `seguridad.roles`."),
 )
 class RoleListCreateView(generics.ListCreateAPIView):
+    """Lista los roles con sus permisos y crea un rol propio."""
     required_permissions = {"GET": catalog.USERS_VIEW, "POST": catalog.ROLES_MANAGE}
     serializer_class = RoleSerializer
     pagination_class = None
@@ -224,6 +230,7 @@ class RoleListCreateView(generics.ListCreateAPIView):
         description="Solo roles que no son base del sistema y sin usuarios asignados."),
 )
 class RoleDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Consulta, edita los permisos o elimina un rol que no sea base y no tenga usuarios."""
     http_method_names = DETAIL_METHODS
     required_permissions = {
         "GET": catalog.USERS_VIEW,
@@ -250,6 +257,7 @@ class RoleDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 @extend_schema(tags=["roles"], summary="Catálogo de permisos por módulo")
 class ModulePermissionListView(generics.ListAPIView):
+    """Catálogo de permisos agrupados por módulo."""
     required_permissions = catalog.USERS_VIEW
     serializer_class = ModulePermissionSerializer
     queryset = ModulePermission.objects.all()
@@ -323,6 +331,7 @@ class PasswordResetValidateView(APIView):
     responses=inline_serializer("ContrasenaActualizada", {"detail": serializers.CharField()}),
 )
 class PasswordResetConfirmView(APIView):
+    """Guarda la nueva contraseña con el token de un solo uso y cierra las sesiones abiertas."""
     permission_classes = [permissions.AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "password_reset_check"

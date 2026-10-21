@@ -1,3 +1,4 @@
+"""Vistas de la ficha técnica de consumo por unidad (HU 3.2): ficha, PDF, consumo contra el stock y referencias para una orden."""
 from django.db.models import Count, Exists, OuterRef, Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404
@@ -50,6 +51,7 @@ def payload_for(reference):
         description="No se puede si la referencia tiene órdenes en proceso."),
 )
 class FichaView(APIView):
+    """Consulta, guarda o quita la ficha técnica de consumo por unidad de una referencia (HU 3.2)."""
     required_permissions = {
         "GET": catalog.FICHA_VIEW, "PUT": catalog.FICHA_MANAGE, "DELETE": catalog.FICHA_MANAGE,
     }
@@ -87,6 +89,7 @@ class FichaView(APIView):
                 "tenga ficha técnica (`tiene_ficha`); una de lavandería no.",
 )
 class ReferenciasParaOrdenView(APIView):
+    """Referencias activas para elegir en una orden, con indicación de si tienen ficha técnica."""
     required_permissions = inventory_catalog.INVENTORY_VIEW
 
     def get(self, request):
@@ -121,6 +124,7 @@ class ReferenciasParaOrdenView(APIView):
                 "si no falta nada. Es una simulación: no reserva stock.",
 )
 class ConsumoView(APIView):
+    """Consumo de una referencia para N prendas cruzado con el stock del almacén (simulación)."""
     required_permissions = inventory_catalog.INVENTORY_VIEW
 
     def get(self, request, pk):
@@ -143,6 +147,7 @@ class ConsumoView(APIView):
     delete=extend_schema(tags=["fichas"], summary="Quitar el PDF de la ficha técnica", responses=FichaSalidaSerializer),
 )
 class FichaDocumentoView(APIView):
+    """Descarga, adjunta o quita el PDF de la ficha técnica extensa."""
     required_permissions = {"GET": catalog.FICHA_VIEW, "POST": catalog.FICHA_MANAGE, "DELETE": catalog.FICHA_MANAGE}
     parser_classes = [MultiPartParser]
 

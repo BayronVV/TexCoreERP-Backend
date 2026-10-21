@@ -1,6 +1,6 @@
 # Convenciones de base de datos — TexCore
 
-Aplican a todas las tablas de negocio desde el Sprint 1.
+Aplican a todas las tablas de negocio desde el Sprint 1 y se siguen en los módulos del Sprint 2.
 
 ## 1. Borrado lógico (soft delete)
 
@@ -52,6 +52,33 @@ class Proveedor(BaseModel):
 - Tablas y columnas en `snake_case`, en español, siguiendo el modelo
   entidad-relación (`orden_produccion`, `materia_prima`, ...).
 - Claves primarias `id` (bigint autoincremental); foráneas `<entidad>_id`.
+- Cada módulo antepone su prefijo al nombre de la tabla:
+
+| Prefijo | Módulo (app) | Ejemplos |
+|---|---|---|
+| `seguridad_` | `users` | `seguridad_rol`, `seguridad_permiso`, `seguridad_rol_permiso`, `seguridad_token_recuperacion` |
+| `inventario_` | `inventory` | `inventario_producto`, `inventario_movimiento`, `inventario_orden`, `inventario_orden_linea` |
+| `referencias_` | `references` | `referencias_referencia`, `referencias_variante`, `referencias_ficha`, `referencias_ficha_linea` |
+| `produccion_` | `production` | `produccion_orden`, `produccion_lote`, `produccion_etapa_lote`, `produccion_asignacion_etapa` |
+| `compras_` | `purchasing` | `compras_orden`, `compras_linea`, `compras_recepcion`, `compras_recepcion_linea` |
+
+La lista completa, con sus campos, está en el [modelo de datos](modelo-de-datos.md).
+
+### Códigos consecutivos
+
+Los identificadores legibles (`OP-0001`, `LV-0001`, `OC-0001`, `RC-0001`, `REF-0001`, `OPE-0001`, `MAQ-0001`, `TEL-0001`...)
+salen de la tabla `inventario_consecutivo`, que se bloquea al asignar el número dentro de la transacción. Si la operación falla,
+el número no se gasta. Los lotes derivan del código de su orden (`OP-0001-L01`).
+
+### Dinero y cantidades
+
+- Importes y costos son `Decimal`, nunca `float`. Los costos unitarios y tarifas guardan hasta 4 decimales; los importes se
+  redondean a centavos solo al final del cálculo.
+- Un dato que se puede derivar no se guarda: el estado de un lote, si una máquina está ocupada o cuánto se ha recibido de una
+  línea de compra se calculan al consultar. Lo que sí se guarda es una **foto** cuando el valor puede cambiar después y el
+  histórico debe conservarse (por ejemplo el costo unitario de cada línea de una orden de salida).
+- Las tablas de historial (`produccion_evento_etapa`, `produccion_asignacion_etapa`, `produccion_tarifa_mano_obra`) solo reciben filas
+  nuevas; un cambio cierra o reemplaza el registro vigente y abre otro.
 
 ## 3. Migraciones
 
@@ -60,8 +87,14 @@ class Proveedor(BaseModel):
   mano en el panel de Supabase.
 - Primero se aplica en **texcore-dev** y, cuando está probado en `pruebas`,
   en **texcore-prod**.
-- La primera migración se hará en Sprint 1, **después** de definir el modelo
-  de usuario personalizado (Django no permite cambiarlo después de migrar).
+- El modelo de usuario personalizado (`users.CustomUser`) se definió antes de la primera migración, porque Django no permite
+  cambiarlo después de migrar.
+- Cada app mantiene su cadena de migraciones (`apps/<app>/migrations/`). Las migraciones de datos que cargan catálogos
+  (roles, permisos, clasificación de productos) congelan sus valores dentro del archivo: no importan constantes del código que
+  puedan cambiar. Ejemplos: `users/0003_roles_y_permisos`, `0007_permisos_referencias` y `0008_permisos_compras`.
+- Al desplegar, Render ejecuta `python manage.py migrate --noinput` en cada arranque (ver [despliegue](despliegue-render.md)),
+  así que una migración nueva se aplica sola al fusionar en `main`. Si dos entornos comparten la base, el código viejo debe
+  tolerar el esquema nuevo.
 
 ## 4. Seguridad en Supabase
 

@@ -1,3 +1,4 @@
+"""Vistas del catálogo de referencias de jean (HU 3.1): referencias, estados e imágenes del prototipo."""
 from django.db.models import Exists, OuterRef, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
@@ -48,6 +49,7 @@ def fresh(reference):
     }),
 )
 class MetadatosView(APIView):
+    """Valores para armar los formularios de referencias: ajustes, estados, lavados y límites."""
     required_permissions = catalog.REFERENCES_VIEW
 
     def get(self, request):
@@ -73,6 +75,7 @@ class MetadatosView(APIView):
         description="Nace en borrador con código `REF-0001`. Las imágenes se suben después con `POST /referencias/{id}/imagenes/`."),
 )
 class ReferenciaListCreateView(generics.ListAPIView):
+    """Lista las referencias de jean (con filtros) y registra una nueva en borrador."""
     required_permissions = READ_WRITE
     serializer_class = ReferenciaSerializer
     pagination_class = None
@@ -115,6 +118,7 @@ class ReferenciaListCreateView(generics.ListAPIView):
         description="No se archiva una referencia activa: primero se descontinúa."),
 )
 class ReferenciaDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Consulta, edita o archiva una referencia de jean."""
     required_permissions = {
         "GET": catalog.REFERENCES_VIEW,
         "PATCH": catalog.REFERENCES_MANAGE,
@@ -144,6 +148,7 @@ class ReferenciaDetailView(generics.RetrieveUpdateDestroyAPIView):
     description="Borrador → activa → descontinuada (y de vuelta a activa). Para activarla hacen falta al menos una talla/color y una imagen.",
 )
 class ReferenciaEstadoView(APIView):
+    """Cambia el estado de una referencia: borrador, activa o descontinuada."""
     required_permissions = {"POST": catalog.REFERENCES_MANAGE}
 
     def post(self, request, pk):
@@ -162,6 +167,7 @@ class ReferenciaEstadoView(APIView):
     description="Campo `imagen` (se puede repetir para subir varias). Máximo 5 por referencia y 2 MB cada una; JPG, PNG o WEBP. La primera queda como principal.",
 )
 class ReferenciaImagenesView(APIView):
+    """Sube las fotos del prototipo de una referencia (hasta cinco)."""
     required_permissions = {"POST": catalog.REFERENCES_MANAGE}
     parser_classes = [MultiPartParser]
 
@@ -178,6 +184,7 @@ class ReferenciaImagenesView(APIView):
     delete=extend_schema(tags=["referencias"], summary="Quitar una imagen", responses=ReferenciaSerializer),
 )
 class ImagenArchivoView(APIView):
+    """Descarga (con `ETag`) o quita una foto del prototipo."""
     required_permissions = {"GET": catalog.REFERENCES_VIEW, "DELETE": catalog.REFERENCES_MANAGE}
 
     def get(self, request, pk):
@@ -201,6 +208,7 @@ class ImagenArchivoView(APIView):
     request=None, responses=ReferenciaSerializer,
 )
 class ImagenPrincipalView(APIView):
+    """Marca una foto como la principal de su referencia."""
     required_permissions = {"POST": catalog.REFERENCES_MANAGE}
 
     def post(self, request, pk):

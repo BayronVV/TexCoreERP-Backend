@@ -70,6 +70,7 @@ def own_fields(model):
 
 
 class Command(BaseCommand):
+    """Comando de gestión: genera el modelo de datos (diagrama Mermaid y tablas) en Markdown a partir de los modelos."""
     help = "Genera el modelo de datos (diagrama Mermaid y tablas de campos) en Markdown."
 
     def add_arguments(self, parser):

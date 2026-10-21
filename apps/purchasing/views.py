@@ -1,3 +1,4 @@
+"""Vistas de compras: órdenes de compra (crear, aprobar, cancelar, cerrar) y recepción de mercancía."""
 from django.db.models import Prefetch, Q
 from django.http import Http404
 from drf_spectacular.types import OpenApiTypes
@@ -54,6 +55,7 @@ def get_order(pk):
 
 @extend_schema(tags=["compras"])
 class OrdenCompraListCreateView(APIView):
+    """Lista las órdenes de compra y crea una en borrador (la crea Producción)."""
     required_permissions = ORDERS_PERMISSIONS
 
     @extend_schema(
@@ -87,6 +89,7 @@ class OrdenCompraListCreateView(APIView):
 
 @extend_schema(tags=["compras"])
 class OrdenCompraDetailView(APIView):
+    """Consulta una orden de compra y la edita mientras es borrador."""
     required_permissions = ORDER_DETAIL_PERMISSIONS
 
     @extend_schema(summary="Consultar una orden de compra", responses={200: OrdenCompraSerializer})
@@ -109,6 +112,7 @@ class OrdenCompraDetailView(APIView):
     description="La aprueba el Gerente. Pasa de borrador a aprobada y desde ese momento el almacenista puede recibir contra ella.",
 )
 class OrdenCompraAprobarView(APIView):
+    """El Gerente aprueba una orden de compra en borrador."""
     required_permissions = catalog.PURCHASING_APPROVE
 
     def post(self, request, pk):
@@ -121,6 +125,7 @@ class OrdenCompraAprobarView(APIView):
     description="Solo una orden en borrador o aprobada que todavía no tiene recepciones. Exige el motivo.",
 )
 class OrdenCompraCancelarView(APIView):
+    """Cancela una orden de compra que todavía no tiene recepciones (exige el motivo)."""
     required_permissions = catalog.PURCHASING_MANAGE
 
     def post(self, request, pk):
@@ -136,6 +141,7 @@ class OrdenCompraCancelarView(APIView):
     description="Cuando lo pendiente ya no va a llegar. Solo una orden con recepciones parciales; exige el motivo.",
 )
 class OrdenCompraCerrarView(APIView):
+    """Cierra una orden con recepciones parciales cuando lo pendiente ya no va a llegar (exige el motivo)."""
     required_permissions = catalog.PURCHASING_MANAGE
 
     def post(self, request, pk):
@@ -147,6 +153,7 @@ class OrdenCompraCerrarView(APIView):
 
 @extend_schema(tags=["compras"])
 class RecepcionListCreateView(APIView):
+    """Lista las recepciones y registra una nueva con varios productos en una sola transacción (la hace el Almacenista)."""
     required_permissions = RECEIPTS_PERMISSIONS
 
     @extend_schema(

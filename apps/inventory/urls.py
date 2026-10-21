@@ -1,3 +1,4 @@
+"""Rutas de `/api/inventario/`: catálogo, proveedores, movimientos, órdenes de salida, evidencias y alertas."""
 from django.urls import path
 
 from . import views

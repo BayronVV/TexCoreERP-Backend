@@ -57,6 +57,7 @@ def ficha_payload(reference, ficha, lines):
 # Esquemas de respuesta: solo documentan el JSON que ya arman las vistas (OpenAPI).
 
 class FichaLineaSalidaSerializer(serializers.Serializer):
+    """Un material de la ficha: consumo por prenda, merma y consumo con merma."""
     id = serializers.IntegerField()
     producto = serializers.IntegerField()
     codigo = serializers.CharField()
@@ -70,12 +71,14 @@ class FichaLineaSalidaSerializer(serializers.Serializer):
 
 
 class FichaDocumentoSalidaSerializer(serializers.Serializer):
+    """Datos del PDF adjunto a la ficha (nombre, tamaño y versión)."""
     nombre = serializers.CharField()
     tamano = serializers.IntegerField(help_text="Bytes")
     version = serializers.IntegerField()
 
 
 class FichaSalidaSerializer(serializers.Serializer):
+    """Ficha técnica de una referencia con sus materiales; `existe` es falso si todavía no se ha creado."""
     referencia = serializers.DictField()
     existe = serializers.BooleanField()
     lavado = serializers.CharField()
@@ -88,6 +91,7 @@ class FichaSalidaSerializer(serializers.Serializer):
 
 
 class ConsumoLineaSerializer(serializers.Serializer):
+    """Por material: lo requerido, lo disponible y lo que falta para producir N prendas."""
     producto = serializers.IntegerField()
     codigo = serializers.CharField()
     nombre = serializers.CharField()
@@ -102,6 +106,7 @@ class ConsumoLineaSerializer(serializers.Serializer):
 
 
 class ConsumoSalidaSerializer(serializers.Serializer):
+    """Resultado del cruce de la ficha con el stock: líneas, faltantes y si es viable."""
     referencia = serializers.DictField()
     cantidad = serializers.IntegerField()
     viable = serializers.BooleanField()

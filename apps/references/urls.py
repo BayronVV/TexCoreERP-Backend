@@ -1,3 +1,4 @@
+"""Rutas de `/api/referencias/` y de las fichas técnicas (incluye `/api/inventario/fichas-tecnicas/`)."""
 from django.urls import path
 
 from . import ficha_views, views

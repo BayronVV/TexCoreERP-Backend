@@ -1,6 +1,6 @@
 site_name: TexCore ERP · Documentación
 site_url: https://bayronvv.github.io/TexCoreERP-Backend/
-site_description: Manual técnico, manual del sistema, manual de usuario y ficha técnica de TexCore ERP.
+site_description: Manual técnico, manual del sistema, manual de usuario y ficha técnica de TexCore ERP (referencias, producción, compras, inventario y seguridad).
 docs_dir: docs
 site_dir: site
 
@@ -34,6 +34,8 @@ nav:
   - Inicio: index.md
   - Manual técnico:
       - Arquitectura: arquitectura.md
+      - Módulos y reglas de negocio: modulos.md
+      - Roles y permisos: roles-y-permisos.md
       - API REST: api.md
       - Modelo de datos: modelo-de-datos.md
       - Convenciones de base de datos: convenciones-base-de-datos.md

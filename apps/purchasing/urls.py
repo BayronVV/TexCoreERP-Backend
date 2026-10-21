@@ -1,3 +1,4 @@
+"""Rutas de `/api/compras/`: órdenes de compra, recepciones y metadatos."""
 from django.urls import path
 
 from . import views

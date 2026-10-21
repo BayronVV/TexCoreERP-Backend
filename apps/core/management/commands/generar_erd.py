@@ -105,7 +105,7 @@ class Command(BaseCommand):
         for model in models_:
             lines.append(f"    {model.__name__} {{")
             for field in own_fields(model):
-                marks = " ".join(constraints(field))
+                marks = ", ".join(constraints(field))
                 lines.append(f"        {mermaid_type(field)} {field.name}" + (f" {marks}" if marks else ""))
             lines.append("    }")
             for field in model._meta.concrete_fields:

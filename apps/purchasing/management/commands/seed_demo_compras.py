@@ -39,6 +39,7 @@ ORDERS = [
 
 
 class Command(BaseCommand):
+    """Comando de gestión: siembra órdenes de compra de demostración (solo con `DJANGO_DEBUG=true`)."""
     help = "Crea órdenes de compra de demostración: borrador, aprobada y con recepción parcial (solo con DJANGO_DEBUG=true)."
 
     def handle(self, *args, **options):

@@ -1,3 +1,4 @@
+"""Vistas de inventario: catálogo, proveedores, ingresos, kardex, órdenes de salida, evidencias y alertas (HU 2.1 a 2.4)."""
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, Q
 from django.http import FileResponse, Http404, HttpResponse
@@ -91,6 +92,7 @@ class MetadatosView(APIView):
         "alerts": serializers.ListField(child=serializers.DictField())}),
 )
 class AlertListView(APIView):
+    """Productos cuyo saldo llegó al mínimo o se agotó (alertas de stock)."""
     required_permissions = catalog.INVENTORY_VIEW
 
     def get(self, request):
@@ -128,6 +130,7 @@ class ProductoListView(generics.ListAPIView):
         description="La categoría fija el tipo y las unidades permitidas. Las telas exigen `ancho_util` (0 a 5 m) y las telas e hilos, composición que sume 100 %."),
 )
 class CatalogoListCreateView(generics.ListAPIView):
+    """Catálogo de telas e insumos: lista con filtros y alta de productos (HU 2.2)."""
     required_permissions = READ_WRITE
     serializer_class = CatalogoSerializer
     pagination_class = None
@@ -157,6 +160,7 @@ class CatalogoListCreateView(generics.ListAPIView):
         description="Solo sin existencias y sin órdenes en proceso que lo produzcan."),
 )
 class CatalogoDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Consulta, edita o elimina un producto del catálogo (sin tocar existencias)."""
     required_permissions = {
         "GET": catalog.INVENTORY_VIEW,
         "PATCH": catalog.INVENTORY_MANAGE,
@@ -232,6 +236,7 @@ def suppliers_queryset(archived=False):
         description="El NIT se normaliza (6 a 10 dígitos y dígito de verificación) y no puede repetirse entre proveedores activos."),
 )
 class ProveedorListCreateView(generics.ListAPIView):
+    """Directorio de proveedores: lista con filtros y alta (HU 2.1)."""
     required_permissions = READ_WRITE
     serializer_class = ProveedorSerializer
     pagination_class = None
@@ -265,6 +270,7 @@ class ProveedorListCreateView(generics.ListAPIView):
         description="Borrado lógico: el historial de ingresos conserva el nombre del proveedor."),
 )
 class ProveedorDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Consulta, edita o archiva un proveedor."""
     required_permissions = {
         "GET": catalog.INVENTORY_VIEW,
         "PATCH": catalog.INVENTORY_MANAGE,
@@ -287,6 +293,7 @@ class ProveedorDetailView(generics.RetrieveUpdateDestroyAPIView):
 @extend_schema(tags=["proveedores"], summary="Restaurar un proveedor archivado", request=None,
     responses={200: ProveedorSerializer})
 class ProveedorRestaurarView(APIView):
+    """Reactiva un proveedor archivado si su NIT sigue libre."""
     required_permissions = catalog.INVENTORY_MANAGE
 
     def post(self, request, pk):
@@ -302,6 +309,7 @@ class ProveedorRestaurarView(APIView):
                 OpenApiParameter("hasta", OpenApiTypes.DATE, description="Fecha máxima")],
 ))
 class MovimientoListView(generics.ListAPIView):
+    """Kardex: cada cambio de saldo con saldo antes y después."""
     required_permissions = catalog.INVENTORY_VIEW
     serializer_class = MovimientoSerializer
     pagination_class = None
@@ -327,6 +335,7 @@ class MovimientoListView(generics.ListAPIView):
     request=IngresoInputSerializer, responses={201: MovimientoSerializer},
 )
 class IngresoCreateView(APIView):
+    """Registra un ingreso al almacén (compra a proveedor o retorno de una orden)."""
     required_permissions = catalog.INVENTORY_MANAGE
 
     def post(self, request):
@@ -351,6 +360,7 @@ class IngresoCreateView(APIView):
         request=OrdenInputSerializer, responses={201: OrdenSerializer}),
 )
 class OrdenListCreateView(generics.ListAPIView):
+    """Lista las órdenes de salida (producción y lavandería) y crea una, descontando el stock."""
     required_permissions = READ_WRITE
     serializer_class = OrdenSerializer
     pagination_class = None
@@ -380,6 +390,7 @@ class OrdenListCreateView(generics.ListAPIView):
 
 @extend_schema(tags=["ordenes"], summary="Consultar una orden")
 class OrdenDetailView(generics.RetrieveAPIView):
+    """Consulta una orden de salida con sus líneas y evidencias."""
     required_permissions = catalog.INVENTORY_VIEW
     serializer_class = OrdenSerializer
     queryset = OrdenSalida.objects.all()
@@ -391,6 +402,7 @@ class OrdenDetailView(generics.RetrieveAPIView):
     request=AnulacionInputSerializer, responses={200: OrdenSerializer},
 )
 class OrdenAnularView(APIView):
+    """Anula una orden de salida en proceso y devuelve el stock."""
     required_permissions = catalog.INVENTORY_MANAGE
 
     def post(self, request, pk):
@@ -408,6 +420,7 @@ EVIDENCIAS_BODY = {
 
 
 class EvidenciaUploadView(APIView):
+    """Base para adjuntar fotos o PDF (validados por su contenido) a un movimiento o a una orden."""
     required_permissions = catalog.INVENTORY_MANAGE
     parser_classes = [MultiPartParser]
 
@@ -423,6 +436,7 @@ class EvidenciaUploadView(APIView):
 @extend_schema(tags=["evidencias"], summary="Adjuntar evidencias a un movimiento (JPG, PNG, WEBP o PDF)",
     request=EVIDENCIAS_BODY, responses={201: EvidenciaSerializer(many=True)})
 class MovimientoEvidenciaView(EvidenciaUploadView):
+    """Adjunta evidencias a un movimiento del kardex."""
     def owner(self, pk):
         return {"movement": get_object_or_404(Movimiento, pk=pk)}
 
@@ -430,6 +444,7 @@ class MovimientoEvidenciaView(EvidenciaUploadView):
 @extend_schema(tags=["evidencias"], summary="Adjuntar evidencias a una orden (JPG, PNG, WEBP o PDF)",
     request=EVIDENCIAS_BODY, responses={201: EvidenciaSerializer(many=True)})
 class OrdenEvidenciaView(EvidenciaUploadView):
+    """Adjunta evidencias a una orden de salida."""
     def owner(self, pk):
         return {"order": get_object_or_404(OrdenSalida, pk=pk)}
 

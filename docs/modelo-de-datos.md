@@ -601,7 +601,7 @@ Foto del prototipo. Se guarda en la base y se sirve con sesión (como la del cat
 
 ### FichaTecnica (`referencias_ficha`)
 
-Ficha técnica de consumo por unidad (HU 3.2): qué materiales y cuánto lleva una prenda
+Ficha técnica de consumo por unidad (HU 3.2): qué materiales y cuánto lleva una prenda de la referencia.
 
 | Campo | Tipo | Restricciones | Relación |
 |---|---|---|---|
@@ -617,7 +617,7 @@ Ficha técnica de consumo por unidad (HU 3.2): qué materiales y cuánto lleva u
 
 ### FichaLinea (`referencias_ficha_linea`)
 
-Un material de la ficha: cuánto se consume por prenda, con su merma (%) cuando aplica
+Un material de la ficha técnica y cuánto se consume de él por prenda (HU 3.2).
 
 | Campo | Tipo | Restricciones | Relación |
 |---|---|---|---|
@@ -655,7 +655,7 @@ Parte de una orden de producción con identificador único (RF12).
 
 ### LoteTalla (`produccion_lote_talla`)
 
-Prendas de una talla y color dentro de un lote. Talla y color se copian de la variante: si luego se
+Prendas de una talla y color dentro de un lote (HU 4.2).
 
 | Campo | Tipo | Restricciones | Relación |
 |---|---|---|---|
@@ -712,7 +712,7 @@ Tarifa de mano de obra por minuto para una etapa productiva (HU 4.6 / RF16, TE-1
 
 ### Operario (`produccion_operario`)
 
-Persona que trabaja en el taller. Es un catálogo simple: no exige un usuario del sistema (si el PM confirma que
+Persona que trabaja en el taller (HU 4.4 / RF14); catálogo simple que no exige un usuario del sistema.
 
 | Campo | Tipo | Restricciones | Relación |
 |---|---|---|---|
@@ -727,7 +727,7 @@ Persona que trabaja en el taller. Es un catálogo simple: no exige un usuario de
 
 ### Maquina (`produccion_maquina`)
 
-Máquina del taller. El estado guarda solo lo físico (disponible, en mantenimiento, fuera de servicio): que esté
+Máquina del taller (HU 4.4 / RF14) con su estado físico: disponible, en mantenimiento o fuera de servicio.
 
 | Campo | Tipo | Restricciones | Relación |
 |---|---|---|---|

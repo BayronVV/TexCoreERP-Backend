@@ -47,6 +47,7 @@ PRODUCTS = [
 
 
 class Command(BaseCommand):
+    """Comando de gestión: siembra proveedores y un catálogo base (solo con `DJANGO_DEBUG=true`)."""
     help = "Crea proveedores y catálogo de ejemplo para desarrollo (solo con DJANGO_DEBUG=true)."
 
     def handle(self, *args, **options):

@@ -3,6 +3,15 @@
 Guía para usar TexCore desde el navegador: <https://texcore-web.onrender.com>.
 Lo que ves en el menú depende de tu rol: solo aparecen los módulos que tienes permitidos.
 
+| Rol | Qué suele hacer en el sistema | Sección |
+|---|---|---|
+| Administrador | Aprobar solicitudes de cuenta, asignar roles y ajustar permisos; tiene acceso a todo | [4](#4-administrador-usuarios-y-roles) |
+| Almacenista | Inventario, proveedores, ingresos, salidas a lavandería y recepción de mercancía | [5](#5-almacenista-inventario) |
+| Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo y órdenes de compra | [6](#6-jefe-de-produccion-referencias-fichas-tecnicas-y-produccion) |
+| Gerente | Consultar toda la operación (producción, inventario, costos) y aprobar órdenes de compra | [7](#7-gerente-consulta-y-aprobacion) |
+
+Las tablas completas de permisos están en el [apartado técnico de roles y permisos](roles-y-permisos.md).
+
 !!! info "Sesión"
     La sesión se cierra sola tras 30 minutos sin usar el sistema. Solo vuelve a iniciar sesión.
 
@@ -42,6 +51,7 @@ Menú **Seguridad y Usuarios**.
 
 ### Usuarios
 
+- En el **Inicio** aparece una tarjeta con el número de solicitudes pendientes y un enlace para revisarlas.
 - Filtra por rol o estado (**Activo**, **Inactivo**, **Pendiente**) o busca por nombre, correo o cédula.
 - **Solicitudes pendientes**: arriba aparece la lista de quienes pidieron cuenta, con el área que solicitaron. Elige el
   rol en el selector y pulsa **Aprobar**. Si no corresponde, **Rechazar** (esa persona no podrá iniciar sesión; puedes reactivarla después).
@@ -55,6 +65,9 @@ Menú **Seguridad y Usuarios**.
 Define qué módulos puede ver y operar cada rol. Por cada módulo marca **Ver** y/o **Registrar y modificar**
 (al marcar *Registrar y modificar* se marca también *Ver*). El Administrador tiene todos los permisos y no se puede restringir.
 Con **Crear rol** puedes crear un rol propio; su código no se puede cambiar después.
+La lista incluye todos los módulos del sistema, también los que todavía no tienen pantalla (lavandería, calidad, producto terminado, ventas y reportes) y
+**Fichas Técnicas**, que no aparece en el menú porque la ficha se abre desde el Catálogo de jeans. Los permisos extra aparecen en la columna **Otros**: *Administrar roles y permisos* (Seguridad) y *Aprobar órdenes de compra* (Compras),
+que es el del Gerente. Los permisos que trae cada rol al empezar están en [roles y permisos](roles-y-permisos.md).
 
 ## 5. Almacenista: inventario
 
@@ -139,7 +152,7 @@ el almacenista**. Así quien pide no es quien recibe.
 **Quién puede qué:** el Jefe de Producción crea, edita, cancela y cierra órdenes; el Gerente las aprueba; el Almacenista las consulta y las recibe; el
 Administrador puede todo. Estos permisos se pueden ajustar en **Roles y permisos**.
 
-## 6. Jefe de producción: referencias y fichas técnicas
+## 6. Jefe de producción: referencias, fichas técnicas y producción
 
 Menú **Referencias de Jean → Catálogo de jeans**.
 
@@ -147,8 +160,8 @@ Menú **Referencias de Jean → Catálogo de jeans**.
 
 Cada referencia es un modelo de jean: nombre, tipo de ajuste, descripción, **tallas y colores** (se crea una combinación por cada
 talla y color que escribas) y hasta cinco **fotos del prototipo**, una principal. Nace como *Borrador* y se **Activa** cuando tiene
-al menos una combinación y una foto. Una referencia activa se **Descontinúa** en lugar de borrarse; solo las que no están activas
-se pueden **Archivar**.
+al menos una combinación y una foto. Una referencia activa se **Descontinúa** en lugar de borrarse (y una descontinuada se puede **Reactivar**); solo las que no están activas
+se pueden **Archivar**. Para encontrarlas, busca por nombre, código o color y filtra por estado, ajuste, talla o color.
 
 ### Ficha técnica de consumo por unidad
 
@@ -160,46 +173,45 @@ Desde la tarjeta de la referencia, **Ficha técnica**. Define cuánto lleva **un
    Un material no se puede repetir; las piezas enteras (botones, cierres, remaches) llevan cantidades enteras y no llevan merma.
 3. **Guardar ficha**. La lista completa reemplaza a la anterior.
 
-Debajo hay un espacio para adjuntar el **PDF de la ficha técnica extensa** (geometral, secuencia de confección, tabla de medidas),
-de hasta 5 MB. Se puede **Ver**, **Reemplazar** o **Quitar**. Solo se adjunta cuando la ficha ya está guardada.
+El botón **Ficha técnica** aparece según tu permiso: con solo consulta ves la ficha y el PDF; para guardarla hace falta el permiso de gestión de
+fichas técnicas. La ficha **no tiene una entrada propia en el menú**: se abre siempre desde la tarjeta de la referencia.
 
-Con la ficha lista, el Almacenista solo elige la referencia y las prendas al crear una orden de producción. Una ficha no se puede quitar
+Debajo hay un espacio para adjuntar el **PDF de la ficha técnica extensa** (geometral, secuencia de confección, tabla de medidas),
+de hasta 5 MB. Se puede **Ver PDF**, **Reemplazar PDF** o **Quitar PDF**. Solo se adjunta cuando la ficha ya está guardada. **Quitar ficha** elimina la ficha completa
+con su PDF y pide confirmación.
+
+Con la ficha lista, el Jefe de Producción solo elige la referencia y las prendas al crear una orden de producción. Una ficha no se puede quitar
 ni una referencia archivar mientras tenga órdenes en proceso.
 
-### Planificar producción
+### Órdenes de producción: planificar y crear
 
-Menú **Producción y Trazabilidad → Planificar producción**. Antes de crear una orden, comprueba si hay material para las prendas que quieres fabricar:
+Menú **Producción y Trazabilidad → Órdenes de producción**. En una sola pantalla compruebas si hay material, divides las prendas en lotes con
+identificador único (RF12) y creas la orden de producción (RF11). *(Antes eran dos pantallas, «Planificar producción» y «Órdenes y lotes»: la
+dirección antigua `/produccion/planificar` te lleva a esta.)*
 
-1. Elige la **Referencia de jean** (solo las activas con ficha técnica) y escribe las **Prendas a producir**.
-2. Si quieres dividir el total en lotes, usa **Repartir en partes iguales** o **+ Agregar lote** y escribe el tamaño de cada uno. Deben sumar
-   exactamente el total; la pantalla indica cuántas prendas faltan o sobran. Los lotes se registran al crear la orden.
-3. **Disponibilidad de material** muestra, por material, lo que pide la ficha (con la merma), lo que hay y lo que falta, y dice cuántas prendas
-   se pueden fabricar con el stock actual y qué material lo limita. **Usar N** lleva el total a ese máximo.
-4. Con lotes, **Cobertura por lote** indica hasta qué lote alcanza el material. Los lotes comparten el mismo stock, así que un lote se cubre si
-   alcanza para él y los anteriores juntos.
-5. **Crear orden** solo se habilita cuando hay material y los lotes están bien repartidos; al lado se lee el motivo cuando está bloqueado. Si tu
-   rol puede gestionar la producción, abre **Órdenes y lotes** con la referencia, las prendas y los lotes ya cargados.
-
-La simulación no reserva ni descuenta stock: al crear la orden el sistema vuelve a verificar que haya material.
-
-### Órdenes y lotes
-
-Menú **Producción y Trazabilidad → Órdenes y lotes**. Aquí se crea la orden de producción (RF11) y se divide en lotes con identificador único (RF12):
-
-1. Elige la **Referencia de jean**, las **Prendas a producir** y el **pantalón genérico** que se producirá. Responsable y observaciones son opcionales
-   (por defecto, el responsable eres tú).
-2. En **Lotes** divide el total por **cantidad de lotes** o por **prendas por lote** (el último lleva lo que sobre) y ajusta cada lote a mano si quieres.
-   Sin dividir se crea un único lote. Los lotes deben sumar exactamente el total (máximo 50).
+1. Elige la **Referencia de jean** (solo salen las activas con ficha técnica), escribe las **Prendas a producir** y elige el **pantalón genérico** que
+   se producirá («Se producirá»). Responsable y observaciones son opcionales (por defecto, el responsable eres tú).
+2. En **Lotes** divide el total **por cantidad de lotes** (*Repartir en partes iguales*) o **por prendas por lote** (*Crear lotes de ese tamaño*; el
+   último lleva lo que sobre), o agrega lotes a mano con **+ Agregar lote**. **Sin dividir** deja un único lote. Los lotes deben sumar exactamente
+   el total (máximo 50); la pantalla indica cuántas prendas faltan o sobran.
 3. En **Tallas por lote** (opcional) agrega las tallas y colores de la referencia y cuántas prendas lleva cada uno; deben sumar las prendas del lote.
    El **Resumen por talla** suma todos los lotes. Si cambias el reparto de lotes, las tallas se reinician para evitar datos que ya no cuadran.
-4. **Crear orden** genera el código (`OP-0001`) y el de cada lote (`OP-0001-L01`, `-L02`…) y **descuenta del almacén** el material de la ficha técnica,
-   con su merma. Si falta material no se crea nada y la pantalla dice cuál.
-5. **Órdenes recientes** lista las órdenes con sus lotes y su estado. **Anular** (exige el motivo) devuelve el material al almacén; los lotes quedan como historial.
-   La orden también aparece en el historial de salidas de Inventario con el mismo código.
+4. **Disponibilidad de material** aparece sola mientras escribes (con una breve espera): muestra, por material, lo que pide la ficha (con la merma),
+   lo que hay y lo que falta, y dice cuántas prendas se pueden fabricar con el stock actual y qué material lo limita. **Usar N** lleva el total a
+   ese máximo. Con lotes, **Cobertura por lote** indica hasta qué lote alcanza el material: los lotes comparten el mismo stock, así que un lote se
+   cubre si alcanza para él y los anteriores juntos. La simulación no reserva ni descuenta stock.
+5. **Crear orden** solo se habilita cuando hay material y los lotes están bien repartidos; al lado se lee el motivo cuando está bloqueado. Al crearla,
+   el sistema vuelve a verificar el material, genera el código (`OP-0001`) y el de cada lote (`OP-0001-L01`, `-L02`…) y **descuenta del almacén** el
+   material de la ficha técnica, con su merma. Si falta material no se crea nada y la pantalla dice cuál.
+6. **Órdenes recientes** lista las últimas órdenes con sus lotes, su estado y su tiempo neto. **Anular** (solo mientras la orden está en proceso;
+   exige el motivo) devuelve el material al almacén; los lotes quedan como historial. La orden también aparece en el historial de salidas de
+   Inventario con el mismo código.
+
+Quien solo tiene permiso de consulta ve la lista de órdenes y la disponibilidad de material, pero no puede crear ni anular.
 
 ### Control de tiempos por etapa
 
-En **Órdenes de producción → Órdenes recientes**, el botón **Seguimiento** de una orden abre sus lotes. Cada lote recorre tres etapas, siempre en
+En **Órdenes de producción → Órdenes recientes**, el botón **Seguimiento** de una orden abre sus lotes (**Ocultar seguimiento** los cierra). Cada lote recorre tres etapas, siempre en
 este orden: **Corte, Confección y Terminación**. Una etapa solo empieza cuando la anterior terminó, y cuando termina la última el lote queda
 *Terminado*. La lavandería no es una etapa de este seguimiento: es un proceso externo (subcontratado) y se controla aparte, con sus propias órdenes
 de salida y entrada. El control de calidad y el empaque también tienen sus propios módulos.
@@ -257,21 +269,38 @@ Los operarios **no necesitan una cuenta del sistema**: basta con registrarlos aq
 - El **Monitor de estado** muestra, en cada tarjeta, el operario y la máquina de la etapa en curso.
 - El **Gerente** puede ver el catálogo y las asignaciones, pero no cambiarlos.
 
-### Liquidación de órdenes y costeo (HU 4.6)
+### Liquidación de órdenes y costeo
 
-Menú **Producción y Trazabilidad → Liquidación de Órdenes**. Permite consultar la conciliación financiera real de cada orden de producción (RF16), calculando el costo de materiales y el costo de mano de obra invertido:
+Menú **Producción y Trazabilidad → Liquidación de Órdenes**. Permite consultar la conciliación financiera real de cada orden de producción (RF16),
+calculando el costo de materiales y el costo de mano de obra invertido. Tiene cuatro pestañas: **Comparativa & Resumen**, **Costo de Materiales**,
+**Costo de Mano de Obra** y **Tarifas por Minuto**.
 
-1. **Selección de orden:** elige una orden de producción para consultar su desglose de costos. La pantalla muestra la referencia, la cantidad de prendas fabricadas, el estado de producción y si está anulada.
-2. **Costo de materiales:** corresponde a la suma de las cantidades reales consumidas por orden multiplicadas por la foto del costo unitario tomada al descontar el material (`OrdenLinea.costo_unitario`, basado en el costo promedio ponderado de compra).
-   - *Prorrateo por lote:* como los materiales se descuentan para la orden completa, a cada lote se le asigna material en estricta proporción a sus prendas: `total_materiales × prendas_del_lote / prendas_de_la_orden`.
-   - Si algún material no tiene costo registrado, se marca claramente como *Sin costo* y se genera una advertencia.
-3. **Costo de mano de obra:** para cada lote y etapa (Corte, Confección y Terminación), toma el tiempo neto registrado (en segundos, sin pausas), lo convierte a minutos y lo multiplica por la **tarifa por minuto** vigente a la fecha de finalización de la etapa (o la fecha actual si la etapa sigue en curso).
-   - Si una etapa está en curso, su costo se marca como *provisional* porque el tiempo neto sigue sumando minutos.
-   - Si una etapa acumula tiempo pero no existe una tarifa vigente para esa etapa, se marca como *Sin tarifa* y se genera una advertencia.
-4. **Tarifas de mano de obra (gestión):** en la pestaña de tarifas, quienes tienen permiso de gestión pueden consultar el histórico y registrar una nueva vigencia de costo por minuto por etapa (`Corte`, `Confección` o `Terminación`) indicando su fecha de inicio (por defecto hoy). El sistema no sobreescribe ni elimina tarifas pasadas, conservando la trazabilidad histórica de costos.
-5. **Totales, costo por prenda y distribución:** la liquidación resume el costo total de materiales, el total de mano de obra, el costo por prenda fabricada y la distribución porcentual (% Materiales vs % Mano de Obra) mediante una gráfica comparativa.
-   - Si faltan tarifas o costos de materiales, el sistema advierte que el cálculo es *parcial* (`completo: false`).
-   - Si la orden fue anulada, los costos se reflejan en cero ya que los insumos y materiales fueron devueltos al almacén.
+1. **Selección de orden:** arriba a la derecha elige una orden de producción (se muestra su código, la referencia y su estado). La pantalla indica la
+   referencia, las prendas a fabricar, el estado de producción y si la orden está anulada. **Imprimir Reporte** abre la impresión del navegador.
+2. **Costo de materiales:** suma de las cantidades consumidas por la **foto del costo unitario** tomada al descontar el material (basada en el costo
+   promedio ponderado de las compras).
+    - *Prorrateo por lote:* como los materiales se descuentan para la orden completa, a cada lote se le asigna material en estricta proporción a sus
+     prendas: `total_materiales × prendas_del_lote / prendas_de_la_orden`.
+    - Si algún material no tiene costo registrado, se marca como *Sin costo* y se genera una advertencia.
+3. **Costo de mano de obra:** para cada lote y etapa (Corte, Confección y Terminación), toma el tiempo neto (sin pausas), lo convierte a minutos y lo
+   multiplica por la **tarifa por minuto** vigente a la fecha en que terminó la etapa (o a la fecha actual si la etapa sigue en curso).
+    - Si una etapa está en curso, su costo se marca como *provisional* porque el tiempo neto sigue sumando minutos.
+    - Si una etapa acumula tiempo pero no existe una tarifa vigente para ella, se marca como *Sin tarifa* y se genera una advertencia.
+4. **Tarifas por Minuto:** quienes tienen permiso de gestión de producción pueden consultar el historial y registrar una nueva vigencia de costo por
+   minuto por etapa (Corte, Confección o Terminación), indicando su fecha de inicio (por defecto hoy). El sistema no sobrescribe ni elimina tarifas
+   pasadas: cada cambio agrega una vigencia y conserva el historial. **Al empezar no hay tarifas**: hasta que se registren, la mano de obra sale *Sin tarifa*.
+5. **Comparativa & Resumen:** costo total liquidado, **costo por prenda**, costo de materiales y de mano de obra, la distribución porcentual
+   (% Materiales vs % Mano de Obra) en una gráfica, la mano de obra por etapa y el costo de cada lote.
+    - Si faltan tarifas o costos de materiales, el sistema advierte que el cálculo es *parcial*.
+    - Si la orden fue anulada, los costos se muestran en cero, porque el material volvió al almacén.
+
+## 7. Gerente: consulta y aprobación
+
+El Gerente ve toda la operación en modo consulta: existencias y kardex, referencias y fichas, órdenes de producción, **Monitor de estado**, **Recursos**,
+tiempos y **Liquidación de Órdenes**. No crea ni modifica nada de producción, pero sí tiene una tarea propia:
+
+- **Aprobar órdenes de compra:** en **Compras → Órdenes de compra**, las órdenes en *Borrador* muestran el botón **Aprobar**. Antes de aprobar, el sistema
+  pide confirmación, porque después la orden ya no se edita y el almacén puede recibir contra ella.
 
 ## Preguntas frecuentes
 
@@ -280,3 +309,12 @@ Menú **Producción y Trazabilidad → Liquidación de Órdenes**. Permite consu
 **Me sale «Tu rol no tiene permiso para realizar esta acción.»** Es el mismo caso: tu rol puede ver pero no registrar, o ni siquiera ver.
 
 **Mi cuenta dice Pendiente.** Un administrador todavía no te asignó rol.
+
+**No encuentro las fichas técnicas en el menú.** No tienen entrada propia: se abren con el botón **Ficha técnica** de cada referencia, en
+*Referencias de Jean → Catálogo de jeans*.
+
+**El sistema no me deja recibir una orden de compra.** Quien creó la orden no puede recibirla; debe hacerlo otra persona con permiso de inventario
+(normalmente el Almacenista). Tampoco se recibe contra una orden en borrador, cancelada, cerrada o ya recibida por completo.
+
+**La liquidación dice «Sin tarifa» o «Sin costo».** Falta registrar la tarifa por minuto de esa etapa (pestaña *Tarifas por Minuto*) o la compra del
+material se registró sin costo unitario. El cálculo se muestra como parcial hasta completarlo.

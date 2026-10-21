@@ -1,3 +1,4 @@
+"""Serializers de seguridad: registro, sesión, usuarios, roles y permisos."""
 import re
 
 from django.contrib.auth import get_user_model

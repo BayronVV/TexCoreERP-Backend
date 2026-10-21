@@ -1,3 +1,4 @@
+"""Serializers de compras: órdenes con lo recibido y lo pendiente por línea, y recepciones con sus filas."""
 from decimal import Decimal
 
 from drf_spectacular.utils import extend_schema_field
@@ -50,6 +51,7 @@ class LineaCompraSerializer(serializers.ModelSerializer):
 
 
 class RecepcionResumenSerializer(serializers.ModelSerializer):
+    """Resumen de una recepción dentro de la orden de compra a la que pertenece."""
     class Meta:
         model = Recepcion
         fields = ["id", "codigo", "fecha", "documento"]
@@ -103,10 +105,12 @@ class OrdenCompraInputSerializer(serializers.Serializer):
 
 
 class MotivoSerializer(serializers.Serializer):
+    """Motivo obligatorio para cancelar o cerrar una orden de compra."""
     motivo = serializers.CharField(max_length=255)
 
 
 class RecepcionInputSerializer(serializers.Serializer):
+    """Datos para registrar una recepción: orden o proveedor, documento, fecha y filas con cantidad, lote y costo."""
     orden = serializers.IntegerField(required=False, allow_null=True, help_text="Orden de compra aprobada (vacío para una recepción suelta)")
     proveedor = serializers.IntegerField(required=False, allow_null=True, help_text="Solo en una recepción suelta; con orden sale de la orden")
     documento = serializers.CharField(max_length=40, help_text="Número de la remisión o la factura del proveedor")
@@ -118,6 +122,7 @@ class RecepcionInputSerializer(serializers.Serializer):
 
 
 class RecepcionLineaSerializer(serializers.ModelSerializer):
+    """Un producto recibido en una recepción, con su lote, su costo y el movimiento del kardex."""
     producto_codigo = serializers.CharField(source="producto.codigo", read_only=True)
     producto_nombre = serializers.CharField(source="producto.nombre", read_only=True)
     unidad = serializers.CharField(source="producto.unidad", read_only=True)
@@ -128,6 +133,7 @@ class RecepcionLineaSerializer(serializers.ModelSerializer):
 
 
 class RecepcionSerializer(serializers.ModelSerializer):
+    """Una recepción de mercancía con sus filas."""
     proveedor_nombre = serializers.CharField(source="proveedor.razon_social", read_only=True)
     orden_codigo = serializers.SerializerMethodField()
     recibido_por_nombre = serializers.SerializerMethodField()

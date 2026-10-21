@@ -255,6 +255,7 @@ ORDERS = [
 
 
 class Command(BaseCommand):
+    """Comando de gestión: siembra el inventario de demostración completo (solo con `DJANGO_DEBUG=true`)."""
     help = "Carga un catálogo, proveedores y movimientos de demostración (solo con DJANGO_DEBUG=true)."
 
     def handle(self, *args, **options):

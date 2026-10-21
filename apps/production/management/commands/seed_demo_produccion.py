@@ -57,6 +57,7 @@ def spread(quantity, parts):
 
 
 class Command(BaseCommand):
+    """Comando de gestión: siembra órdenes de producción de demostración (solo con `DJANGO_DEBUG=true`)."""
     help = "Crea órdenes de producción de demostración con lotes y tallas (solo con DJANGO_DEBUG=true)."
 
     def handle(self, *args, **options):

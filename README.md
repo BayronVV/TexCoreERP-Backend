@@ -12,7 +12,10 @@ backend/
 ├── apps/              # Un módulo de Django por área de negocio
 │   ├── core/          # Transversal: endpoints de salud, modelo base (borrado lógico), permisos
 │   ├── users/         # Usuarios, roles y permisos, recuperación de contraseña
-│   └── inventory/     # Proveedores, catálogo, órdenes de salida, kardex, evidencias y alertas
+│   ├── inventory/     # Proveedores, catálogo, órdenes de salida, kardex, evidencias, alertas y costo promedio
+│   ├── purchasing/    # Órdenes de compra (crear, aprobar) y recepción de mercancía
+│   ├── references/    # Referencias de jean (variantes, imágenes) y ficha técnica de consumo por unidad
+│   └── production/    # Simulación de material, órdenes y lotes, tiempos, recursos, monitor y costeo
 ├── docs/              # Documentación (sitio MkDocs): manuales, arquitectura, modelo de datos
 ├── mkdocs.yml         # Configuración del sitio de documentación
 ├── manage.py
@@ -20,8 +23,8 @@ backend/
 └── .env.example       # Plantilla de variables de entorno (sin secretos)
 ```
 
-Los módulos de negocio de los próximos sprints (usuarios, inventario,
-producción, ...) se agregan como `apps/<modulo>/` y se registran en
+Los módulos de negocio de los próximos sprints (lavandería, calidad,
+producto terminado, ventas, reportes...) se agregan como `apps/<modulo>/` y se registran en
 `INSTALLED_APPS`.
 
 ## Documentación
@@ -31,7 +34,8 @@ producción, ...) se agregan como `apps/<modulo>/` y se registran en
 - **Sitio publicado:** <https://bayronvv.github.io/TexCoreERP-Backend/> (se actualiza solo al fusionar cambios de `docs/` en `main`).
 - **Manuales y arquitectura:** `pip install -r requirements-dev.txt` y luego `mkdocs serve`
   (usa `mkdocs serve -a 127.0.0.1:8001` si el backend ya ocupa el puerto 8000).
-  Incluye manual técnico, manual del sistema, manual de usuario y ficha técnica.
+  Incluye manual técnico (arquitectura, módulos y reglas, roles y permisos, API, modelo de datos y convenciones), manual del sistema,
+  manual de usuario y ficha técnica. `mkdocs build --strict` falla si hay un enlace roto.
 - **Modelo de datos:** `python manage.py generar_erd --salida docs/modelo-de-datos.md` regenera el diagrama
   entidad-relación (Mermaid) desde los modelos.
 
@@ -44,10 +48,12 @@ python -m venv .venv
 pip install -r requirements.txt
 copy .env.example .env                 # Linux/macOS: cp .env.example .env
 # Edita .env: DJANGO_SECRET_KEY y DATABASE_URL (ver abajo)
+python manage.py migrate
+python manage.py seed_admin
 python manage.py runserver
 ```
 
-La API queda en http://localhost:8000.
+La API queda en http://localhost:8000. Con `DATABASE_URL` vacío se usa SQLite local, así no se toca Supabase.
 
 ## Variables de entorno
 
@@ -62,6 +68,10 @@ La API queda en http://localhost:8000.
 | `DB_CONN_MAX_AGE`      | No (`0`) | Segundos que se reutiliza la conexión (0 con runserver). |
 | `NUM_PROXIES`          | No (`0`) | Proxies delante del backend; 0 ignora `X-Forwarded-For`. |
 | `CORS_ALLOWED_ORIGINS` | No | Orígenes del frontend autorizados. |
+| `FRONTEND_URL`         | No | URL del frontend para armar el enlace del correo de recuperación. |
+| `EMAIL_*`, `DEFAULT_FROM_EMAIL` | No | Envío de correo (por defecto se imprime en la consola). Ver `.env.example`. |
+| `API_DOCS_ENABLED`     | No (`true`) | `false` oculta `/api/docs/`, `/api/redoc/` y `/api/schema/`. |
+| `MEDIA_ROOT`           | No | Carpeta de las evidencias de inventario (por defecto `backend/media/`). |
 
 Base de datos por entorno: **texcore-dev** (desarrollo diario, rama
 `pruebas`) y **texcore-prod** (rama `main`). Solo cambia `DATABASE_URL`.
@@ -77,8 +87,9 @@ python manage.py seed_admin
 ```
 
 Es idempotente (se puede correr varias veces sin duplicar la cuenta) y
-usa `admin@texcore.test` / `Admin#2026` si no defines `ADMIN_EMAIL` /
-`ADMIN_PASSWORD` en `.env`. En texcore-prod pasa una contraseña propia:
+usa valores de ejemplo **solo válidos con `DJANGO_DEBUG=true`** si no defines
+`ADMIN_EMAIL` / `ADMIN_PASSWORD` en `.env` (ver `python manage.py seed_admin --help`).
+Fuera de desarrollo el comando se niega a usarlos. En texcore-prod pasa una contraseña propia:
 
 ```powershell
 python manage.py seed_admin --email tu-correo@empresa.com --password "Otra#Clave1"
@@ -105,6 +116,9 @@ Salvo los marcados como públicos, todos exigen `Authorization: Bearer <access>`
 | GET, POST | `/api/roles/` | `seguridad.ver` / `seguridad.roles` | Roles con sus permisos y cantidad de usuarios / crear rol. |
 | GET, PATCH, DELETE | `/api/roles/<id>/` | `seguridad.ver` / `seguridad.roles` | Ver, editar permisos, eliminar (solo roles no base y sin usuarios). |
 | GET | `/api/permissions/` | `seguridad.ver` | Catálogo de permisos por módulo. |
+
+Las rutas de cada módulo de negocio se describen más abajo (inventario, referencias, producción y compras). El mapa completo
+está en [`docs/api.md`](docs/api.md) y la referencia exacta en Swagger.
 
 ## Roles y permisos (HU 1.4)
 
@@ -178,7 +192,9 @@ limitaciones en [`docs/despliegue-render.md`](docs/despliegue-render.md).
 
 ```powershell
 python manage.py check
-python manage.py test        # usa SQLite temporal, nunca la base en la nube
+python manage.py test        # 683 pruebas; usa SQLite temporal, nunca la base en la nube
+python manage.py test apps.production   # solo un módulo
+python manage.py spectacular --validate --file schema.yml   # valida el esquema OpenAPI (borra después schema.yml)
 ```
 
 ## Convenciones
@@ -229,7 +245,74 @@ En producción hay que moverlas a Supabase Storage.
 
 `python manage.py seed_inventario` crea proveedores y un catálogo de ejemplo (solo con `DJANGO_DEBUG=true`).
 
+**Costo promedio.** Una compra puede traer `costo_unitario`; el producto guarda su costo promedio ponderado móvil
+(`(existencias × promedio + compra × costo) / (existencias + compra)`) y cada línea de una orden de salida guarda una foto del costo
+con que salió el material (migración `0005_costo_de_compras`). Es la base del costeo de producción.
+
 **Migraciones 0002 y 0003.** La 0002 convierte el texto libre `proveedor` de los movimientos en
 `proveedor_nombre` (no se pierde el historial) y agrega la llave `proveedor`; la 0003 clasifica los
 productos anteriores por su nombre. Si la base la comparte un backend desplegado con la versión anterior,
 esa versión falla en el historial de movimientos hasta que se despliegue la nueva.
+
+## Compras (órdenes de compra y recepción)
+
+App `apps/purchasing`. Todo bajo `/api/compras/`. Producción crea la orden, el Gerente la aprueba y el Almacenista recibe la mercancía.
+
+| Endpoint | Permiso | Qué hace |
+|----------|---------|----------|
+| `GET/POST ordenes/` | `compras.ver` / `compras.gestionar` | Lista (filtros `estado`, `proveedor`, `q`) y crea una orden en borrador (`OC-0001`). |
+| `GET/PATCH ordenes/<id>/` | `compras.ver` / `compras.gestionar` | Consulta y edita mientras es borrador. |
+| `POST ordenes/<id>/aprobar/` | `compras.aprobar` | El Gerente la aprueba; desde entonces se puede recibir. |
+| `POST ordenes/<id>/cancelar/`, `cerrar/` | `compras.gestionar` | Cancelar (sin recepciones) o cerrar (con recepciones parciales); exigen el motivo. |
+| `GET/POST recepciones/` | `compras.ver` / `inventario.gestionar` | Recibe varios productos en una sola transacción (`RC-0001`), contra una orden aprobada o suelta. |
+| `GET metadatos/` | `compras.ver` | Estados y tolerancia de exceso (5 %). |
+
+Cada fila recibida entra al almacén con la misma regla que un ingreso (stock, costo promedio y kardex). Quien creó la orden no puede recibirla.
+Estados: borrador, aprobada, recibida parcial, recibida, cerrada y cancelada. Permisos y datos iniciales: migración `users/0008_permisos_compras`.
+
+## Referencias de jean y ficha técnica (HU 3.1 y 3.2)
+
+App `apps/references`. Permisos `referencias.ver` / `referencias.gestionar` y `fichas_tecnicas.ver` / `fichas_tecnicas.gestionar`.
+
+| Endpoint | Qué hace |
+|----------|----------|
+| `GET/POST referencias/`, `GET/PATCH/DELETE referencias/<id>/` | Catálogo de modelos de jean (`REF-0001`) con tallas y colores (hasta 60 variantes). Filtros por texto, estado, ajuste, talla y color. |
+| `POST referencias/<id>/estado/` | Borrador → activa → descontinuada. Activar exige una variante y una imagen. Solo se archiva una referencia no activa. |
+| `POST referencias/<id>/imagenes/`, `GET/DELETE referencias/imagenes/<id>/archivo/`, `POST referencias/imagenes/<id>/principal/` | Hasta 5 fotos del prototipo (2 MB, JPG/PNG/WEBP) guardadas en la base. |
+| `GET/PUT/DELETE referencias/<id>/ficha/` | Ficha técnica de consumo por unidad: materiales con cantidad por prenda y merma. |
+| `GET/POST/DELETE referencias/<id>/ficha/documento/` | PDF de la ficha extensa (5 MB). |
+| `GET inventario/fichas-tecnicas/`, `GET inventario/fichas-tecnicas/<id>/consumo/?cantidad=N` | Referencias activas para elegir en una orden y consumo contra el stock. |
+| `GET referencias/metadatos/` | Estados, ajustes y tipos de lavado. |
+
+`python manage.py seed_demo_referencias` crea referencias en sus tres estados con fotos y fichas (solo con `DJANGO_DEBUG=true`).
+
+## Producción y trazabilidad (HU 4.1 a 4.6)
+
+App `apps/production`. Todo bajo `/api/produccion/`. Ver requiere `produccion.ver`; crear, anular, controlar tiempos, asignar recursos y registrar tarifas requiere `produccion.gestionar`.
+
+| Endpoint | Qué hace |
+|----------|----------|
+| `POST simulacion/` | Simula producir N prendas (con lotes): viable, faltantes, máximo producible, cuello de botella y cobertura por lote. Solo lectura (HU 4.1). |
+| `GET/POST ordenes/`, `GET ordenes/<id>/`, `POST ordenes/<id>/anular/` | Órdenes `OP-0001` con lotes `OP-0001-L01` y tallas; crear descuenta el material de la ficha, anular lo devuelve (HU 4.2). |
+| `POST lotes/<id>/<accion>/`, `GET lotes/<id>/historial/` | `iniciar`, `pausar`, `reanudar`, `completar` sobre la etapa en curso (corte → confección → terminación) e historial de eventos (HU 4.3). |
+| `GET/POST operarios/`, `GET/PATCH operarios/<id>/`, `GET/POST maquinas/`, `GET/PATCH maquinas/<id>/` | Catálogos de operarios (`OPE-0001`) y máquinas (`MAQ-0001`) (HU 4.4). |
+| `POST lotes/<id>/asignar/`, `POST lotes/<id>/desvincular/`, `GET lotes/<id>/asignaciones/` | Asigna, reasigna o quita operario y máquina de una etapa; historial (HU 4.4). |
+| `GET monitor/` | Tablero de lotes en cuatro columnas con alertas por tiempo detenido (HU 4.5). |
+| `GET/POST tarifas/`, `GET ordenes/<id>/costos/` | Tarifas de mano de obra por minuto (historial) y liquidación de la orden: materiales + mano de obra, costo por prenda (HU 4.6). |
+
+Reglas clave: el estado de lotes y órdenes se calcula (no se guarda), el tiempo neto no cuenta las pausas, y la liquidación usa la foto del
+costo del material y la tarifa vigente a la fecha de fin de cada etapa. Detalle en [`docs/modulos.md`](docs/modulos.md).
+
+## Datos de demostración
+
+Solo con `DJANGO_DEBUG=true`, idempotentes y por las mismas reglas de la aplicación:
+
+```powershell
+python manage.py seed_admin
+python manage.py seed_demo_inventario    # incluye seed_inventario y seed_demo_referencias
+python manage.py seed_demo_produccion    # órdenes con lotes, tallas y tiempos
+python manage.py seed_demo_recursos      # operarios y máquinas asignados
+python manage.py seed_demo_compras       # órdenes de compra en borrador, aprobada y parcial
+```
+
+Los comandos de los pasos 3 a 5 necesitan el 2. No se siembran tarifas de mano de obra: se registran desde la pantalla de liquidación.

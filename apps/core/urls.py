@@ -1,3 +1,4 @@
+"""Rutas de salud del servidor y de la base de datos (`/api/health/`)."""
 from django.urls import path
 
 from . import views

@@ -100,8 +100,9 @@ class FichaManager(ActiveManager):
 
 
 class FichaTecnica(BaseModel):
-    """Ficha técnica de consumo por unidad (HU 3.2): qué materiales y cuánto lleva una prenda
-    de la referencia. Una por referencia; el consumo vive en `FichaLinea`. Puede adjuntar el PDF de la
+    """Ficha técnica de consumo por unidad (HU 3.2): qué materiales y cuánto lleva una prenda de la referencia.
+
+    Una por referencia; el consumo vive en `FichaLinea`. Puede adjuntar el PDF de la
     ficha técnica extensa, que trae lo que este módulo todavía no modela (geometral, secuencia de
     confección, tabla de medidas).
     """
@@ -134,8 +135,9 @@ class FichaTecnica(BaseModel):
 
 
 class FichaLinea(BaseModel):
-    """Un material de la ficha: cuánto se consume por prenda, con su merma (%) cuando aplica
-    (p. ej. el desperdicio de corte de la tela).
+    """Un material de la ficha técnica y cuánto se consume de él por prenda (HU 3.2).
+
+    Lleva su merma (%) cuando aplica, por ejemplo el desperdicio de corte de la tela.
     """
     ficha = models.ForeignKey(FichaTecnica, on_delete=models.PROTECT, related_name="lineas")
     producto = models.ForeignKey("inventory.Producto", on_delete=models.PROTECT, related_name="+")

@@ -187,7 +187,7 @@ erDiagram
     }
     OrdenProduccion {
         bigint id PK
-        bigint orden_salida FK UK
+        bigint orden_salida FK, UK
         varchar_20 codigo
         bigint referencia FK
         int cantidad
@@ -305,7 +305,7 @@ erDiagram
         bigint recepcion FK
         bigint linea_compra FK
         bigint producto FK
-        bigint movimiento FK UK
+        bigint movimiento FK, UK
         decimal_12_2 cantidad
         varchar_60 lote
         decimal_14_4 costo_unitario

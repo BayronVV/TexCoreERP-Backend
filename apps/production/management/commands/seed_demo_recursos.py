@@ -45,6 +45,7 @@ MACHINES = [
 
 
 class Command(BaseCommand):
+    """Comando de gestión: siembra operarios y máquinas de demostración y los asigna a etapas en curso (solo con `DJANGO_DEBUG=true`)."""
     help = "Crea operarios y máquinas de demostración y los asigna a las etapas en curso (solo con DJANGO_DEBUG=true)."
 
     def handle(self, *args, **options):

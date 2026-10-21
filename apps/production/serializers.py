@@ -1,3 +1,4 @@
+"""Serializers de producción: entrada y salida de la simulación, órdenes, lotes, etapas, monitor, costeo y recursos."""
 from decimal import Decimal
 
 from django.utils import timezone
@@ -34,6 +35,7 @@ class SimulacionInputSerializer(serializers.Serializer):
 
 
 class CuelloDeBotellaSerializer(serializers.Serializer):
+    """El material que limita cuántas prendas se pueden fabricar con el stock actual."""
     producto = serializers.IntegerField()
     codigo = serializers.CharField()
     nombre = serializers.CharField()
@@ -43,6 +45,7 @@ class CuelloDeBotellaSerializer(serializers.Serializer):
 
 
 class LoteSimuladoSerializer(serializers.Serializer):
+    """Cobertura de un lote en la simulación: acumulado de prendas y si el stock alcanza."""
     numero = serializers.IntegerField()
     cantidad = serializers.IntegerField()
     acumulado = serializers.IntegerField(help_text="Prendas de los lotes 1..n juntos")
@@ -51,6 +54,7 @@ class LoteSimuladoSerializer(serializers.Serializer):
 
 
 class SimulacionSalidaSerializer(serializers.Serializer):
+    """Resultado de la simulación: viabilidad, líneas, faltantes, máximo producible y cobertura por lote."""
     referencia = serializers.DictField()
     cantidad = serializers.IntegerField()
     viable = serializers.BooleanField(help_text="Hay material para todo el total")
@@ -79,18 +83,21 @@ class OrdenProduccionInputSerializer(serializers.Serializer):
 
 
 class LoteTallaSerializer(serializers.ModelSerializer):
+    """Prendas de una talla y color dentro de un lote."""
     class Meta:
         model = LoteTalla
         fields = ["variante", "talla", "color", "cantidad"]
 
 
 class RecursoOperarioSerializer(serializers.Serializer):
+    """Resumen de un operario (id, código y nombre) dentro de una asignación."""
     id = serializers.IntegerField()
     codigo = serializers.CharField()
     nombres = serializers.CharField()
 
 
 class RecursoMaquinaSerializer(serializers.Serializer):
+    """Resumen de una máquina (id, código y tipo) dentro de una asignación."""
     id = serializers.IntegerField()
     codigo = serializers.CharField()
     tipo = serializers.CharField()
@@ -193,6 +200,7 @@ class LoteSerializer(serializers.ModelSerializer):
 
 
 class EventoEtapaSerializer(serializers.ModelSerializer):
+    """Un evento del historial de una etapa: acción, usuario y momento."""
     etapa = serializers.CharField(source="etapa_lote.etapa", read_only=True)
     etapa_nombre = serializers.CharField(source="etapa_lote.get_etapa_display", read_only=True)
     accion_nombre = serializers.CharField(source="get_accion_display", read_only=True)
@@ -208,6 +216,7 @@ class EventoEtapaSerializer(serializers.ModelSerializer):
 
 
 class AccionLoteSerializer(serializers.Serializer):
+    """Nota opcional que acompaña una acción sobre un lote."""
     nota = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
 
 
@@ -268,6 +277,7 @@ class OrdenProduccionSerializer(serializers.ModelSerializer):
 
 
 class AnulacionProduccionSerializer(serializers.Serializer):
+    """Motivo obligatorio para anular una orden de producción."""
     motivo = serializers.CharField(max_length=255)
 
 
@@ -384,6 +394,7 @@ class TarjetaLoteSerializer(serializers.Serializer):
 
 
 class ColumnaMonitorSerializer(serializers.Serializer):
+    """Una columna del monitor: estado, total real y las tarjetas que se muestran."""
     estado = serializers.CharField()
     nombre = serializers.CharField()
     total = serializers.IntegerField(help_text="Lotes en esa columna, aunque solo se devuelvan `limite` tarjetas")
@@ -391,6 +402,7 @@ class ColumnaMonitorSerializer(serializers.Serializer):
 
 
 class MonitorSerializer(serializers.Serializer):
+    """Tablero completo del monitor: columnas, resumen de alertas, límite por columna y momento de generación."""
     generado_at = serializers.DateTimeField()
     limite = serializers.IntegerField()
     terminadas_dias = serializers.IntegerField(help_text="La columna Terminada solo muestra los lotes de los últimos N días")
@@ -437,6 +449,7 @@ class TarifaManoObraInputSerializer(serializers.Serializer):
 
 
 class OrdenCostosInfoSerializer(serializers.Serializer):
+    """Datos de cabecera de la orden en la liquidación."""
     id = serializers.IntegerField()
     codigo = serializers.CharField()
     referencia_codigo = serializers.CharField()
@@ -447,6 +460,7 @@ class OrdenCostosInfoSerializer(serializers.Serializer):
 
 
 class MaterialLineaCostoSerializer(serializers.Serializer):
+    """Costo de una línea de material: cantidad, costo unitario y subtotal."""
     producto = serializers.IntegerField()
     codigo = serializers.CharField()
     nombre = serializers.CharField()
@@ -458,11 +472,13 @@ class MaterialLineaCostoSerializer(serializers.Serializer):
 
 
 class MaterialesCostosSerializer(serializers.Serializer):
+    """Costo total de materiales con el detalle por línea."""
     lineas = MaterialLineaCostoSerializer(many=True)
     total = serializers.CharField()
 
 
 class EtapaLoteCostoSerializer(serializers.Serializer):
+    """Costo de mano de obra de una etapa de un lote: tiempo neto, tarifa y costo."""
     etapa = serializers.CharField()
     etapa_nombre = serializers.CharField()
     estado = serializers.CharField()
@@ -474,6 +490,7 @@ class EtapaLoteCostoSerializer(serializers.Serializer):
 
 
 class LoteCostoSerializer(serializers.Serializer):
+    """Costo de un lote: materiales prorrateados, mano de obra por etapa y total."""
     lote = serializers.IntegerField()
     codigo = serializers.CharField()
     cantidad = serializers.IntegerField()
@@ -483,6 +500,7 @@ class LoteCostoSerializer(serializers.Serializer):
 
 
 class EtapaResumenCostoSerializer(serializers.Serializer):
+    """Mano de obra acumulada de una etapa en toda la orden."""
     etapa = serializers.CharField()
     etapa_nombre = serializers.CharField()
     segundos_netos = serializers.IntegerField()
@@ -490,12 +508,14 @@ class EtapaResumenCostoSerializer(serializers.Serializer):
 
 
 class ManoObraCostosSerializer(serializers.Serializer):
+    """Costo total de mano de obra, por lote y por etapa."""
     por_lote = LoteCostoSerializer(many=True)
     por_etapa = EtapaResumenCostoSerializer(many=True)
     total = serializers.CharField()
 
 
 class TotalesCostosSerializer(serializers.Serializer):
+    """Totales de la liquidación: materiales, mano de obra, total y costo por prenda."""
     materiales = serializers.CharField()
     mano_obra = serializers.CharField()
     total = serializers.CharField()
@@ -503,11 +523,13 @@ class TotalesCostosSerializer(serializers.Serializer):
 
 
 class DistribucionCostosSerializer(serializers.Serializer):
+    """Distribución porcentual entre materiales y mano de obra."""
     materiales_pct = serializers.CharField()
     mano_obra_pct = serializers.CharField()
 
 
 class OrdenCostosRespuestaSerializer(serializers.Serializer):
+    """Respuesta completa de la liquidación de una orden, con advertencias si el cálculo es parcial."""
     orden = OrdenCostosInfoSerializer()
     completo = serializers.BooleanField()
     advertencias = serializers.ListField(child=serializers.CharField())
@@ -591,11 +613,13 @@ class AsignarInputSerializer(serializers.Serializer):
 
 
 class DesvincularInputSerializer(serializers.Serializer):
+    """Etapa de la que se quita un recurso, y cuál: operario, máquina o ambos."""
     etapa = serializers.CharField()
     recurso = serializers.ChoiceField(choices=[catalog.RESOURCE_OPERATOR, catalog.RESOURCE_MACHINE, catalog.RESOURCE_BOTH])
 
 
 class AsignacionRespuestaSerializer(serializers.Serializer):
+    """El lote actualizado tras asignar o quitar recursos, con los avisos que no bloquean."""
     lote = LoteSerializer()
     advertencias = serializers.ListField(child=serializers.CharField(), help_text="Avisos que no bloquean (recurso ocupado en otra etapa)")
 
@@ -606,6 +630,7 @@ class RecursoGuardadoSerializer(serializers.Serializer):
 
 
 class AsignacionHistorialSerializer(serializers.ModelSerializer):
+    """Una fila del historial de asignaciones de una etapa."""
     etapa = serializers.CharField(source="etapa_lote.etapa", read_only=True)
     etapa_nombre = serializers.CharField(source="etapa_lote.get_etapa_display", read_only=True)
     operario_codigo = serializers.CharField(source="operario.codigo", default="", read_only=True)

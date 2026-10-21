@@ -1,3 +1,4 @@
+"""Rutas de `/api/produccion/`: simulación, órdenes, lotes, monitor, tarifas, costos, operarios y máquinas."""
 from django.urls import path
 
 from . import views

@@ -1,3 +1,4 @@
+"""Rutas de seguridad: registro, token, recuperación de contraseña, usuarios, roles y permisos."""
 from django.urls import path
 from . import views
 

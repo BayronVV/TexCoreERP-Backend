@@ -64,8 +64,9 @@ class Lote(BaseModel):
 
 
 class LoteTalla(BaseModel):
-    """Prendas de una talla y color dentro de un lote. Talla y color se copian de la variante: si luego se
-    archiva o cambia, el lote conserva lo que se pidió.
+    """Prendas de una talla y color dentro de un lote (HU 4.2).
+
+    Talla y color se copian de la variante: si luego se archiva o cambia, el lote conserva lo que se pidió.
     """
     lote = models.ForeignKey(Lote, on_delete=models.PROTECT, related_name="tallas")
     variante = models.ForeignKey("references.Variante", on_delete=models.PROTECT, related_name="+")
@@ -172,9 +173,10 @@ class TarifaManoObra(BaseModel):
 # --- Asignación de recursos (HU 4.4 / RF14) ---
 
 class Operario(BaseModel):
-    """Persona que trabaja en el taller. Es un catálogo simple: no exige un usuario del sistema (si el PM confirma que
-    los operarios usan el sistema, `usuario` los enlaza). Solo se guardan los datos que producción necesita; la nómina,
-    la salud y los datos sensibles quedan fuera. Un operario con historial no se borra: se desactiva.
+    """Persona que trabaja en el taller (HU 4.4 / RF14); catálogo simple que no exige un usuario del sistema.
+
+    Si el PM confirma que los operarios usan el sistema, `usuario` los enlaza. Solo se guardan los datos que producción
+    necesita; la nómina, la salud y los datos sensibles quedan fuera. Un operario con historial no se borra: se desactiva.
     """
     codigo = models.CharField(max_length=20)
     nombres = models.CharField(max_length=120)
@@ -202,8 +204,9 @@ class Operario(BaseModel):
 
 
 class Maquina(BaseModel):
-    """Máquina del taller. El estado guarda solo lo físico (disponible, en mantenimiento, fuera de servicio): que esté
-    ocupada se calcula con las asignaciones abiertas de las etapas en curso.
+    """Máquina del taller (HU 4.4 / RF14) con su estado físico: disponible, en mantenimiento o fuera de servicio.
+
+    Que esté ocupada no se guarda: se calcula con las asignaciones abiertas de las etapas en curso.
     """
     codigo = models.CharField(max_length=20)
     tipo = models.CharField(max_length=14, choices=catalog.MACHINE_TYPES)

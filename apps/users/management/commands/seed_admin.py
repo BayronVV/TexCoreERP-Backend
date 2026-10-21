@@ -27,6 +27,7 @@ DEFAULT_PASSWORD = "Admin#2026"  # Solo para desarrollo local.
 
 
 class Command(BaseCommand):
+    """Comando de gestión: crea o actualiza la cuenta de administrador inicial."""
     help = "Crea o actualiza la cuenta de Administrador inicial de TexCore."
 
     def add_arguments(self, parser):

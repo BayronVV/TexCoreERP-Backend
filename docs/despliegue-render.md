@@ -37,6 +37,19 @@ despliegan la rama `main` y se redespliegan solos con cada merge.
 
 `SUPABASE_URL` y `SUPABASE_ANON_KEY` no se usan todavía: no se cargan.
 
+### Migraciones y datos iniciales
+
+Cada arranque ejecuta `migrate --noinput`, así que un despliegue con migraciones nuevas las aplica solo. Eso incluye los
+**permisos y roles** de los módulos nuevos (`referencias.*`, `compras.*`), que cargan las migraciones `0007` y `0008` de `apps/users`,
+y el endurecimiento de la base (RLS) que corre al final de cada `migrate`.
+
+- No hace falta (ni conviene) correr nada más para tener la matriz de permisos inicial; después se ajusta desde **Roles y permisos**.
+- La primera cuenta administradora se crea una sola vez con `python manage.py seed_admin` desde una terminal con `DATABASE_URL` de producción, pasando
+  `--email` y `--password` propios (ver el [manual del sistema](manual-del-sistema.md)). Nunca se deja la contraseña de ejemplo.
+- Los comandos `seed_demo_*` **no funcionan en Render**: exigen `DJANGO_DEBUG=true`, que en producción es `false`. Es a propósito.
+- Una migración que cambia el esquema se aplica a la base compartida: la versión anterior del código, si sigue desplegada, debe
+  tolerarlo (la 0002 de inventario ya lo advertía).
+
 ### Proxies
 
 Detrás de Render la IP real llega en `X-Forwarded-For`. Con `NUM_PROXIES=0` se
@@ -67,6 +80,8 @@ en los logs del servicio.
   servicio, que en Render es efímero: se pierden en cada redespliegue o
   reinicio. Antes de usarlas en serio hay que moverlas a Supabase Storage o
   agregar un disco persistente (plan de pago).
+- **Lo que sí sobrevive a un redespliegue:** las imágenes del catálogo, las fotos de las referencias y el PDF de la ficha técnica se
+  guardan en la base de datos, no en el disco.
 - **Plan gratuito:** el servicio se duerme tras 15 minutos sin tráfico y la
   primera petición tarda cerca de un minuto en responder.
 - **Base de datos compartida:** hoy apunta a `texcore-dev`. Para producción real
@@ -100,9 +115,17 @@ y en la página *Despliegues* del proyecto.
 - Si Render falla o cancela el despliegue, el workflow falla y Jira lo muestra como fallido.
 - También se puede lanzar a mano: pestaña Actions > *Despliegue en Render* > *Run workflow*.
 
+## Documentación publicada
+
+El sitio de manuales (este mismo) se construye con `mkdocs build --strict` y se publica en GitHub Pages
+(<https://bayronvv.github.io/TexCoreERP-Backend/>) con el workflow `.github/workflows/docs.yml`, que corre cuando cambian
+`docs/` o `mkdocs.yml` en `main`. Requiere una vez: *Settings > Pages > Source = GitHub Actions*. Si el build falla por un enlace
+roto, el sitio anterior sigue publicado.
+
 ## Después de desplegar
 
 1. `GET https://texcore-api.onrender.com/api/health/` debe responder `ok`.
 2. Abrir el frontend, iniciar sesión y revisar que no haya errores de CORS en la consola.
+   Entrar a **Roles y permisos** y confirmar que aparecen los módulos Referencias, Fichas Técnicas y Compras.
 3. Cambiar la contraseña de las cuentas de prueba: la base es compartida y los
    repositorios son públicos.

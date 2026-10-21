@@ -1,3 +1,4 @@
+"""Vistas de producción: simulación (HU 4.1), órdenes y lotes (4.2), tiempos (4.3), recursos (4.4), monitor (4.5) y costeo (4.6)."""
 from django.db.models import Q
 from django.http import Http404
 from django.utils import timezone
@@ -46,6 +47,7 @@ from .serializers import (
                 "La referencia debe estar activa y tener ficha técnica.",
 )
 class SimulacionView(APIView):
+    """Simula producir N prendas contra el stock sin reservar ni descontar nada (HU 4.1)."""
     # Es un POST porque lleva una lista de lotes, pero solo calcula: no escribe nada, así que basta con poder ver.
     required_permissions = {"POST": catalog.PRODUCTION_VIEW}
 
@@ -72,6 +74,7 @@ def order_queryset():
 
 @extend_schema(tags=["produccion"])
 class OrdenProduccionListCreateView(generics.ListAPIView):
+    """Lista las órdenes de producción y crea una con sus lotes y tallas, descontando el material de la ficha (HU 4.2)."""
     required_permissions = ORDERS_READ_WRITE
     serializer_class = OrdenProduccionSerializer
     pagination_class = None
@@ -108,6 +111,7 @@ class OrdenProduccionListCreateView(generics.ListAPIView):
 
 @extend_schema(tags=["produccion"], summary="Consultar una orden de producción con sus lotes y tallas")
 class OrdenProduccionDetailView(generics.RetrieveAPIView):
+    """Consulta una orden de producción con sus lotes, etapas y tallas."""
     required_permissions = catalog.PRODUCTION_VIEW
     serializer_class = OrdenProduccionSerializer
 
@@ -121,6 +125,7 @@ class OrdenProduccionDetailView(generics.RetrieveAPIView):
     request=AnulacionProduccionSerializer, responses={200: OrdenProduccionSerializer},
 )
 class OrdenProduccionAnularView(APIView):
+    """Anula una orden de producción en proceso: devuelve el material al almacén y libera los recursos."""
     required_permissions = catalog.PRODUCTION_MANAGE
 
     def post(self, request, pk):
@@ -145,6 +150,7 @@ def lot_queryset():
                 "etapa solo empieza cuando la anterior terminó y una orden anulada no admite acciones.",
 )
 class LoteAccionView(APIView):
+    """Aplica `iniciar`, `pausar`, `reanudar` o `completar` a la etapa en curso de un lote (HU 4.3)."""
     required_permissions = catalog.PRODUCTION_MANAGE
 
     def post(self, request, pk, accion):
@@ -161,6 +167,7 @@ class LoteAccionView(APIView):
                 "registros, nunca se editan.",
 )
 class LoteHistorialView(generics.ListAPIView):
+    """Historial de inicios, pausas, reanudaciones y fines de las etapas de un lote (solo se agregan registros)."""
     required_permissions = catalog.PRODUCTION_VIEW
     serializer_class = EventoEtapaSerializer
     pagination_class = None
@@ -204,6 +211,7 @@ def _query_bool(request, name):
                 "lote se calcula a partir de sus etapas.",
 )
 class MonitorView(APIView):
+    """Tablero de lotes agrupados por columna, con alertas por tiempo detenido (HU 4.5)."""
     required_permissions = catalog.PRODUCTION_VIEW
 
     def get(self, request):
@@ -224,6 +232,7 @@ TARIFAS_PERMISSIONS = {"GET": catalog.PRODUCTION_VIEW, "POST": catalog.PRODUCTIO
 
 @extend_schema(tags=["produccion"])
 class TarifasView(APIView):
+    """Historial de tarifas de mano de obra por minuto y registro de nuevas vigencias (HU 4.6)."""
     required_permissions = TARIFAS_PERMISSIONS
 
     @extend_schema(
@@ -266,6 +275,7 @@ class TarifasView(APIView):
                     "`advertencias` si faltan tarifas o costos de material. Una orden anulada devuelve costos en cero.",
 )
 class OrdenProduccionCostosView(APIView):
+    """Liquidación de una orden: costo de materiales y de mano de obra por lote y etapa (HU 4.6)."""
     required_permissions = catalog.PRODUCTION_VIEW
 
     def get(self, request, pk):
@@ -316,6 +326,7 @@ def _saved(serializer_class, instance, warnings, busy_function, status_code=stat
 
 @extend_schema(tags=["recursos"])
 class OperarioListCreateView(generics.ListAPIView):
+    """Catálogo de operarios del taller: lista con filtros y alta (HU 4.4)."""
     required_permissions = RESOURCES_PERMISSIONS
     serializer_class = OperarioSerializer
     pagination_class = None
@@ -355,6 +366,7 @@ class OperarioListCreateView(generics.ListAPIView):
 
 @extend_schema(tags=["recursos"])
 class OperarioDetailView(generics.RetrieveUpdateAPIView):
+    """Consulta y edita un operario; se desactiva en lugar de borrarse (HU 4.4)."""
     required_permissions = RESOURCE_DETAIL_PERMISSIONS
     serializer_class = OperarioSerializer
     queryset = Operario.objects.all()
@@ -376,6 +388,7 @@ class OperarioDetailView(generics.RetrieveUpdateAPIView):
 
 @extend_schema(tags=["recursos"])
 class MaquinaListCreateView(generics.ListAPIView):
+    """Catálogo de máquinas del taller: lista con filtros y alta (HU 4.4)."""
     required_permissions = RESOURCES_PERMISSIONS
     serializer_class = MaquinaSerializer
     pagination_class = None
@@ -422,6 +435,7 @@ class MaquinaListCreateView(generics.ListAPIView):
 
 @extend_schema(tags=["recursos"])
 class MaquinaDetailView(generics.RetrieveUpdateAPIView):
+    """Consulta y edita una máquina, incluido su estado físico (HU 4.4)."""
     required_permissions = RESOURCE_DETAIL_PERMISSIONS
     serializer_class = MaquinaSerializer
     queryset = Maquina.objects.all()
@@ -455,6 +469,7 @@ def _assignment_response(lot_id, warnings):
                 "etapa en curso solo se avisa en `advertencias`.",
 )
 class LoteAsignarView(APIView):
+    """Asigna, reasigna o quita el operario y la máquina de una etapa de un lote (HU 4.4)."""
     required_permissions = catalog.PRODUCTION_MANAGE
 
     def post(self, request, pk):
@@ -475,6 +490,7 @@ class LoteAsignarView(APIView):
     description="Quita de la etapa el `operario`, la `maquina` o `ambos`. La asignación se cierra y queda en el historial.",
 )
 class LoteDesvincularView(APIView):
+    """Quita el operario, la máquina o ambos de una etapa, conservando el historial (HU 4.4)."""
     required_permissions = catalog.PRODUCTION_MANAGE
 
     def post(self, request, pk):
@@ -492,6 +508,7 @@ class LoteDesvincularView(APIView):
     description="Quién trabajó cada etapa del lote, con qué máquina y entre qué momentos. `vigente` indica la asignación abierta.",
 )
 class LoteAsignacionesView(generics.ListAPIView):
+    """Historial de quién trabajó cada etapa de un lote y con qué máquina (HU 4.4)."""
     required_permissions = catalog.PRODUCTION_VIEW
     serializer_class = AsignacionHistorialSerializer
     pagination_class = None

@@ -1,3 +1,4 @@
+"""Serializers de inventario: productos, proveedores, movimientos, órdenes de salida y evidencias."""
 from decimal import Decimal
 
 from drf_spectacular.utils import extend_schema_field

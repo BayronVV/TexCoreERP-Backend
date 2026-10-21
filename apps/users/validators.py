@@ -1,3 +1,4 @@
+"""Validadores de datos de usuario (contraseña segura)."""
 import re
 
 from django.contrib.auth import password_validation

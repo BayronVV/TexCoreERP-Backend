@@ -1,3 +1,4 @@
+"""Serializers del catálogo de referencias de jean (HU 3.1): referencia, variantes, imágenes y estado."""
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -15,6 +16,7 @@ class VarianteSerializer(serializers.ModelSerializer):
 
 
 class VarianteInputSerializer(serializers.Serializer):
+    """Una talla y un color de la referencia, al crearla o editarla."""
     talla = serializers.CharField(max_length=10)
     color = serializers.CharField(max_length=60)
 
@@ -84,4 +86,5 @@ class ReferenciaInputSerializer(serializers.Serializer):
 
 
 class EstadoInputSerializer(serializers.Serializer):
+    """Estado al que se quiere pasar una referencia."""
     estado = serializers.ChoiceField(choices=catalog.STATES)

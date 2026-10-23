@@ -1,6 +1,4 @@
 """Vistas de seguridad: registro, sesión JWT, recuperación de contraseña, usuarios, roles y permisos."""
-import ipaddress
-
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -14,7 +12,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from . import catalog, password_reset
+from . import catalog, password_reset, trace
 from .models import ModulePermission, PasswordResetToken, Role
 from .serializers import (
     CustomTokenObtainPairSerializer,
@@ -39,12 +37,7 @@ DETAIL_METHODS = ["get", "patch", "delete", "head", "options"]
 
 
 def _client_ip(request):
-    # La misma IP que usa el throttling (respeta NUM_PROXIES); se descarta si no es válida.
-    ip = ScopedRateThrottle().get_ident(request)
-    try:
-        return str(ipaddress.ip_address(ip))
-    except ValueError:
-        return None
+    return trace.client_ip(request)
 
 
 @extend_schema(
@@ -58,6 +51,10 @@ class UserRegisterView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "register"
+
+    def perform_create(self, serializer):
+        user = serializer.save()
+        trace.record(self.request, trace.REGISTER, user=user, email=user.email)
 
 
 @extend_schema(

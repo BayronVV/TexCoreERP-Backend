@@ -118,6 +118,22 @@ class CustomUser(AbstractUser, BaseModel):
         return code in self.get_permission_codes()
 
 
+class AccessLog(models.Model):
+    """Rastro de registros e inicios de sesión (éxitos y fallos) para revisar accesos sospechosos."""
+
+    user = models.ForeignKey(CustomUser, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    email = models.CharField(max_length=254, blank=True)
+    event = models.CharField(max_length=20)
+    ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
+    forwarded = models.CharField(max_length=300, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "seguridad_acceso"
+        ordering = ["-created_at"]
+
+
 class PasswordResetToken(models.Model):
     """Token de un solo uso para restablecer o definir la contraseña (HU 1.3).
 

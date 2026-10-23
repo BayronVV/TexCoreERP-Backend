@@ -9,7 +9,8 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from .models import ModulePermission, PasswordResetToken, Role
+from . import trace
+from .models import AccessLog, ModulePermission, PasswordResetToken, Role
 
 User = get_user_model()
 PASSWORD = "Passw0rd!23"
@@ -411,3 +412,32 @@ class PasswordResetTests(TestCase):
         data = {"token": raw, "password": "Nuev0#Clave", "password_confirm": "Nuev0#Clave"}
         self.assertEqual(APIClient().post(reverse("password_reset_confirm"), data).status_code, 200)
         self.assertTrue(User.objects.get(email="luis@t.co").check_password("Nuev0#Clave"))
+
+
+class AccessTraceTests(TestCase):
+    def test_registro_y_login_guardan_el_origen(self):
+        client = APIClient()
+        data = {"email": "nuevo@t.co", "first_name": "Nuevo", "last_name": "Uno", "password": PASSWORD,
+                "password_confirm": PASSWORD, "requested_area": "PRODUCCION"}
+        client.post(reverse("user_register"), data, HTTP_CF_CONNECTING_IP="203.0.113.7", HTTP_USER_AGENT="UA-prueba")
+        make_user("alm@t.co", "ALMACENISTA")
+        client.post(reverse("token_obtain_pair"), {"username": "alm@t.co", "password": PASSWORD},
+                    HTTP_CF_CONNECTING_IP="203.0.113.8")
+        client.post(reverse("token_obtain_pair"), {"username": "alm@t.co", "password": "mala"},
+                    HTTP_CF_CONNECTING_IP="203.0.113.9")
+        rows = {(row.event, row.ip) for row in AccessLog.objects.all()}
+        self.assertEqual(rows, {("registro", "203.0.113.7"), ("login_ok", "203.0.113.8"), ("login_fallido", "203.0.113.9")})
+        self.assertEqual(AccessLog.objects.get(event="registro").user.email, "nuevo@t.co")
+
+    def test_ip_sin_cabecera_de_cloudflare_cuenta_desde_la_derecha(self):
+        request = APIClient().get("/").wsgi_request
+        request.META.update({"HTTP_X_FORWARDED_FOR": "6.6.6.6, 198.51.100.4, 10.0.0.1", "REMOTE_ADDR": "10.0.0.2"})
+        with override_settings(REST_FRAMEWORK={"NUM_PROXIES": 2}):
+            self.assertEqual(trace.client_ip(request), "198.51.100.4")
+        with override_settings(REST_FRAMEWORK={"NUM_PROXIES": 0}):
+            self.assertEqual(trace.client_ip(request), "10.0.0.2")
+
+    def test_cabecera_invalida_se_ignora(self):
+        request = APIClient().get("/").wsgi_request
+        request.META.update({"HTTP_CF_CONNECTING_IP": "no-es-ip", "REMOTE_ADDR": "192.0.2.1"})
+        self.assertEqual(trace.client_ip(request), "192.0.2.1")

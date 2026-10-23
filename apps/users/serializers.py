@@ -10,7 +10,7 @@ from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.utils import get_md5_hash_password
 
-from . import catalog
+from . import catalog, trace
 from .models import ModulePermission, Role
 from .validators import validate_password_policy, validate_passwords_match
 
@@ -48,7 +48,16 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
         # El registro guarda el correo en minúsculas; el login no debe distinguir.
         attrs[self.username_field] = attrs[self.username_field].strip().lower()
-        return super().validate(attrs)
+        request = self.context.get("request")
+        try:
+            data = super().validate(attrs)
+        except AuthenticationFailed:
+            if request is not None:
+                trace.record(request, trace.LOGIN_FAIL, email=attrs[self.username_field])
+            raise
+        if request is not None:
+            trace.record(request, trace.LOGIN_OK, user=self.user, email=self.user.email)
+        return data
 
     @classmethod
     def get_token(cls, user):

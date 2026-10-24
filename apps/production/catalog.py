@@ -105,3 +105,29 @@ MACHINE_STATE_NAMES = dict(MACHINE_STATES)
 RESOURCE_OPERATOR = "operario"
 RESOURCE_MACHINE = "maquina"
 RESOURCE_BOTH = "ambos"
+
+# --- Permisos de Procesos Externos / Lavandería ---
+LAUNDRY_VIEW = "lavanderia.ver"
+LAUNDRY_MANAGE = "lavanderia.gestionar"
+
+# --- Estado de inventario del lote (TE-57 / Procesos Externos) ---
+LOT_INV_INTERNAL = "PLANTA"
+LOT_INV_IN_TRANSIT = "EN_TRANSITO"
+LOT_INV_RETURNED = "RETORNADO"
+LOT_INVENTORY_STATES = [
+    (LOT_INV_INTERNAL, "Planta Interna"),
+    (LOT_INV_IN_TRANSIT, "En Tránsito / Externo"),
+    (LOT_INV_RETURNED, "Retornado de Lavado"),
+]
+
+# --- Estados de la Remisión a Lavandería ---
+REMISSION_IN_TRANSIT = "EN_TRANSITO"
+REMISSION_IN_LAUNDRY = "EN_LAVANDERIA"
+REMISSION_RETURNED = "RETORNADA"
+REMISSION_CANCELLED = "ANULADA"
+REMISSION_STATES = [
+    (REMISSION_IN_TRANSIT, "En Tránsito / Externo"),
+    (REMISSION_IN_LAUNDRY, "En Lavandería"),
+    (REMISSION_RETURNED, "Retornada"),
+    (REMISSION_CANCELLED, "Anulada"),
+]

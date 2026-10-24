@@ -1,7 +1,7 @@
 """Rutas de `/api/produccion/`: simulación, órdenes, lotes, monitor, tarifas, costos, operarios y máquinas."""
 from django.urls import path
 
-from . import views
+from . import remisiones_views, views
 
 urlpatterns = [
     path("produccion/simulacion/", views.SimulacionView.as_view(), name="produccion_simulacion"),
@@ -21,5 +21,10 @@ urlpatterns = [
     path("produccion/lotes/<int:pk>/desvincular/", views.LoteDesvincularView.as_view(), name="produccion_lote_desvincular"),
     path("produccion/lotes/<int:pk>/asignaciones/", views.LoteAsignacionesView.as_view(), name="produccion_lote_asignaciones"),
     path("produccion/lotes/<int:pk>/<str:accion>/", views.LoteAccionView.as_view(), name="produccion_lote_accion"),
+    # Procesos Externos / Lavandería (TE-57 / TE-131)
+    path("lavanderia/lotes-disponibles/", remisiones_views.LotesDisponiblesLavadoView.as_view(), name="lavanderia_lotes_disponibles"),
+    path("lavanderia/proveedores/", remisiones_views.LavanderiaProveedoresView.as_view(), name="lavanderia_proveedores"),
+    path("lavanderia/recetas/", remisiones_views.RecetasLavadoView.as_view(), name="lavanderia_recetas"),
+    path("lavanderia/remisiones/", remisiones_views.RemisionLavanderiaListCreateView.as_view(), name="lavanderia_remisiones"),
 ]
 

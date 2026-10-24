@@ -38,6 +38,7 @@ CAT_BUTTON = "BOTON_REMACHE"
 CAT_LABEL = "ETIQUETA_EMPAQUE"
 CAT_CHEMICAL = "QUIMICO"
 CAT_OTHER = "OTRO_INSUMO"
+CAT_LAUNDRY = "LAVANDERIA"
 CAT_GENERIC = "PANTALON_GENERICO"
 CAT_FINISHED = "PRODUCTO_TERMINADO"
 
@@ -48,6 +49,7 @@ CATEGORIES = {
     CAT_BUTTON: {"label": "Botones metálicos y remaches", "tipo": SUPPLY, "prefix": "BOT", "units": ["unidad", "caja"]},
     CAT_LABEL: {"label": "Etiquetas, marquillas y empaque", "tipo": SUPPLY, "prefix": "ETQ", "units": ["unidad", "caja"]},
     CAT_CHEMICAL: {"label": "Químicos de lavandería", "tipo": SUPPLY, "prefix": "QUI", "units": ["kg", "l"]},
+    CAT_LAUNDRY: {"label": "Servicios de lavandería", "tipo": SUPPLY, "prefix": "LAV", "units": ["unidad"]},
     CAT_OTHER: {"label": "Otros insumos", "tipo": SUPPLY, "prefix": "INS", "units": [u for u, _ in UNITS]},
     CAT_GENERIC: {"label": "Pantalón genérico (en crudo)", "tipo": GENERIC_PANTS, "prefix": "PG", "units": ["unidad"]},
     CAT_FINISHED: {"label": "Producto terminado", "tipo": FINISHED_PANTS, "prefix": "PT", "units": ["unidad"]},

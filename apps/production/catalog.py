@@ -131,3 +131,29 @@ REMISSION_STATES = [
     (REMISSION_RETURNED, "Retornada"),
     (REMISSION_CANCELLED, "Anulada"),
 ]
+
+# --- Recepción de Lavandería (TE-58) ---
+RECEPTION_COMPLETE = "COMPLETADA"
+RECEPTION_PARTIAL = "PARCIAL"
+RECEPTION_STATES = [
+    (RECEPTION_COMPLETE, "Completada"),
+    (RECEPTION_PARTIAL, "Parcial"),
+]
+
+MERMA_REASONS = [
+    ("EXTRAVIO_PROCESO", "Extravío en tinas o centrifugado"),
+    ("ENCOGIMIENTO_EXCESIVO", "Encogimiento no recuperable"),
+    ("FALTANTE_TRANSPORTE", "Faltante en transporte / bultos"),
+    ("OTRO", "Otro motivo de merma"),
+]
+
+DAMAGE_TYPES = [
+    ("MANCHA_QUIMICA", "Manchas de químicos o blanqueador"),
+    ("ROTURA_TELA", "Rotura, desgarro o desgaste excesivo de tela"),
+    ("DECOLORACION_IRREGULAR", "Decoloración irregular o veteado"),
+    ("QUEMADO_TERMICO", "Quemado térmico en secado"),
+    ("MANCHA_GRASA_OXIDO", "Mancha de grasa u óxido de maquinaria"),
+    ("DEFECTO_LASER", "Defecto en diseño láser o lijado"),
+    ("OTRO", "Otro defecto de lavado"),
+]
+

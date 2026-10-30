@@ -356,3 +356,101 @@ class RemisionLote(BaseModel):
 
     def __str__(self):
         return f"{self.remision.codigo} - {self.lote.codigo} ({self.cantidad} und)"
+
+
+class RecepcionLavanderia(BaseModel):
+    """Acta de reingreso y cotejo de prendas retornadas de lavandería externa (TE-58).
+
+    Vinculada a la remisión/factura de salida original, asienta las cantidades conformes
+    reingresadas a la planta interna y liquida financieramente las pérdidas por mermas o daños.
+    """
+    codigo = models.CharField(max_length=30)
+    remision = models.ForeignKey(
+        RemisionLavanderia, on_delete=models.PROTECT, related_name="recepciones"
+    )
+    factura_remision_externa = models.CharField(
+        max_length=60,
+        blank=True,
+        help_text="Número de factura o remisión física entregada por la lavandería externa",
+    )
+    fecha_recepcion = models.DateField()
+    total_enviado = models.PositiveIntegerField(default=0)
+    total_recibido_conforme = models.PositiveIntegerField(default=0)
+    total_merma = models.PositiveIntegerField(default=0)
+    total_danadas = models.PositiveIntegerField(default=0)
+    costo_total_perdida = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text="Pérdida financiera total por mermas y prendas dañadas en el proceso externo"
+    )
+    costo_servicio_lavado = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text="Costo liquidado del servicio de lavado cobrado por el tercero"
+    )
+    estado = models.CharField(
+        max_length=20, choices=catalog.RECEPTION_STATES, default=catalog.RECEPTION_COMPLETE
+    )
+    observaciones = models.TextField(blank=True)
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True, blank=True
+    )
+    creado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True, blank=True
+    )
+
+    class Meta:
+        db_table = "produccion_recepcion_lavanderia"
+        ordering = ["-fecha_recepcion", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["codigo"], condition=Q(deleted_at__isnull=True), name="uq_recepcion_codigo_activo"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.codigo} - Remisión {self.remision.codigo}"
+
+
+class RecepcionLote(BaseModel):
+    """Cotejo detallado de cada lote recibido de lavandería externa (TE-58).
+
+    Registra unidades conformes que reingresan a planta interna, mermas (extravíos)
+    y daños ocurridos en la lavandería con campos obligatorios para su justificación y costeo.
+    """
+    recepcion = models.ForeignKey(RecepcionLavanderia, on_delete=models.PROTECT, related_name="lotes_detalle")
+    remision_lote = models.ForeignKey(RemisionLote, on_delete=models.PROTECT, related_name="recepciones")
+    lote = models.ForeignKey(Lote, on_delete=models.PROTECT, related_name="recepciones_lavado")
+    cantidad_enviada = models.PositiveIntegerField()
+    cantidad_recibida_conforme = models.PositiveIntegerField(default=0)
+    cantidad_merma = models.PositiveIntegerField(default=0)
+    cantidad_danada = models.PositiveIntegerField(default=0)
+    motivo_merma = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Motivo obligatorio cuando cantidad_merma > 0",
+    )
+    tipo_dano = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Tipo de daño o defecto obligatorio cuando cantidad_danada > 0",
+    )
+    costo_unitario_prenda = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
+        help_text="Costo acumulado de fabricación de la prenda para cálculo de pérdidas",
+    )
+    costo_perdida = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=0,
+        help_text="(cantidad_merma + cantidad_danada) * costo_unitario_prenda",
+    )
+    observaciones = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "produccion_recepcion_lote"
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.recepcion.codigo} - {self.lote.codigo} ({self.cantidad_recibida_conforme} conformes)"
+

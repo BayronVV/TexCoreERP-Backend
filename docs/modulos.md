@@ -20,6 +20,7 @@ cuerpos y respuestas) están en Swagger (`/api/docs/`); cómo se usa cada pantal
 | HU 4.6 (TE-56) | Costeo y liquidación de órdenes | `production`, `inventory` | Liquidación de Órdenes |
 | HU 6.1 (TE-59) | Registro de marras y calidad | `quality` | Control de Calidad → Inspecciones y Defectos |
 | HU 6.2 (TE-60) | Ingreso a inventario final (producto terminado) | `finished` | Producto Terminado → Ingreso, Existencias y Movimientos |
+| HU 6.3 (TE-61) | Ajuste manual de inventario de producto terminado | `finished` | Producto Terminado → Ajuste manual |
 
 Cómo se conectan entre sí:
 
@@ -37,6 +38,7 @@ flowchart LR
     TIEMPOS -. "el lote sale a lavandería<br/>y vuelve recibido" .-> CAL["Control de calidad<br/>inspección del lote"]
     CAL -- "aptas · marras por defecto" --> RES["Resultado de la inspección<br/>(solo se agrega)"]
     RES -- "solo las aptas, repartidas<br/>por talla y color" --> TER[("Producto terminado<br/>stock por variante · libro de movimientos")]
+    CONTEO["Conteo físico de la bodega"] -- "ajuste manual (HU 6.3)<br/>movimientos AJUSTE" --> TER
 ```
 
 ## Seguridad y usuarios (HU 1.x)
@@ -257,7 +259,7 @@ flowchart LR
 | Lo planificado es un dato | Lo que el lote tenía planificado por talla (`LoteTalla`) se copia a cada línea (`planificada`, con su `diferencia`) para comparar; **no es una regla**: se puede ingresar distinto de lo planificado mientras la suma cuadre. |
 | Un ingreso por inspección | Si la inspección ya fue ingresada responde `409` (también si otra persona la ingresó un instante antes). Una restricción única de la base lo respalda. |
 | Todo o nada | Una sola transacción con la inspección bloqueada: el ingreso (`IPT-0001`), el saldo de cada variante y su movimiento en el libro. Los saldos se bloquean por fila en orden de id para que dos ingresos simultáneos no se bloqueen entre sí. Si algo falla no queda nada ni se gasta el consecutivo. |
-| Saldo y libro | El saldo (`StockTerminado`) nunca es negativo y solo cambia con un movimiento. Cada movimiento (`MovimientoTerminado`) guarda cantidad con signo, saldo antes y saldo después, y una restricción de la base exige `saldo_después = saldo_antes + cantidad`. Tipos: `ENTRADA_PRODUCCION` (hoy), `AJUSTE` (HU 6.3) y `SALIDA_VENTA` (HU 7.1). |
+| Saldo y libro | El saldo (`StockTerminado`) nunca es negativo y solo cambia con un movimiento. Cada movimiento (`MovimientoTerminado`) guarda cantidad con signo, saldo antes y saldo después, y una restricción de la base exige `saldo_después = saldo_antes + cantidad`. Tipos: `ENTRADA_PRODUCCION` (HU 6.2), `AJUSTE` (HU 6.3) y `SALIDA_VENTA` (HU 7.1, todavía no hecha). |
 | Solo se agrega | No hay `PUT`, `PATCH` ni `DELETE`. Cada línea guarda la talla y el color tal como estaban al ingresar. |
 | Ubicación en bodega | Solo un texto libre opcional por ingreso (hasta 80 caracteres), sin controles. |
 | Código `IPT-0001` | No se usa `PT`, porque ese prefijo ya es el de los productos de la categoría Producto terminado del inventario de materias primas. |
@@ -277,12 +279,79 @@ Quién puede qué: la Secretaria y el Administrador **gestionan** (ingresan); el
 nueva**. Ver [roles y permisos](roles-y-permisos.md).
 
 !!! warning "Limitaciones conocidas de la HU 6.2"
-    - **Sin reversa de ingresos:** un ingreso equivocado se corrige con un ajuste de la HU 6.3, que todavía no está hecha.
+    - **Sin reversa de ingresos:** un ingreso equivocado no se anula; se corrige con un ajuste manual (HU 6.3, sección siguiente).
     - **Sin ubicaciones controladas:** la ubicación es solo texto libre; el aviso MSG-WRN-05 queda pendiente.
     - **Sin reservas ni valorización de costos:** el saldo es de cantidades; no se reserva para pedidos ni se calcula su valor.
     - **Sin recepción parcial:** se ingresan todas las aptas de la inspección de una vez.
     - **Sin notificación por correo** del nuevo stock (el aviso es una tarjeta en el inicio).
     - **Las marras siguen sin inventario** (HU 6.4, TE-169).
+
+## Producto terminado: ajuste manual (HU 6.3, TE-61)
+
+Misma app `apps/finished`. Cubre RF22 (ajuste manual del inventario). La lógica está en `adjustments.py`; las constantes (permiso,
+prefijo `AJT`, motivos y signos, umbrales) en `catalog.py`. Tablas nuevas: `terminado_ajuste` (el comprobante: código, motivo,
+observación, fecha, quién lo hizo, `token`, `unidades_faltantes` y `unidades_sobrantes`) y `terminado_ajuste_linea` (por variante: talla
+y color tal como estaban, `stock_antes`, `stock_contado` y `diferencia`). Además `terminado_movimiento` gana la llave foránea
+opcional `ajuste`, igual que ya tenía `ingreso`. El diagrama entidad-relación está en [modelo de datos](modelo-de-datos.md).
+
+El ajuste **no cambia el saldo a mano**: escribe movimientos `AJUSTE` en el libro, uno por variante con diferencia, con el mismo saldo
+antes y después de siempre. Por eso el saldo sigue siendo la suma del libro y la restricción `saldo_después = saldo_antes + cantidad`
+sigue valiendo. El motivo del movimiento queda como `Ajuste AJT-0001: <motivo>`.
+
+```mermaid
+flowchart LR
+    CONTEO["Conteo real por talla y color<br/>+ saldo que vio la persona"] --> CHK{"¿El saldo cambió?"}
+    CHK -- "sí" --> E409["409: recarga y vuelve a contar"]
+    CHK -- "no" --> DIF["Solo las líneas con diferencia"]
+    DIF --> REG["Reglas: motivo y signo · observación<br/>más de 20 unidades por línea"]
+    REG -- "incumple" --> E400["400: no se guarda nada"]
+    REG -- "cumple" --> OK["Comprobante AJT-0001 (inalterable)"]
+    OK --> LIBRO[("Movimientos AJUSTE en el libro<br/>y saldo de cada variante")]
+```
+
+Reglas, en el orden en que el servicio las aplica (todo en una sola transacción: si algo falla no queda nada ni se gasta el consecutivo):
+
+| Regla | Detalle |
+|---|---|
+| Datos básicos | El motivo debe ser uno del catálogo; la observación se recorta y debe tener entre **10** y 500 caracteres; llegan de 1 a **200** líneas, sin repetir variante, con `esperado` y `contado` enteros desde cero y variantes que existen. Un `token` que no es UUID responde `400`. |
+| Conteo real y saldo esperado | Cada línea trae el saldo que vio la persona (`esperado`) y lo que contó (`contado`). Con los saldos ya **bloqueados por fila**, si alguno no coincide con el real (por ejemplo, entró un ingreso mientras contaba) responde `409` con la lista de variantes y no guarda nada. |
+| Solo líneas con diferencia | Las líneas donde lo contado es igual al saldo se descartan. Si no queda ninguna responde `400` («No hay diferencias que ajustar»). |
+| Faltantes y sobrantes por separado | El comprobante suma `unidades_faltantes` y `unidades_sobrantes` sin netearlos: faltar 5 en una talla y sobrar 5 en otra son 5 y 5, no cero. |
+| Motivos cerrados con signo | `ERROR_CONTEO` (Error de conteo) admite ambos signos; `MUESTRA_COMERCIAL`, `PERDIDA` (Pérdida) y `PRENDA_DANADA` (Prenda dañada) solo restan; `SOBRANTE` (Sobrante o hallazgo) solo suma; `OTRO` (Otro) admite ambos. Un motivo que solo resta rechaza con `400` cualquier línea con sobrante, y al revés. |
+| Más de 20 unidades por línea | Se mira **cada línea**, no el total del ajuste: si alguna cambia **más de 20** unidades (exactamente 20 no cuenta), el motivo «Otro» no se acepta y la observación debe tener al menos **30** caracteres. |
+| Token contra el doble clic | El formulario genera un UUID (`token`) que la base exige único. Si ya existe un comprobante con ese token, el segundo envío responde `409` con el comprobante ya creado (`ajuste` y `codigo`); lo mismo si dos envíos con el mismo token compiten. |
+| Inmutable | No hay `PUT`, `PATCH` ni `DELETE`. Restricciones de la base respaldan la observación obligatoria, que la diferencia no sea cero y que `diferencia = contado − stock_antes`. |
+| Código `AJT-0001` | Consecutivo automático. |
+
+Rutas y permisos (la referencia exacta está en Swagger, etiqueta `producto-terminado`):
+
+| Ruta | Operaciones | Permiso |
+|---|---|---|
+| `/api/terminado/ajustes/` | `GET` (filtros `referencia`, `motivo`, `desde`, `hasta`, `q`, `limit`), `POST` | `producto_terminado.ver` / `producto_terminado.ajustar` |
+| `/api/terminado/ajustes/<id>/` | `GET` | `producto_terminado.ver` |
+| `/api/terminado/metadatos/` | `GET`: motivos con su signo, umbral de unidades y mínimos de la observación | `producto_terminado.ver` |
+
+**Permiso nuevo:** `producto_terminado.ajustar`, creado por la migración `users/0011_permiso_ajustar_producto_terminado`. Se otorga a la
+Secretaria y, de forma implícita, al Administrador; el Gerente y el Vendedor solo consultan (`producto_terminado.ver`). Como es un
+permiso propio, se puede dar o quitar desde *Roles y permisos* sin tocar el de ingresar. Ver [roles y permisos](roles-y-permisos.md).
+
+**Pantalla:** *Producto Terminado → Ajuste manual* (`/producto-terminado/ajuste`). Quien solo tiene `ver` puede entrar al historial
+de ajustes pero no hace el conteo. En *Existencias*, cada referencia muestra el enlace **Ajustar** (solo con el permiso), que abre esta
+pantalla con la referencia ya elegida.
+
+**Pruebas:** `apps/finished/test_ajustes.py` cubre el cálculo de la diferencia desde el conteo, un movimiento `AJUSTE` por línea, que el
+saldo siga siendo la suma del libro, el `409` por saldo cambiado, el ajuste sin diferencias, las reglas de signo por motivo, la
+observación obligatoria, el umbral de 20 unidades (con «Otro» y la observación de 30), el token único, la inmutabilidad, los permisos
+por rol, los filtros y que las consultas no crezcan con las filas.
+
+!!! warning "Limitaciones conocidas de la HU 6.3"
+    - **Sin aprobación de un segundo rol:** quien tiene `producto_terminado.ajustar` ajusta directamente; un ajuste grande solo
+      exige más justificación, no otra firma.
+    - **Sin conteo ciego ni cíclico:** la pantalla muestra el saldo del sistema junto a cada celda; no hay programación de conteos.
+    - **Sin fotos ni evidencias** adjuntas al comprobante.
+    - **Sin valorización:** el ajuste cuenta prendas, no calcula su valor.
+    - **Un motivo por ajuste:** si hay faltantes y sobrantes de causas distintas hay que registrar un ajuste por cada motivo.
+    - **Sin anular ni editar:** un ajuste equivocado se corrige con otro ajuste.
 
 ## Datos de demostración
 

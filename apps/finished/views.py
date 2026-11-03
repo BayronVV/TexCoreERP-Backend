@@ -1,4 +1,4 @@
-"""Vistas de producto terminado: ingresos, inspecciones por ingresar, existencias en matriz y libro de movimientos."""
+"""Vistas de producto terminado: ingresos, ajustes, inspecciones por ingresar, existencias en matriz y libro de movimientos."""
 from django.db.models import Prefetch, Q
 from django.http import Http404
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -8,13 +8,17 @@ from rest_framework.views import APIView
 
 from apps.inventory.views import apply_filters, limited
 
-from . import catalog, services
-from .models import IngresoLinea, IngresoTerminado, MovimientoTerminado
-from .serializers import ExistenciasReferenciaSerializer, IngresoTerminadoInputSerializer, IngresoSerializer, MovimientoTerminadoSerializer, PendienteIngresoSerializer
+from . import adjustments, catalog, services
+from .models import AjusteLinea, AjusteTerminado, IngresoLinea, IngresoTerminado, MovimientoTerminado
+from .serializers import (
+    AjusteSerializer, AjusteTerminadoInputSerializer, ExistenciasReferenciaSerializer, IngresoSerializer, IngresoTerminadoInputSerializer,
+    MetadatosAjusteSerializer, MovimientoTerminadoSerializer, PendienteIngresoSerializer,
+)
 
 LIMIT_PARAM = OpenApiParameter("limit", int, description="Máximo de registros (por defecto 100)")
 READ_PERMISSIONS = {"GET": catalog.FINISHED_VIEW}
 ENTRIES_PERMISSIONS = {"GET": catalog.FINISHED_VIEW, "POST": catalog.FINISHED_MANAGE}
+ADJUSTMENTS_PERMISSIONS = {"GET": catalog.FINISHED_VIEW, "POST": catalog.FINISHED_ADJUST}
 
 
 def entry_queryset():
@@ -136,10 +140,84 @@ class MovimientoListView(APIView):
         responses={200: MovimientoTerminadoSerializer(many=True)},
     )
     def get(self, request):
-        movements = MovimientoTerminado.objects.select_related("variante__referencia", "ingreso", "lote", "usuario")
+        movements = MovimientoTerminado.objects.select_related("variante__referencia", "ingreso", "ajuste", "lote", "usuario")
         movements = apply_filters(
             movements, request.query_params,
             [("referencia", "variante__referencia_id"), ("variante", "variante_id"), ("tipo", "tipo"),
              ("desde", "created_at__date__gte"), ("hasta", "created_at__date__lte")],
         )
         return Response(MovimientoTerminadoSerializer(limited(movements, request), many=True).data)
+
+
+def adjustment_queryset():
+    return AjusteTerminado.objects.select_related("realizado_por").prefetch_related(
+        Prefetch("lineas", queryset=AjusteLinea.objects.select_related("variante__referencia").order_by("id"))
+    )
+
+
+@extend_schema(tags=["producto-terminado"])
+class AjusteMetadatosView(APIView):
+    """Motivos del ajuste con el signo que admiten y las reglas de la observación."""
+    required_permissions = READ_PERMISSIONS
+
+    @extend_schema(summary="Motivos y reglas del ajuste manual", responses={200: MetadatosAjusteSerializer})
+    def get(self, request):
+        return Response({
+            "motivos": [{"codigo": code, "nombre": name, "signo": sign} for code, name, sign in catalog.ADJUST_REASONS],
+            "umbral_unidades": catalog.LARGE_ADJUSTMENT, "observacion_minima": catalog.MIN_OBSERVATION,
+            "observacion_minima_umbral": catalog.MIN_OBSERVATION_LARGE, "motivo_no_valido_sobre_umbral": catalog.OTHER,
+        })
+
+
+@extend_schema(tags=["producto-terminado"])
+class AjusteListCreateView(APIView):
+    """Lista los ajustes y registra uno nuevo (RF22)."""
+    required_permissions = ADJUSTMENTS_PERMISSIONS
+
+    @extend_schema(
+        summary="Listar los ajustes (filtros: referencia, motivo, desde, hasta, q, limit)",
+        parameters=[
+            LIMIT_PARAM, OpenApiParameter("referencia", int, description="Id de la referencia"),
+            OpenApiParameter("motivo", str, description="Código del motivo"),
+            OpenApiParameter("desde", str, description="Fecha mínima (AAAA-MM-DD)"), OpenApiParameter("hasta", str, description="Fecha máxima"),
+            OpenApiParameter("q", str, description="Código del ajuste u observación"),
+        ],
+        responses={200: AjusteSerializer(many=True)},
+    )
+    def get(self, request):
+        found = apply_filters(
+            adjustment_queryset(), request.query_params,
+            [("referencia", "lineas__variante__referencia_id"), ("motivo", "motivo"), ("desde", "fecha__gte"), ("hasta", "fecha__lte")],
+        ).distinct()
+        q = request.query_params.get("q", "").strip()
+        if q:
+            found = found.filter(Q(codigo__icontains=q) | Q(observacion__icontains=q))
+        return Response(AjusteSerializer(limited(found, request), many=True).data)
+
+    @extend_schema(
+        summary="Ajustar el stock contra el conteo físico", request=AjusteTerminadoInputSerializer, responses={201: AjusteSerializer},
+        description="Recibe el conteo real por variante y el saldo que vio la persona. Si algún saldo cambió responde 409 y no guarda nada. "
+                    "Solo se guardan las líneas con diferencia. Un ajuste de más de 20 unidades en una línea no admite el motivo «Otro» y "
+                    "pide una observación más larga. El mismo token no ajusta dos veces (409 con el comprobante ya creado).",
+    )
+    def post(self, request):
+        data = AjusteTerminadoInputSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        values = data.validated_data
+        adjustment = adjustments.adjust_stock(
+            user=request.user, motivo=values["motivo"], observacion=values["observacion"], lineas=values["lineas"], token=values["token"],
+        )
+        return Response(AjusteSerializer(adjustment_queryset().get(pk=adjustment.pk)).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["producto-terminado"])
+class AjusteDetailView(APIView):
+    """Consulta un ajuste. No tiene PATCH ni DELETE: el comprobante es inalterable."""
+    required_permissions = READ_PERMISSIONS
+
+    @extend_schema(summary="Consultar un ajuste", responses={200: AjusteSerializer})
+    def get(self, request, pk):
+        adjustment = adjustment_queryset().filter(pk=pk).first()
+        if adjustment is None:
+            raise Http404("El ajuste no existe.")
+        return Response(AjusteSerializer(adjustment).data)

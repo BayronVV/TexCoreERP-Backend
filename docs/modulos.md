@@ -1,6 +1,6 @@
 # Módulos y reglas de negocio
 
-Resumen técnico de lo construido hasta el Sprint 2: por cada historia de usuario, qué hace, dónde vive en el
+Resumen técnico de lo construido hasta ahora: por cada historia de usuario, qué hace, dónde vive en el
 código, qué ruta la expone, qué permiso exige y qué reglas aplica. Los detalles de cada endpoint (parámetros,
 cuerpos y respuestas) están en Swagger (`/api/docs/`); cómo se usa cada pantalla está en el
 [manual de usuario](manual-de-usuario.md); los permisos por rol, en [roles y permisos](roles-y-permisos.md).
@@ -18,6 +18,7 @@ cuerpos y respuestas) están en Swagger (`/api/docs/`); cómo se usa cada pantal
 | HU 4.4 (TE-54) | Asignación de recursos | `production` | Recursos y Seguimiento |
 | HU 4.5 (TE-55) | Monitor de estado | `production` | Monitor de estado |
 | HU 4.6 (TE-56) | Costeo y liquidación de órdenes | `production`, `inventory` | Liquidación de Órdenes |
+| HU 6.1 (TE-59) | Registro de marras y calidad | `quality` | Control de Calidad → Inspecciones y Defectos |
 
 Cómo se conectan entre sí:
 
@@ -32,6 +33,8 @@ flowchart LR
     TIEMPOS --> MON["Monitor de estado"]
     TIEMPOS -- "minutos netos × tarifa" --> COSTEO["Liquidación y costo por prenda"]
     INV -- "costo unitario del material" --> COSTEO
+    TIEMPOS -. "el lote sale a lavandería<br/>y vuelve recibido" .-> CAL["Control de calidad<br/>inspección del lote"]
+    CAL -- "aptas · marras por defecto" --> RES["Resultado de la inspección<br/>(solo se agrega)"]
 ```
 
 ## Seguridad y usuarios (HU 1.x)
@@ -178,7 +181,55 @@ arrastrando su tarjeta, lo que aplica la acción de la etapa en curso si es vál
   porcentual y `completo: false` con `advertencias` si falta una tarifa o el costo de un material (*Sin tarifa*, *Sin costo*).
 - Una orden anulada devuelve todos los costos en cero, porque el material regresó al almacén.
 
+## Control de calidad: marras y defectos (HU 6.1, TE-59)
+
+App `apps/quality`, rutas bajo `/api/calidad/`, tablas `calidad_defecto`, `calidad_inspeccion` y `calidad_marra_detalle`.
+Cubre RF19 (criterios de calidad) y RF20 (registro de marras). La lógica está en `services.py`; las constantes (permisos,
+prefijos `DEF` e `INS`, máximo de defectos por inspección) en `catalog.py`.
+
+```mermaid
+flowchart LR
+    LAV["Recepción de lavandería<br/>(cantidad recibida conforme)"] --> PEND["Lote por inspeccionar"]
+    PEND --> FORM["Inspección:<br/>aptas + marras por defecto"]
+    DEF["Catálogo de defectos<br/>corregible / incorregible"] --> FORM
+    FORM -- "aptas + marras = recibidas conformes" --> OK["Inspección registrada<br/>(INS-0001, no se edita)"]
+    FORM -- "no cuadra · lote ya inspeccionado" --> ERR["400 / 409: no se guarda nada"]
+```
+
+| Regla | Detalle |
+|---|---|
+| Catálogo de defectos (RF19) | Cada `TipoDefecto` (`DEF-0001`) tiene nombre (3 a 80 caracteres), descripción y tipo: **corregible** (se podría reprocesar) o **incorregible** (marra definitiva). El nombre no se repite, sin importar mayúsculas ni espacios de más, ni siquiera frente a uno desactivado. Nunca se borra: se **desactiva** (`PATCH` con `activo`), y un defecto inactivo no se puede elegir en una inspección nueva. |
+| Qué se inspecciona | La base es lo **recibido conforme** (`RecepcionLote.cantidad_recibida_conforme`) en la recepción de lavandería más reciente del lote (HU 5.2, TE-58). Los faltantes y daños de lavandería ya los liquida esa recepción; aquí solo se clasifican las prendas que sí llegaron. No se modifica el modelo `Lote`. |
+| Lote «por inspeccionar» | Está en planta, tiene una recepción con prendas conformes, su orden **no está anulada** y todavía **no tiene inspección**. Lo lista `GET /api/calidad/pendientes/`. |
+| La suma debe cuadrar | `aptas + marras = cantidad recibida conforme`. Las marras son la suma de su desglose por defecto (hasta 30 defectos distintos, sin repetir, con cantidades enteras mayores que cero). Si no cuadra responde `400` indicando cuántas prendas faltan o sobran. Una restricción de la base (`ck_calidad_inspeccion_suma`) lo respalda. |
+| Una inspección por lote | Si el lote ya fue inspeccionado responde `409` (también si otra persona la registró un instante antes: el lote se bloquea durante la transacción). Una restricción única lo respalda. |
+| Solo se agrega | La inspección no tiene `PUT`, `PATCH` ni `DELETE`. Cada línea del desglose (`MarraDetalle`) guarda el **nombre y el tipo del defecto tal como estaban**, así que renombrar o desactivar un defecto después no cambia el historial. |
+| Todo o nada | Se registra en una sola transacción: si algo falla no queda nada ni se gasta el consecutivo `INS-0001`. Se guardan el inspector (el usuario de la sesión), la fecha (hoy si no se envía) y observaciones de hasta 500 caracteres. |
+| Se rechaza con `400` | Lote inexistente o sin recepción de lavandería lista, orden anulada, suma que no cuadra, defecto inactivo, inexistente o repetido, cantidades que no son enteras. |
+
+Rutas y permisos (la referencia exacta está en Swagger, etiqueta `calidad`):
+
+| Ruta | Operaciones | Permiso |
+|---|---|---|
+| `/api/calidad/defectos/` | `GET` (filtros `activo`, `q`, `limit`), `POST` | `calidad.ver` / `calidad.gestionar` |
+| `/api/calidad/defectos/<id>/` | `GET`, `PATCH` | `calidad.ver` / `calidad.gestionar` |
+| `/api/calidad/pendientes/` | `GET` | `calidad.ver` |
+| `/api/calidad/inspecciones/` | `GET` (filtros `lote`, `orden`, `desde`, `hasta`, `q`, `limit`), `POST` | `calidad.ver` / `calidad.gestionar` |
+| `/api/calidad/inspecciones/<id>/` | `GET` | `calidad.ver` |
+
+Quién puede qué: el Personal de Terminación y el Jefe de Producción **gestionan** (definen defectos e inspeccionan; este último
+por la migración `users/0010_permisos_calidad_produccion`), el Gerente solo **consulta** y el Administrador tiene todo. Ver
+[roles y permisos](roles-y-permisos.md).
+
+!!! warning "Limitaciones conocidas de la HU 6.1"
+    - **Sin reproceso:** el tipo corregible/incorregible solo se registra; no hay flujo para reparar y volver a inspeccionar.
+    - **Sin valoración de las marras:** no se calcula su costo ni su pérdida, y las aptas todavía no pasan a un inventario de
+      producto terminado (módulo futuro).
+    - **Sin muestreo AQL:** se clasifica el lote completo, no una muestra.
+    - **Una inspección por lote y sin corrección:** si se digita mal una inspección no hay forma de corregirla desde el sistema
+      (queda como pregunta pendiente para el responsable del producto).
+
 ## Datos de demostración
 
 Comandos solo para desarrollo (exigen `DJANGO_DEBUG=true`), idempotentes y que pasan por las mismas reglas que la aplicación.
-Orden recomendado: ver [manual del sistema](manual-del-sistema.md#datos-de-demostracion).
+`seed_demo_calidad` crea 8 defectos típicos de denim y dos lotes devueltos de lavandería (uno inspeccionado y otro por inspeccionar); necesita antes `seed_demo_inventario` y `seed_demo_produccion`. Orden recomendado: ver [manual del sistema](manual-del-sistema.md#datos-de-demostracion).

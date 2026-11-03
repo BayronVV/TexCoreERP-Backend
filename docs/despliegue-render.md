@@ -40,13 +40,13 @@ despliegan la rama `main` y se redespliegan solos con cada merge.
 ### Migraciones y datos iniciales
 
 Cada arranque ejecuta `migrate --noinput`, así que un despliegue con migraciones nuevas las aplica solo. Eso incluye los
-**permisos y roles** de los módulos nuevos (`referencias.*`, `compras.*`), que cargan las migraciones `0007` y `0008` de `apps/users`,
+**permisos y roles** de los módulos nuevos (`referencias.*`, `compras.*`, y los de calidad para el Jefe de Producción), que cargan las migraciones `0007`, `0008` y `0010` de `apps/users`,
 y el endurecimiento de la base (RLS) que corre al final de cada `migrate`.
 
 - No hace falta (ni conviene) correr nada más para tener la matriz de permisos inicial; después se ajusta desde **Roles y permisos**.
 - La primera cuenta administradora se crea una sola vez con `python manage.py seed_admin` desde una terminal con `DATABASE_URL` de producción, pasando
   `--email` y `--password` propios (ver el [manual del sistema](manual-del-sistema.md)). Nunca se deja la contraseña de ejemplo.
-- Los comandos `seed_demo_*` **no funcionan en Render**: exigen `DJANGO_DEBUG=true`, que en producción es `false`. Es a propósito.
+- Los comandos `seed_demo_*` **no funcionan en Render**: exigen `DJANGO_DEBUG=true`, que en producción es `false`. Es a propósito (incluido `seed_demo_calidad`: en producción los defectos se crean desde **Control de Calidad → Defectos**).
 - Una migración que cambia el esquema se aplica a la base compartida: la versión anterior del código, si sigue desplegada, debe
   tolerarlo (la 0002 de inventario ya lo advertía).
 

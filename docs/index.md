@@ -13,9 +13,10 @@ físicas por una base de datos única, con permisos por rol.
 | Compras | Órdenes de compra de materiales (las crea Producción, las aprueba el Gerente) y recepción de mercancía por el Almacenista, que alimenta el stock, el costo y el kardex | — |
 | Referencias de jean | Catálogo de modelos con tallas, colores, fotos del prototipo y estados (borrador, activa, descontinuada) | TE-49 |
 | Ficha técnica | Consumo de materiales por prenda con merma, PDF de la ficha extensa y consumo contra el stock | TE-50 |
+| Control de calidad | Catálogo de defectos y inspección de los lotes que vuelven de lavandería: aptas y marras desglosadas por defecto | TE-59 |
 | Producción y trazabilidad | Validación de material y planificación, órdenes de producción con lotes y tallas, control de tiempos por etapa, asignación de operarios y máquinas, monitor de estado tipo Kanban y liquidación con costeo por orden | TE-51, TE-52, TE-53, TE-54, TE-55, TE-56 |
 
-Los módulos de lavandería como proceso propio, calidad, producto terminado, ventas y reportes se construyen en los
+Los módulos de lavandería como proceso propio, producto terminado, ventas y reportes se construyen en los
 siguientes sprints. Sus permisos ya existen en el catálogo, pero todavía no tienen pantallas.
 
 ## Cómo está organizada esta documentación

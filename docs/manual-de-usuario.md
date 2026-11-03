@@ -9,7 +9,9 @@ Lo que ves en el menú depende de tu rol: solo aparecen los módulos que tienes 
 | Almacenista | Inventario, proveedores, ingresos, salidas a lavandería y recepción de mercancía | [5](#5-almacenista-inventario) |
 | Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo, órdenes de compra y defectos de calidad | [6](#6-jefe-de-produccion-referencias-fichas-tecnicas-y-produccion) |
 | Personal de Terminación | Definir los defectos e inspeccionar los lotes que vuelven de lavandería (aptas y marras) | [7](#7-personal-de-terminacion-control-de-calidad) |
-| Gerente | Consultar toda la operación (producción, inventario, costos, calidad) y aprobar órdenes de compra | [8](#8-gerente-consulta-y-aprobacion) |
+| Secretaria | Ingresar al inventario final las prendas aptas de cada inspección, y consultar existencias y movimientos | [8](#8-secretaria-y-vendedor-producto-terminado) |
+| Vendedor | Consultar el producto terminado disponible (existencias, movimientos e ingresos) | [8](#8-secretaria-y-vendedor-producto-terminado) |
+| Gerente | Consultar toda la operación (producción, inventario, costos, calidad, producto terminado) y aprobar órdenes de compra | [9](#9-gerente-consulta-y-aprobacion) |
 
 Las tablas completas de permisos están en el [apartado técnico de roles y permisos](roles-y-permisos.md).
 
@@ -66,7 +68,7 @@ Menú **Seguridad y Usuarios**.
 Define qué módulos puede ver y operar cada rol. Por cada módulo marca **Ver** y/o **Registrar y modificar**
 (al marcar *Registrar y modificar* se marca también *Ver*). El Administrador tiene todos los permisos y no se puede restringir.
 Con **Crear rol** puedes crear un rol propio; su código no se puede cambiar después.
-La lista incluye todos los módulos del sistema, también los que todavía no tienen pantalla (lavandería, calidad, producto terminado, ventas y reportes) y
+La lista incluye todos los módulos del sistema, también los que todavía no tienen pantalla (lavandería, ventas y reportes) y
 **Fichas Técnicas**, que no aparece en el menú porque la ficha se abre desde el Catálogo de jeans. Los permisos extra aparecen en la columna **Otros**: *Administrar roles y permisos* (Seguridad) y *Aprobar órdenes de compra* (Compras),
 que es el del Gerente. Los permisos que trae cada rol al empezar están en [roles y permisos](roles-y-permisos.md).
 
@@ -337,13 +339,62 @@ personas intentan inspeccionar el mismo lote a la vez, solo se guarda la primera
     - **Corrección:** si digitaste mal una inspección, el sistema no permite editarla ni anularla. Avisa a quien administre el sistema; cómo corregirlas es una
       pregunta pendiente para el responsable del producto.
     - **Reproceso:** marcar un defecto como corregible no inicia ningún reproceso; solo queda registrado.
-    - **Valor de las marras:** no se calcula su costo, y las aptas aún no pasan a un inventario de producto terminado.
+    - **Valor de las marras:** no se calcula su costo, y las marras no tienen inventario. Las aptas pasan al inventario final desde *Producto Terminado → Ingreso* (sección 8).
     - **Muestreo:** se clasifica el lote completo, no una muestra.
 
-## 8. Gerente: consulta y aprobación
+## 8. Secretaria y Vendedor: producto terminado
+
+Menú **Producto Terminado**, con tres pantallas: **Ingreso**, **Existencias** y **Movimientos**. La Secretaria (y el Administrador) ingresan las prendas;
+el Vendedor y el Gerente solo consultan (no ven el botón **Ingresar**; en su lugar aparece *Solo consulta*).
+
+### Ingresar un lote al inventario final
+
+Menú **Producto Terminado → Ingreso**. Arriba aparecen las **Inspecciones por ingresar**: las que Control de Calidad ya registró con prendas aptas, cuya
+orden no está anulada y que todavía no se ingresaron. La columna **Aptas** es lo que se debe repartir; las **Marras** no entran a este inventario.
+
+1. En la fila de la inspección pulsa **Ingresar**.
+2. En la tabla **Reparto por talla y color** escribe cuántas prendas aptas entran de cada talla y color (las variantes son las de la referencia del lote). Si el lote
+   tenía planificado un reparto que suma exactamente las aptas, la tabla ya viene llena; puedes cambiarla.
+3. Mira la suma en vivo: **el reparto debe sumar exactamente las aptas**. Lo planificado se muestra solo como comparación: puedes ingresar distinto
+   mientras la suma cuadre.
+4. Si quieres, escribe la **ubicación** en la bodega (texto libre, por ejemplo *Estante A2*) y las observaciones.
+5. Pulsa **Registrar ingreso** y confirma. El sistema pide confirmación porque **un ingreso no se puede editar ni borrar**.
+
+**Qué significa que no cuadre el reparto.** Si lo escrito suma menos que las aptas, la pantalla dice cuántas prendas *faltan por ubicar en una talla*; si suma más,
+cuántas *sobran*. El botón **Registrar ingreso** queda desactivado hasta que la suma sea exacta, y el servidor vuelve a comprobarlo. Las cantidades deben ser números enteros.
+
+**Qué pasa con un ingreso registrado.** Cada inspección se ingresa **una sola vez**. Sale de la lista de pendientes y aparece en **Ingresos registrados** (código `IPT-0001`,
+lote, referencia, fecha, aptas, ubicación y quién ingresó); **Ver** abre el reparto por talla con lo planificado y la diferencia. Si dos personas intentan ingresar la
+misma inspección a la vez, solo se guarda la primera y la otra recibe el aviso de que ya fue ingresada.
+
+### Existencias
+
+Menú **Producto Terminado → Existencias**. Muestra, por referencia, una matriz de **color × talla** con las prendas de primera calidad disponibles y los totales. Las
+celdas en cero aparecen resaltadas. Puedes buscar una referencia, filtrar por una sola y pulsar **Actualizar**. Las marras no se cuentan aquí.
+
+### Movimientos
+
+Menú **Producto Terminado → Movimientos**. Es el historial del inventario final, de solo lectura: cada fila trae la fecha, el tipo (hoy *Entrada de producción*; los ajustes y las
+salidas por venta llegarán con otras historias), la referencia, la talla y el color, la cantidad con su signo, el **saldo antes y después**, el origen (el ingreso y el lote) y el usuario.
+Filtra por tipo y por fechas.
+
+### Aviso en el inicio
+
+Quien puede ver producto terminado (Secretaria, Vendedor, Gerente y Administrador) ve en el **Inicio** la tarjeta **Nuevo stock de producto terminado** cuando hubo ingresos en
+los últimos 7 días; pulsa **Ver existencias →** para abrir la matriz.
+
+!!! warning "Qué todavía no hace"
+    - **Corrección:** un ingreso equivocado no se puede editar ni anular; se corregirá con un ajuste de inventario (historia pendiente). Avisa a quien administre el sistema.
+    - **Ubicaciones:** la ubicación es un texto libre; el sistema no controla ni avisa sobre las ubicaciones de bodega.
+    - **Reservas y costos:** no se reserva producto para pedidos ni se calcula su valor.
+    - **Ingreso parcial:** se ingresan todas las aptas de la inspección de una vez.
+    - **Correo:** no se envía una notificación por correo del nuevo stock.
+    - **Marras:** siguen sin inventario propio.
+
+## 9. Gerente: consulta y aprobación
 
 El Gerente ve toda la operación en modo consulta: existencias y kardex, referencias y fichas, órdenes de producción, **Monitor de estado**, **Recursos**,
-tiempos, **Liquidación de Órdenes** y **Control de Calidad** (defectos e inspecciones). No crea ni modifica nada de producción, pero sí tiene una tarea propia:
+tiempos, **Liquidación de Órdenes**, **Control de Calidad** (defectos e inspecciones) y **Producto Terminado** (ingresos, existencias y movimientos). No crea ni modifica nada de producción, pero sí tiene una tarea propia:
 
 - **Aprobar órdenes de compra:** en **Compras → Órdenes de compra**, las órdenes en *Borrador* muestran el botón **Aprobar**. Antes de aprobar, el sistema
   pide confirmación, porque después la orden ya no se edita y el almacén puede recibir contra ella.
@@ -365,6 +416,14 @@ tiempos, **Liquidación de Órdenes** y **Control de Calidad** (defectos e inspe
 **No puedo inspeccionar un lote / no aparece en «Lotes por inspeccionar».** El lote debe haber vuelto de lavandería con prendas recibidas conformes, estar en planta, no tener ya una inspección y pertenecer a una orden que no esté anulada. Si ya fue inspeccionado, búscalo en *Inspecciones registradas*.
 
 **El botón de registrar la inspección está desactivado.** Las aptas más las marras no suman lo recibido, o falta una cantidad válida; la pantalla indica cuántas prendas faltan o sobran.
+
+**No puedo ingresar una inspección / no aparece en «Inspecciones por ingresar».** La inspección debe tener prendas aptas, no haber sido ingresada ya y pertenecer a una orden que no esté anulada. Solo la Secretaria (o el Administrador) ve el botón **Ingresar**; el Vendedor y el Gerente consultan. Si ya fue ingresada, búscala en *Ingresos registrados*.
+
+**El botón «Registrar ingreso» está desactivado.** El reparto por talla y color no suma exactamente las aptas, o hay una cantidad que no es un entero; la pantalla dice cuántas prendas faltan o sobran.
+
+**Me equivoqué en un ingreso.** Un ingreso no se puede editar ni borrar. La corrección será un ajuste de inventario (historia pendiente); por ahora avisa a quien administre el sistema.
+
+**Veo ceros resaltados en Existencias.** Es normal: son las tallas y colores de la referencia que todavía no tienen prendas disponibles.
 
 **La liquidación dice «Sin tarifa» o «Sin costo».** Falta registrar la tarifa por minuto de esa etapa (pestaña *Tarifas por Minuto*) o la compra del
 material se registró sin costo unitario. El cálculo se muestra como parcial hasta completarlo.

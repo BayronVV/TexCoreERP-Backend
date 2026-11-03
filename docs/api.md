@@ -37,12 +37,12 @@ Cada ruta exige un permiso por rol (RNF01), por ejemplo `inventario.ver` para co
 | 401 | Sin sesión, token vencido o credenciales inválidas |
 | 403 | El rol no tiene el permiso que la ruta exige |
 | 404 | No existe |
-| 409 | Conflicto con el estado actual; por ejemplo, el lote ya fue inspeccionado |
+| 409 | Conflicto con el estado actual; por ejemplo, el lote ya fue inspeccionado o la inspección ya fue ingresada al inventario final |
 | 429 | Demasiados intentos (límite de frecuencia) |
 
 ## Módulos
 
-La API tiene **78 rutas** y **115 operaciones**, todas descritas en Swagger con su etiqueta. Aquí solo el mapa; los detalles
+La API tiene **83 rutas** y **121 operaciones**, todas descritas en Swagger con su etiqueta. Aquí solo el mapa; los detalles
 de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permiso que exige cada operación está en
 [roles y permisos](roles-y-permisos.md), y las reglas de negocio de cada módulo en [módulos y reglas](modulos.md).
 
@@ -68,6 +68,8 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | `recursos` | `/api/produccion/lotes/<id>/asignar/` (asigna, reasigna o quita el operario y la máquina de una etapa), `/api/produccion/lotes/<id>/desvincular/` y `/api/produccion/lotes/<id>/asignaciones/` (historial). Las etapas del lote y las tarjetas del monitor traen la asignación vigente | TE-54, TE-122 |
 | `calidad` | `/api/calidad/defectos/` y `/api/calidad/defectos/<id>/` (catálogo de defectos corregibles e incorregibles: listar con filtros `activo` y `q`, crear, editar y desactivar), `/api/calidad/pendientes/` (lotes devueltos de lavandería por inspeccionar) | TE-59 |
 | `calidad` | `/api/calidad/inspecciones/` (listar con filtros `lote`, `orden`, `desde`, `hasta` y `q`, y registrar la inspección de un lote) y `/api/calidad/inspecciones/<id>/` (consultar con su desglose de marras). No hay `PUT` ni `DELETE`: una inspección no se edita | TE-59 |
+| `producto-terminado` | `/api/terminado/pendientes/` (inspecciones con aptas por ingresar, con las variantes de su referencia y lo planificado), `/api/terminado/ingresos/` (listar con filtros `referencia`, `lote`, `desde`, `hasta` y `q`, y registrar el ingreso de una inspección) y `/api/terminado/ingresos/<id>/` (consultar con su reparto por talla). No hay `PUT` ni `DELETE`: un ingreso no se edita | TE-60 |
+| `producto-terminado` | `/api/terminado/existencias/` (matriz referencia × color × talla, con las celdas en cero, filtro `referencia`) y `/api/terminado/movimientos/` (libro de solo lectura con saldo antes y después; filtros `referencia`, `variante`, `tipo`, `desde` y `hasta`) | TE-60 |
 | `compras` | `/api/compras/ordenes/` y `/api/compras/ordenes/<id>/` (órdenes de compra de materiales: crear, listar con filtros `estado`, `proveedor` y `q`, y editar mientras son borrador), `/api/compras/ordenes/<id>/aprobar/`, `cancelar/` y `cerrar/` (aprobación del Gerente, cancelación y cierre con motivo) | — |
 | `compras` | `/api/compras/recepciones/` (recibir mercancía con varios productos a la vez, contra una orden aprobada o suelta; cada fila entra al almacén con la misma regla del ingreso: stock, costo promedio y kardex) y `/api/compras/metadatos/` (estados y tolerancia de exceso) | — |
 | `salud` | `/api/health/`, `/api/health/db/` | — |
@@ -114,6 +116,22 @@ Respuesta `201` con la inspección (`INS-0001`), el lote y la orden, `cantidad_r
 conserva el nombre y el tipo (corregible o no) que el defecto tenía al inspeccionar. Errores: `400` si la suma no cuadra
 (`{"aptas": ["Las aptas y las marras suman 39 y el lote trae 40: falta 1."]}`), si un defecto está desactivado o repetido, si el lote no
 tiene recepción de lavandería o si su orden está anulada; `409` si el lote ya fue inspeccionado.
+
+## Ejemplo: ingresar al inventario final las aptas de una inspección
+
+Primero se consultan las inspecciones por ingresar (`GET /api/terminado/pendientes/`), que traen `aptas`, las `variantes` de la referencia
+(talla y color, con su id) y lo `planificado` por variante en el lote. Después se envía el reparto de las aptas: la suma de las cantidades
+debe ser exactamente las aptas de la inspección. Aquí la inspección trae 36 aptas.
+
+```bash
+curl -X POST http://localhost:8000/api/terminado/ingresos/   -H "Authorization: Bearer <access>" -H "Content-Type: application/json"   -d '{"inspeccion": 3, "lineas": [{"variante": 11, "cantidad": 20}, {"variante": 12, "cantidad": 16}], "ubicacion": "Estante A2", "observaciones": "Entregado por Terminación"}'
+```
+
+Respuesta `201` con el ingreso (`IPT-0001`), la inspección, el lote y la orden, y sus `lineas` (talla, color, `cantidad`, `planificada` y `diferencia`).
+Cada línea suma al saldo de su variante y deja un movimiento `ENTRADA_PRODUCCION` en `GET /api/terminado/movimientos/`. Errores: `400` si la
+suma no cuadra (`{"lineas": ["Las tallas suman 35 y la inspección trae 36 aptas: falta 1."]}`), si una variante no es de la referencia del lote
+o se repite, o si la orden está anulada; `409` si la inspección ya fue ingresada
+(`{"inspeccion": ["La inspección INS-0001 ya fue ingresada al inventario."]}`).
 
 ## Mantener la documentación al día
 

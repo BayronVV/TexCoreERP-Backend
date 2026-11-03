@@ -15,7 +15,8 @@ backend/
 │   ├── inventory/     # Proveedores, catálogo, órdenes de salida, kardex, evidencias, alertas y costo promedio
 │   ├── purchasing/    # Órdenes de compra (crear, aprobar) y recepción de mercancía
 │   ├── references/    # Referencias de jean (variantes, imágenes) y ficha técnica de consumo por unidad
-│   └── production/    # Simulación de material, órdenes y lotes, tiempos, recursos, monitor y costeo
+│   ├── production/    # Simulación de material, órdenes y lotes, tiempos, recursos, monitor y costeo
+│   └── quality/       # Control de calidad: catálogo de defectos, inspecciones y marras de los lotes
 ├── docs/              # Documentación (sitio MkDocs): manuales, arquitectura, modelo de datos
 ├── mkdocs.yml         # Configuración del sitio de documentación
 ├── manage.py
@@ -23,7 +24,7 @@ backend/
 └── .env.example       # Plantilla de variables de entorno (sin secretos)
 ```
 
-Los módulos de negocio de los próximos sprints (lavandería, calidad,
+Los módulos de negocio de los próximos sprints (lavandería como proceso propio,
 producto terminado, ventas, reportes...) se agregan como `apps/<modulo>/` y se registran en
 `INSTALLED_APPS`.
 
@@ -192,7 +193,7 @@ limitaciones en [`docs/despliegue-render.md`](docs/despliegue-render.md).
 
 ```powershell
 python manage.py check
-python manage.py test        # 683 pruebas; usa SQLite temporal, nunca la base en la nube
+python manage.py test        # 738 pruebas; usa SQLite temporal, nunca la base en la nube
 python manage.py test apps.production   # solo un módulo
 python manage.py spectacular --validate --file schema.yml   # valida el esquema OpenAPI (borra después schema.yml)
 ```
@@ -303,6 +304,18 @@ App `apps/production`. Todo bajo `/api/produccion/`. Ver requiere `produccion.ve
 Reglas clave: el estado de lotes y órdenes se calcula (no se guarda), el tiempo neto no cuenta las pausas, y la liquidación usa la foto del
 costo del material y la tarifa vigente a la fecha de fin de cada etapa. Detalle en [`docs/modulos.md`](docs/modulos.md).
 
+## Control de calidad (HU 6.1)
+
+App `apps/quality`. Todo bajo `/api/calidad/`. Ver requiere `calidad.ver`; crear defectos e inspeccionar requiere `calidad.gestionar` (Terminación y Jefe de Producción; el Gerente solo consulta).
+
+| Endpoint | Qué hace |
+|----------|----------|
+| `GET/POST defectos/`, `GET/PATCH defectos/<id>/` | Catálogo de defectos `DEF-0001`, corregibles o incorregibles; nombre único sin importar mayúsculas; se desactivan, no se borran (RF19). |
+| `GET pendientes/` | Lotes devueltos de lavandería por inspeccionar, con lo recibido conforme. |
+| `GET/POST inspecciones/`, `GET inspecciones/<id>/` | Inspección `INS-0001` de un lote: aptas + marras desglosadas por defecto = recibidas conformes. Una por lote (doble inspección: 409) y sin `PUT`/`DELETE` (RF20). |
+
+Limitaciones: sin reproceso, sin valoración de las marras, sin muestreo AQL y sin corrección de una inspección mal digitada. Detalle en [`docs/modulos.md`](docs/modulos.md).
+
 ## Datos de demostración
 
 Solo con `DJANGO_DEBUG=true`, idempotentes y por las mismas reglas de la aplicación:
@@ -313,6 +326,7 @@ python manage.py seed_demo_inventario    # incluye seed_inventario y seed_demo_r
 python manage.py seed_demo_produccion    # órdenes con lotes, tallas y tiempos
 python manage.py seed_demo_recursos      # operarios y máquinas asignados
 python manage.py seed_demo_compras       # órdenes de compra en borrador, aprobada y parcial
+python manage.py seed_demo_calidad       # defectos típicos y dos lotes devueltos de lavandería (uno inspeccionado)
 ```
 
-Los comandos de los pasos 3 a 5 necesitan el 2. No se siembran tarifas de mano de obra: se registran desde la pantalla de liquidación.
+Los comandos de los pasos 3 a 6 necesitan el 2; `seed_demo_calidad` necesita además `seed_demo_produccion`. No se siembran tarifas de mano de obra: se registran desde la pantalla de liquidación.

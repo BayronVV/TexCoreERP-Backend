@@ -7,8 +7,9 @@ Lo que ves en el menú depende de tu rol: solo aparecen los módulos que tienes 
 |---|---|---|
 | Administrador | Aprobar solicitudes de cuenta, asignar roles y ajustar permisos; tiene acceso a todo | [4](#4-administrador-usuarios-y-roles) |
 | Almacenista | Inventario, proveedores, ingresos, salidas a lavandería y recepción de mercancía | [5](#5-almacenista-inventario) |
-| Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo y órdenes de compra | [6](#6-jefe-de-produccion-referencias-fichas-tecnicas-y-produccion) |
-| Gerente | Consultar toda la operación (producción, inventario, costos) y aprobar órdenes de compra | [7](#7-gerente-consulta-y-aprobacion) |
+| Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo, órdenes de compra y defectos de calidad | [6](#6-jefe-de-produccion-referencias-fichas-tecnicas-y-produccion) |
+| Personal de Terminación | Definir los defectos e inspeccionar los lotes que vuelven de lavandería (aptas y marras) | [7](#7-personal-de-terminacion-control-de-calidad) |
+| Gerente | Consultar toda la operación (producción, inventario, costos, calidad) y aprobar órdenes de compra | [8](#8-gerente-consulta-y-aprobacion) |
 
 Las tablas completas de permisos están en el [apartado técnico de roles y permisos](roles-y-permisos.md).
 
@@ -294,10 +295,55 @@ calculando el costo de materiales y el costo de mano de obra invertido. Tiene cu
     - Si faltan tarifas o costos de materiales, el sistema advierte que el cálculo es *parcial*.
     - Si la orden fue anulada, los costos se muestran en cero, porque el material volvió al almacén.
 
-## 7. Gerente: consulta y aprobación
+## 7. Personal de Terminación: control de calidad
+
+Menú **Control de Calidad**, con dos pantallas: **Inspecciones** y **Defectos**. El Personal de Terminación y el Jefe de Producción pueden
+definir defectos e inspeccionar; el Gerente solo consulta (no ve los botones de crear, editar ni inspeccionar).
+
+### Defectos: el catálogo de criterios de calidad
+
+Menú **Control de Calidad → Defectos**. Es la lista de problemas que se pueden encontrar en una prenda (costura floja, mancha, variación de tono, medida
+fuera de tolerancia...).
+
+1. Pulsa **+ Nuevo defecto** y escribe el **nombre** (de 3 a 80 caracteres; no se repite aunque cambien las mayúsculas, ni siquiera frente a un defecto
+   desactivado), una **descripción** opcional y el **tipo**:
+    - *Corregible*: la prenda se podría reprocesar (por ejemplo, un botón mal puesto).
+    - *Incorregible*: la prenda es marra definitiva (por ejemplo, una mancha permanente).
+2. El código `DEF-0001` se genera solo. **Editar** cambia el nombre, la descripción o el tipo.
+3. Un defecto **no se borra**: se **desactiva**. Desactivado deja de ofrecerse en las inspecciones nuevas, pero las inspecciones ya registradas
+   conservan el nombre y el tipo que tenía cuando se inspeccionó. Se puede volver a **activar**.
+
+### Inspeccionar un lote
+
+Menú **Control de Calidad → Inspecciones**. Arriba aparecen los **Lotes por inspeccionar**: los que ya volvieron de lavandería con prendas recibidas
+conformes, siguen en planta, su orden no está anulada y todavía no tienen inspección. La columna **Recibidas** es la cantidad que se debe clasificar.
+
+1. En la fila del lote pulsa **Inspeccionar**.
+2. Escribe las **prendas aptas** (primera calidad; puede ser cero).
+3. Para cada defecto encontrado elige el **defecto**, escribe la **cantidad** de prendas y, si quieres, una **nota** (dónde se vio) y pulsa **+ Agregar**. Un
+   defecto va en una sola fila: si se repite en varias prendas, suma las cantidades. Las filas se pueden corregir o **Quitar** antes de registrar.
+4. Mira la suma en vivo: **aptas + marras debe ser igual a lo recibido**. Escribe, si hace falta, las observaciones.
+5. Registra la inspección y confirma. El sistema pide confirmación porque **la inspección no se puede editar ni borrar**.
+
+**Qué significa que no cuadre la suma.** Si las aptas más las marras son menos que lo recibido, la pantalla dice cuántas prendas *faltan por clasificar*; si son
+más, cuántas *sobran*. El botón de registrar queda desactivado hasta que la suma sea exacta, y el servidor vuelve a comprobarlo. Las prendas que faltaron o
+llegaron dañadas de lavandería ya se descontaron en la recepción de lavandería: aquí solo se clasifican las que sí llegaron.
+
+**Qué pasa con una inspección ya registrada.** Cada lote se inspecciona **una sola vez**. El lote sale de la lista de pendientes y su inspección aparece en
+**Inspecciones registradas** (con su código `INS-0001`, fecha, aptas, marras, porcentaje de marras e inspector); **Ver** abre el desglose por defecto. Si dos
+personas intentan inspeccionar el mismo lote a la vez, solo se guarda la primera y la otra recibe el aviso de que el lote ya fue inspeccionado.
+
+!!! warning "Qué todavía no hace"
+    - **Corrección:** si digitaste mal una inspección, el sistema no permite editarla ni anularla. Avisa a quien administre el sistema; cómo corregirlas es una
+      pregunta pendiente para el responsable del producto.
+    - **Reproceso:** marcar un defecto como corregible no inicia ningún reproceso; solo queda registrado.
+    - **Valor de las marras:** no se calcula su costo, y las aptas aún no pasan a un inventario de producto terminado.
+    - **Muestreo:** se clasifica el lote completo, no una muestra.
+
+## 8. Gerente: consulta y aprobación
 
 El Gerente ve toda la operación en modo consulta: existencias y kardex, referencias y fichas, órdenes de producción, **Monitor de estado**, **Recursos**,
-tiempos y **Liquidación de Órdenes**. No crea ni modifica nada de producción, pero sí tiene una tarea propia:
+tiempos, **Liquidación de Órdenes** y **Control de Calidad** (defectos e inspecciones). No crea ni modifica nada de producción, pero sí tiene una tarea propia:
 
 - **Aprobar órdenes de compra:** en **Compras → Órdenes de compra**, las órdenes en *Borrador* muestran el botón **Aprobar**. Antes de aprobar, el sistema
   pide confirmación, porque después la orden ya no se edita y el almacén puede recibir contra ella.
@@ -315,6 +361,10 @@ tiempos y **Liquidación de Órdenes**. No crea ni modifica nada de producción,
 
 **El sistema no me deja recibir una orden de compra.** Quien creó la orden no puede recibirla; debe hacerlo otra persona con permiso de inventario
 (normalmente el Almacenista). Tampoco se recibe contra una orden en borrador, cancelada, cerrada o ya recibida por completo.
+
+**No puedo inspeccionar un lote / no aparece en «Lotes por inspeccionar».** El lote debe haber vuelto de lavandería con prendas recibidas conformes, estar en planta, no tener ya una inspección y pertenecer a una orden que no esté anulada. Si ya fue inspeccionado, búscalo en *Inspecciones registradas*.
+
+**El botón de registrar la inspección está desactivado.** Las aptas más las marras no suman lo recibido, o falta una cantidad válida; la pantalla indica cuántas prendas faltan o sobran.
 
 **La liquidación dice «Sin tarifa» o «Sin costo».** Falta registrar la tarifa por minuto de esa etapa (pestaña *Tarifas por Minuto*) o la compra del
 material se registró sin costo unitario. El cálculo se muestra como parcial hasta completarlo.

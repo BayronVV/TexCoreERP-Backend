@@ -58,6 +58,18 @@ class SeedDataTests(TestCase):
         self.assertEqual(calidad("GERENTE"), {"calidad.ver"})
         self.assertEqual(calidad("ALMACENISTA"), set())
 
+    def test_permisos_de_producto_terminado_por_rol(self):
+        """Ingresan y ajustan la Secretaria y el Admin; Vendedor y Gerente solo consultan; el resto no entra (HU 6.2)."""
+        def terminado(role):
+            codes = Role.objects.get(code=role).permissions.filter(code__startswith="producto_terminado.")
+            return set(codes.values_list("code", flat=True))
+
+        self.assertEqual(terminado("SECRETARIA"), {"producto_terminado.ver", "producto_terminado.gestionar"})
+        self.assertEqual(terminado("VENDEDOR"), {"producto_terminado.ver"})
+        self.assertEqual(terminado("GERENTE"), {"producto_terminado.ver"})
+        for role in ("ALMACENISTA", "TERMINACION", "PRODUCCION"):
+            self.assertEqual(terminado(role), set(), role)
+
     def test_admin_tiene_todos_los_permisos(self):
         admin = make_user("a@t.co", "ADMIN")
         self.assertEqual(

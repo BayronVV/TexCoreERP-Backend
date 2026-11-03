@@ -344,8 +344,8 @@ personas intentan inspeccionar el mismo lote a la vez, solo se guarda la primera
 
 ## 8. Secretaria y Vendedor: producto terminado
 
-Menú **Producto Terminado**, con tres pantallas: **Ingreso**, **Existencias** y **Movimientos**. La Secretaria (y el Administrador) ingresan las prendas;
-el Vendedor y el Gerente solo consultan (no ven el botón **Ingresar**; en su lugar aparece *Solo consulta*).
+Menú **Producto Terminado**, con cuatro pantallas: **Ingreso**, **Existencias**, **Ajuste manual** y **Movimientos**. La Secretaria (y el Administrador) ingresan las prendas
+y ajustan el inventario; el Vendedor y el Gerente solo consultan (no ven el botón **Ingresar**; en su lugar aparece *Solo consulta*).
 
 ### Ingresar un lote al inventario final
 
@@ -371,11 +371,44 @@ misma inspección a la vez, solo se guarda la primera y la otra recibe el aviso 
 
 Menú **Producto Terminado → Existencias**. Muestra, por referencia, una matriz de **color × talla** con las prendas de primera calidad disponibles y los totales. Las
 celdas en cero aparecen resaltadas. Puedes buscar una referencia, filtrar por una sola y pulsar **Actualizar**. Las marras no se cuentan aquí.
+Si tu rol puede ajustar, cada referencia trae el enlace **Ajustar**, que abre el *Ajuste manual* con esa referencia ya elegida.
+
+### Ajustar el inventario (conteo físico)
+
+Menú **Producto Terminado → Ajuste manual**. Sirve para corregir un descuadre entre lo que hay en la bodega y lo que dice el sistema: prendas perdidas,
+dañadas, entregadas como muestra, un sobrante que apareció o un ingreso mal digitado. Solo la Secretaria y el Administrador ven el formulario; los demás roles
+ven únicamente el historial.
+
+1. En **Nuevo ajuste**, elige la **referencia** (o llega con ella elegida desde el enlace **Ajustar** de *Existencias*).
+2. Aparece la matriz de **color × talla**. Cada celda trae el saldo del sistema (se lee debajo como *sistema N*). **Cambia solo las tallas donde lo que
+   contaste en la bodega sea distinto**; deja las demás como están. Las cantidades deben ser números enteros desde cero y puedes dejar una celda en cero.
+3. Las celdas que cambian se resaltan con su diferencia (por ejemplo *−2*). Abajo ves el resumen: cuántas prendas **faltaban** y cuántas **sobraban**, y cuántas tallas cambian.
+   Los faltantes y los sobrantes se cuentan por separado; no se compensan entre sí.
+4. Elige el **motivo**: *Error de conteo*, *Muestra comercial*, *Pérdida*, *Prenda dañada*, *Sobrante o hallazgo* u *Otro*. Algunos solo restan
+   (*Muestra comercial*, *Pérdida*, *Prenda dañada*), *Sobrante o hallazgo* solo suma, y *Error de conteo* y *Otro* admiten ambos.
+5. Escribe la **observación**, que es obligatoria (mínimo 10 caracteres, máximo 500).
+6. Pulsa **Registrar ajuste**. El sistema muestra cada talla con su cambio (por ejemplo *30 · Azul: 12 → 10 (−2)*) y pide confirmación, porque **un ajuste no se puede editar
+   ni borrar**. Al confirmar queda el aviso *Ajuste AJT-0001 registrado.*
+
+**Cuando el ajuste es grande.** Si en una sola talla cambias **más de 20 unidades**, el motivo *Otro* no se acepta y la observación debe tener al menos 30 caracteres; la pantalla lo avisa.
+
+**El comprobante y el historial.** Cada ajuste genera un comprobante (`AJT-0001`) que aparece en **Ajustes registrados**, con su fecha, referencia, motivo, faltantes, sobrantes y quién lo hizo.
+**Ver** abre el detalle por talla (sistema, contado y diferencia) y la observación. Puedes buscar por código u observación y filtrar por motivo. Cada talla ajustada también deja una fila *Ajuste manual* en **Movimientos**.
+
+**Mensajes que puedes ver:**
+
+- *Revisa los conteos: deben ser números enteros desde cero.* Hay una celda con texto, decimales o un número negativo.
+- *No hay diferencias: cambia el conteo de alguna talla.* Lo contado coincide con el sistema; no hay nada que ajustar.
+- *«Pérdida» solo puede restar prendas* (o *solo puede sumar*): el motivo no concuerda con el sentido de la diferencia. Para sobrantes usa *Sobrante o hallazgo* o *Error de conteo*.
+- *Explica el ajuste en la observación (mínimo 10 caracteres).* Falta la observación o es muy corta.
+- *Un ajuste de más de 20 unidades… necesita un motivo válido: «Otro» no se acepta*, o *pide una observación de al menos 30 caracteres.*
+- *El stock cambió en: …* Mientras contabas entró o salió producto de esas tallas. No se guardó nada: la matriz se recarga con los saldos reales y debes volver a contar.
+- *Este ajuste ya se registró como AJT-…* Lo enviaste dos veces (por ejemplo, con un doble clic); el primero ya quedó guardado.
 
 ### Movimientos
 
-Menú **Producto Terminado → Movimientos**. Es el historial del inventario final, de solo lectura: cada fila trae la fecha, el tipo (hoy *Entrada de producción*; los ajustes y las
-salidas por venta llegarán con otras historias), la referencia, la talla y el color, la cantidad con su signo, el **saldo antes y después**, el origen (el ingreso y el lote) y el usuario.
+Menú **Producto Terminado → Movimientos**. Es el historial del inventario final, de solo lectura: cada fila trae la fecha, el tipo (*Entrada de producción* o *Ajuste manual*; las
+salidas por venta llegarán con otra historia), la referencia, la talla y el color, la cantidad con su signo, el **saldo antes y después**, el origen (el ingreso y el lote) y el usuario.
 Filtra por tipo y por fechas.
 
 ### Aviso en el inicio
@@ -384,7 +417,8 @@ Quien puede ver producto terminado (Secretaria, Vendedor, Gerente y Administrado
 los últimos 7 días; pulsa **Ver existencias →** para abrir la matriz.
 
 !!! warning "Qué todavía no hace"
-    - **Corrección:** un ingreso equivocado no se puede editar ni anular; se corregirá con un ajuste de inventario (historia pendiente). Avisa a quien administre el sistema.
+    - **Corrección:** un ingreso o un ajuste equivocado no se puede editar ni anular; se corrige registrando otro ajuste (ver *Ajustar el inventario*).
+    - **Ajustes:** no hay aprobación de un segundo rol, conteo ciego ni fotos; el ajuste cuenta prendas (no calcula su valor) y lleva un solo motivo (si hay causas distintas, haz un ajuste por cada una).
     - **Ubicaciones:** la ubicación es un texto libre; el sistema no controla ni avisa sobre las ubicaciones de bodega.
     - **Reservas y costos:** no se reserva producto para pedidos ni se calcula su valor.
     - **Ingreso parcial:** se ingresan todas las aptas de la inspección de una vez.
@@ -394,7 +428,7 @@ los últimos 7 días; pulsa **Ver existencias →** para abrir la matriz.
 ## 9. Gerente: consulta y aprobación
 
 El Gerente ve toda la operación en modo consulta: existencias y kardex, referencias y fichas, órdenes de producción, **Monitor de estado**, **Recursos**,
-tiempos, **Liquidación de Órdenes**, **Control de Calidad** (defectos e inspecciones) y **Producto Terminado** (ingresos, existencias y movimientos). No crea ni modifica nada de producción, pero sí tiene una tarea propia:
+tiempos, **Liquidación de Órdenes**, **Control de Calidad** (defectos e inspecciones) y **Producto Terminado** (ingresos, existencias, ajustes y movimientos). No crea ni modifica nada de producción, pero sí tiene una tarea propia:
 
 - **Aprobar órdenes de compra:** en **Compras → Órdenes de compra**, las órdenes en *Borrador* muestran el botón **Aprobar**. Antes de aprobar, el sistema
   pide confirmación, porque después la orden ya no se edita y el almacén puede recibir contra ella.
@@ -421,7 +455,9 @@ tiempos, **Liquidación de Órdenes**, **Control de Calidad** (defectos e inspec
 
 **El botón «Registrar ingreso» está desactivado.** El reparto por talla y color no suma exactamente las aptas, o hay una cantidad que no es un entero; la pantalla dice cuántas prendas faltan o sobran.
 
-**Me equivoqué en un ingreso.** Un ingreso no se puede editar ni borrar. La corrección será un ajuste de inventario (historia pendiente); por ahora avisa a quien administre el sistema.
+**Me equivoqué en un ingreso.** Un ingreso no se puede editar ni borrar. Se corrige con un ajuste manual en *Producto Terminado → Ajuste manual*: cuenta lo que hay en la bodega y registra la diferencia con su motivo y observación (sección 8). Si no ves ese menú, pídele a un administrador el permiso de ajustar.
+
+**El ajuste dice «El stock cambió».** Otra persona ingresó producto (o cambió el saldo) mientras contabas. No se guardó nada; la matriz ya se recargó, así que vuelve a contar y registra de nuevo.
 
 **Veo ceros resaltados en Existencias.** Es normal: son las tallas y colores de la referencia que todavía no tienen prendas disponibles.
 

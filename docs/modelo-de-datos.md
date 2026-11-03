@@ -441,6 +441,27 @@ erDiagram
         int cantidad
         int planificada
     }
+    AjusteTerminado {
+        bigint id PK
+        varchar_20 codigo
+        varchar_20 motivo
+        varchar_500 observacion
+        bigint realizado_por FK
+        date fecha
+        uuid token
+        int unidades_faltantes
+        int unidades_sobrantes
+    }
+    AjusteLinea {
+        bigint id PK
+        bigint ajuste FK
+        bigint variante FK
+        varchar_10 talla
+        varchar_60 color
+        int stock_antes
+        int stock_contado
+        int diferencia
+    }
     MovimientoTerminado {
         bigint id PK
         bigint variante FK
@@ -449,11 +470,15 @@ erDiagram
         int saldo_antes
         int saldo_despues
         bigint ingreso FK
+        bigint ajuste FK
         bigint lote FK
         bigint usuario FK
         varchar_255 motivo
     }
+    AjusteTerminado |o--o{ MovimientoTerminado : "ajuste"
+    AjusteTerminado ||--o{ AjusteLinea : "ajuste"
     CustomUser |o--o{ AccessLog : "user"
+    CustomUser |o--o{ AjusteTerminado : "realizado_por"
     CustomUser |o--o{ AsignacionEtapa : "asignada_por"
     CustomUser |o--o{ EtapaLote : "responsable"
     CustomUser |o--o{ EventoEtapa : "usuario"
@@ -530,6 +555,7 @@ erDiagram
     Role ||--o{ CustomUser : "role"
     Role ||--o{ RolePermission : "role"
     TipoDefecto ||--o{ MarraDetalle : "tipo_defecto"
+    Variante ||--o{ AjusteLinea : "variante"
     Variante ||--o{ IngresoLinea : "variante"
     Variante ||--o{ LoteTalla : "variante"
     Variante ||--o{ MovimientoTerminado : "variante"
@@ -1180,6 +1206,37 @@ Cuántas prendas de una variante entraron en un ingreso. Guarda talla y color ta
 | `cantidad` | int |  |  |
 | `planificada` | int | nulo |  |
 
+### AjusteTerminado (`terminado_ajuste`)
+
+Comprobante de un ajuste manual: quién corrigió qué contra el conteo físico, cuándo y por qué. No se edita ni se borra.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(20) |  |  |
+| `motivo` | varchar(20) |  |  |
+| `observacion` | varchar(500) |  |  |
+| `realizado_por` | bigint | FK, nulo | → `CustomUser` |
+| `fecha` | date |  |  |
+| `token` | uuid |  |  |
+| `unidades_faltantes` | int |  |  |
+| `unidades_sobrantes` | int |  |  |
+
+### AjusteLinea (`terminado_ajuste_linea`)
+
+Una variante corregida: lo que decía el sistema, lo que se contó y la diferencia. Guarda talla y color tal como estaban.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `ajuste` | bigint | FK | → `AjusteTerminado` |
+| `variante` | bigint | FK | → `Variante` |
+| `talla` | varchar(10) |  |  |
+| `color` | varchar(60) |  |  |
+| `stock_antes` | int |  |  |
+| `stock_contado` | int |  |  |
+| `diferencia` | int |  |  |
+
 ### MovimientoTerminado (`terminado_movimiento`)
 
 Una fila del libro del stock: de cuánto a cuánto pasó el saldo de una variante y por qué.
@@ -1193,6 +1250,7 @@ Una fila del libro del stock: de cuánto a cuánto pasó el saldo de una variant
 | `saldo_antes` | int |  |  |
 | `saldo_despues` | int |  |  |
 | `ingreso` | bigint | FK, nulo | → `IngresoTerminado` |
+| `ajuste` | bigint | FK, nulo | → `AjusteTerminado` |
 | `lote` | bigint | FK, nulo | → `Lote` |
 | `usuario` | bigint | FK, nulo | → `CustomUser` |
 | `motivo` | varchar(255) |  |  |

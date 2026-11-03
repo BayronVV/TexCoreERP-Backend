@@ -1,9 +1,9 @@
-"""Serializers de producto terminado: ingresos, inspecciones pendientes, existencias en matriz y movimientos."""
+"""Serializers de producto terminado: ingresos, ajustes, inspecciones pendientes, existencias en matriz y movimientos."""
 from django.utils import timezone
 from rest_framework import serializers
 
 from . import catalog
-from .models import IngresoLinea, IngresoTerminado, MovimientoTerminado
+from .models import AjusteLinea, AjusteTerminado, IngresoLinea, IngresoTerminado, MovimientoTerminado
 
 
 def _name(user):
@@ -89,6 +89,7 @@ class MovimientoTerminadoSerializer(serializers.ModelSerializer):
     color = serializers.CharField(source="variante.color", read_only=True)
     tipo_nombre = serializers.SerializerMethodField()
     ingreso_codigo = serializers.SerializerMethodField()
+    ajuste_codigo = serializers.SerializerMethodField()
     lote_codigo = serializers.SerializerMethodField()
     usuario_nombre = serializers.SerializerMethodField()
 
@@ -96,7 +97,7 @@ class MovimientoTerminadoSerializer(serializers.ModelSerializer):
         model = MovimientoTerminado
         fields = [
             "id", "variante", "referencia", "referencia_nombre", "talla", "color", "tipo", "tipo_nombre", "cantidad", "saldo_antes",
-            "saldo_despues", "ingreso_codigo", "lote_codigo", "usuario_nombre", "motivo", "created_at",
+            "saldo_despues", "ingreso_codigo", "ajuste_codigo", "lote_codigo", "usuario_nombre", "motivo", "created_at",
         ]
 
     def get_tipo_nombre(self, obj) -> str:
@@ -104,6 +105,9 @@ class MovimientoTerminadoSerializer(serializers.ModelSerializer):
 
     def get_ingreso_codigo(self, obj) -> str:
         return obj.ingreso.codigo if obj.ingreso else ""
+
+    def get_ajuste_codigo(self, obj) -> str:
+        return obj.ajuste.codigo if obj.ajuste else ""
 
     def get_lote_codigo(self, obj) -> str:
         return obj.lote.codigo if obj.lote else ""
@@ -122,3 +126,75 @@ class ExistenciasReferenciaSerializer(serializers.Serializer):
         child=serializers.DictField(), help_text="`{color, tallas: {talla: {variante, cantidad}}, total}` por color",
     )
     total = serializers.IntegerField()
+
+
+class AjusteLineaSerializer(serializers.ModelSerializer):
+    """Una variante corregida: lo que decía el sistema, lo contado y la diferencia."""
+
+    class Meta:
+        model = AjusteLinea
+        fields = ["id", "variante", "talla", "color", "stock_antes", "stock_contado", "diferencia"]
+
+
+class AjusteSerializer(serializers.ModelSerializer):
+    """Comprobante de un ajuste manual (inalterable)."""
+    motivo_nombre = serializers.SerializerMethodField()
+    realizado_por_nombre = serializers.SerializerMethodField()
+    referencia = serializers.SerializerMethodField()
+    referencia_nombre = serializers.SerializerMethodField()
+    lineas = AjusteLineaSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = AjusteTerminado
+        fields = [
+            "id", "codigo", "motivo", "motivo_nombre", "observacion", "fecha", "unidades_faltantes", "unidades_sobrantes",
+            "referencia", "referencia_nombre", "realizado_por_nombre", "lineas", "created_at",
+        ]
+
+    def get_motivo_nombre(self, obj) -> str:
+        return catalog.ADJUST_REASON_NAMES.get(obj.motivo, obj.motivo)
+
+    def get_realizado_por_nombre(self, obj) -> str:
+        return _name(obj.realizado_por)
+
+    def _first_variant(self, obj):
+        lines = list(obj.lineas.all())
+        return lines[0].variante if lines else None
+
+    def get_referencia(self, obj) -> int | None:
+        variant = self._first_variant(obj)
+        return variant.referencia_id if variant else None
+
+    def get_referencia_nombre(self, obj) -> str:
+        variant = self._first_variant(obj)
+        return variant.referencia.nombre if variant else ""
+
+
+class LineaAjusteInputSerializer(serializers.Serializer):
+    """Una celda de la matriz: el saldo que vio la persona y lo que contó."""
+    variante = serializers.IntegerField(help_text="Id de la variante (talla y color)")
+    esperado = serializers.IntegerField(min_value=0, help_text="Saldo que mostraba el sistema al abrir el formulario")
+    contado = serializers.IntegerField(min_value=0, help_text="Conteo real encontrado en la bodega")
+
+
+class AjusteTerminadoInputSerializer(serializers.Serializer):
+    """Datos del ajuste: motivo, observación, conteo por variante y el token único del formulario."""
+    motivo = serializers.ChoiceField(choices=catalog.ADJUST_REASON_CHOICES)
+    observacion = serializers.CharField(max_length=500)
+    token = serializers.UUIDField(help_text="Identificador único del formulario: evita ajustar dos veces con un doble clic")
+    lineas = LineaAjusteInputSerializer(many=True)
+
+
+class MotivoAjusteSerializer(serializers.Serializer):
+    codigo = serializers.CharField()
+    nombre = serializers.CharField()
+    signo = serializers.CharField(help_text="`-` solo resta, `+` solo suma, `+-` admite ambos")
+
+
+class MetadatosAjusteSerializer(serializers.Serializer):
+    """Reglas del ajuste que la pantalla necesita conocer."""
+    motivos = MotivoAjusteSerializer(many=True)
+    umbral_unidades = serializers.IntegerField(help_text="Una línea que cambia más de estas unidades exige más justificación")
+    observacion_minima = serializers.IntegerField()
+    observacion_minima_umbral = serializers.IntegerField(help_text="Mínimo de la observación cuando se supera el umbral")
+    motivo_no_valido_sobre_umbral = serializers.CharField()

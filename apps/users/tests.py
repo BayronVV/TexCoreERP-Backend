@@ -47,6 +47,17 @@ class SeedDataTests(TestCase):
             {"inventario.ver", "inventario.gestionar", "referencias.ver", "compras.ver"},
         )
 
+    def test_permisos_de_calidad_por_rol(self):
+        """Terminación y Producción inspeccionan y definen defectos (RF19); el Gerente solo consulta."""
+        def calidad(role):
+            return set(Role.objects.get(code=role).permissions.filter(code__startswith="calidad.").values_list("code", flat=True))
+
+        both = {"calidad.ver", "calidad.gestionar"}
+        self.assertEqual(calidad("TERMINACION"), both)
+        self.assertEqual(calidad("PRODUCCION"), both)
+        self.assertEqual(calidad("GERENTE"), {"calidad.ver"})
+        self.assertEqual(calidad("ALMACENISTA"), set())
+
     def test_admin_tiene_todos_los_permisos(self):
         admin = make_user("a@t.co", "ADMIN")
         self.assertEqual(

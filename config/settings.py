@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "apps.references",
     "apps.production",
     "apps.purchasing",
+    "apps.quality",
 ]
 
 MIDDLEWARE = [

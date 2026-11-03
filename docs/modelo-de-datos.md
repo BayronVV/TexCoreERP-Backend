@@ -46,6 +46,15 @@ erDiagram
         varchar_20 requested_area FK
         varchar_20 document_id
     }
+    AccessLog {
+        bigint id PK
+        bigint user FK
+        varchar_254 email
+        varchar_20 event
+        inet ip
+        varchar_300 forwarded
+        varchar_255 user_agent
+    }
     PasswordResetToken {
         bigint id PK
         bigint user FK
@@ -199,6 +208,7 @@ erDiagram
         positivesmallinteger numero
         varchar_24 codigo
         int cantidad
+        varchar_20 estado_inventario
     }
     LoteTalla {
         bigint id PK
@@ -268,6 +278,73 @@ erDiagram
         timestamp fin_at
         bigint asignada_por FK
     }
+    RecetaLavado {
+        bigint id PK
+        varchar_20 codigo
+        varchar_150 nombre
+        varchar_100 categoria
+        text descripcion
+        varchar_40 temperatura_proceso
+        int duracion_horas
+        decimal_12_2 tarifa_sugerida
+    }
+    RemisionLavanderia {
+        bigint id PK
+        varchar_30 codigo
+        date fecha_emision
+        date fecha_entrega_estimada
+        bigint lavanderia FK
+        varchar_150 transportador_nombre
+        varchar_30 vehiculo_placa
+        int tulas_bultos
+        decimal_10_2 peso_kg
+        decimal_14_2 costo_estimado
+        varchar_20 estado
+        text observaciones
+        bigint responsable FK
+        bigint creado_por FK
+    }
+    RemisionLote {
+        bigint id PK
+        bigint remision FK
+        bigint lote FK
+        int cantidad
+        bigint receta FK
+        varchar_150 receta_nombre
+        text instrucciones_especiales
+    }
+    RecepcionLavanderia {
+        bigint id PK
+        varchar_30 codigo
+        bigint remision FK
+        varchar_60 factura_remision_externa
+        date fecha_recepcion
+        int total_enviado
+        int total_recibido_conforme
+        int total_merma
+        int total_danadas
+        decimal_14_2 costo_total_perdida
+        decimal_14_2 costo_servicio_lavado
+        varchar_20 estado
+        text observaciones
+        bigint responsable FK
+        bigint creado_por FK
+    }
+    RecepcionLote {
+        bigint id PK
+        bigint recepcion FK
+        bigint remision_lote FK
+        bigint lote FK
+        int cantidad_enviada
+        int cantidad_recibida_conforme
+        int cantidad_merma
+        int cantidad_danada
+        varchar_200 motivo_merma
+        varchar_200 tipo_dano
+        decimal_12_2 costo_unitario_prenda
+        decimal_14_2 costo_perdida
+        text observaciones
+    }
     OrdenCompra {
         bigint id PK
         varchar_20 codigo
@@ -310,11 +387,42 @@ erDiagram
         varchar_60 lote
         decimal_14_4 costo_unitario
     }
+    TipoDefecto {
+        bigint id PK
+        varchar_20 codigo
+        varchar_80 nombre
+        varchar_255 descripcion
+        boolean corregible
+        boolean activo
+    }
+    Inspeccion {
+        bigint id PK
+        varchar_20 codigo
+        bigint lote FK
+        bigint recepcion_lote FK
+        int cantidad_recibida
+        int aptas
+        int marras
+        varchar_500 observaciones
+        bigint inspector FK
+        date fecha
+    }
+    MarraDetalle {
+        bigint id PK
+        bigint inspeccion FK
+        bigint tipo_defecto FK
+        varchar_80 defecto_nombre
+        boolean corregible
+        int cantidad
+        varchar_255 nota
+    }
+    CustomUser |o--o{ AccessLog : "user"
     CustomUser |o--o{ AsignacionEtapa : "asignada_por"
     CustomUser |o--o{ EtapaLote : "responsable"
     CustomUser |o--o{ EventoEtapa : "usuario"
     CustomUser |o--o{ Evidencia : "subido_por"
     CustomUser |o--o{ FichaTecnica : "actualizado_por"
+    CustomUser |o--o{ Inspeccion : "inspector"
     CustomUser |o--o{ Movimiento : "registrado_por"
     CustomUser |o--o{ Operario : "usuario"
     CustomUser |o--o{ OrdenCompra : "aprobado_por"
@@ -322,16 +430,24 @@ erDiagram
     CustomUser |o--o{ OrdenProduccion : "creado_por"
     CustomUser |o--o{ OrdenSalida : "registrado_por"
     CustomUser |o--o{ Recepcion : "recibido_por"
+    CustomUser |o--o{ RecepcionLavanderia : "creado_por"
+    CustomUser |o--o{ RecepcionLavanderia : "responsable"
     CustomUser |o--o{ Referencia : "creado_por"
+    CustomUser |o--o{ RemisionLavanderia : "creado_por"
+    CustomUser |o--o{ RemisionLavanderia : "responsable"
     CustomUser |o--o{ RolePermission : "granted_by"
     CustomUser |o--o{ TarifaManoObra : "creado_por"
     CustomUser ||--o{ PasswordResetToken : "user"
     EtapaLote ||--o{ AsignacionEtapa : "etapa_lote"
     EtapaLote ||--o{ EventoEtapa : "etapa_lote"
     FichaTecnica ||--o{ FichaLinea : "ficha"
+    Inspeccion ||--o{ MarraDetalle : "inspeccion"
     LineaCompra |o--o{ RecepcionLinea : "linea_compra"
     Lote ||--o{ EtapaLote : "lote"
+    Lote ||--o{ Inspeccion : "lote"
     Lote ||--o{ LoteTalla : "lote"
+    Lote ||--o{ RecepcionLote : "lote"
+    Lote ||--o{ RemisionLote : "lote"
     Maquina |o--o{ AsignacionEtapa : "maquina"
     ModulePermission ||--o{ RolePermission : "permission"
     Movimiento |o--o{ Evidencia : "movimiento"
@@ -353,15 +469,23 @@ erDiagram
     Proveedor |o--o{ Movimiento : "proveedor"
     Proveedor ||--o{ OrdenCompra : "proveedor"
     Proveedor ||--o{ Recepcion : "proveedor"
+    Proveedor ||--o{ RemisionLavanderia : "lavanderia"
     Recepcion ||--o{ RecepcionLinea : "recepcion"
+    RecepcionLavanderia ||--o{ RecepcionLote : "recepcion"
+    RecepcionLote ||--o{ Inspeccion : "recepcion_lote"
+    RecetaLavado |o--o{ RemisionLote : "receta"
     Referencia |o--o{ OrdenSalida : "referencia"
     Referencia ||--o{ FichaTecnica : "referencia"
     Referencia ||--o{ ImagenReferencia : "referencia"
     Referencia ||--o{ OrdenProduccion : "referencia"
     Referencia ||--o{ Variante : "referencia"
+    RemisionLavanderia ||--o{ RecepcionLavanderia : "remision"
+    RemisionLavanderia ||--o{ RemisionLote : "remision"
+    RemisionLote ||--o{ RecepcionLote : "remision_lote"
     Role |o--o{ CustomUser : "requested_area"
     Role ||--o{ CustomUser : "role"
     Role ||--o{ RolePermission : "role"
+    TipoDefecto ||--o{ MarraDetalle : "tipo_defecto"
     Variante ||--o{ LoteTalla : "variante"
 ```
 
@@ -423,6 +547,20 @@ Usuario del sistema. El correo es también el `username`; el rol decide los perm
 | `role` | varchar(20) | FK | → `Role` |
 | `requested_area` | varchar(20) | FK, nulo | → `Role` |
 | `document_id` | varchar(20) | nulo |  |
+
+### AccessLog (`seguridad_acceso`)
+
+Rastro de registros e inicios de sesión (éxitos y fallos) para revisar accesos sospechosos.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `user` | bigint | FK, nulo | → `CustomUser` |
+| `email` | varchar(254) |  |  |
+| `event` | varchar(20) |  |  |
+| `ip` | inet | nulo |  |
+| `forwarded` | varchar(300) |  |  |
+| `user_agent` | varchar(255) |  |  |
 
 ### PasswordResetToken (`seguridad_token_recuperacion`)
 
@@ -652,6 +790,7 @@ Parte de una orden de producción con identificador único (RF12).
 | `numero` | positivesmallinteger |  |  |
 | `codigo` | varchar(24) |  |  |
 | `cantidad` | int |  |  |
+| `estado_inventario` | varchar(20) |  |  |
 
 ### LoteTalla (`produccion_lote_talla`)
 
@@ -756,6 +895,98 @@ Quién trabajó una etapa de un lote y con qué máquina, y entre cuándo (HU 4.
 | `fin_at` | timestamp | nulo |  |
 | `asignada_por` | bigint | FK, nulo | → `CustomUser` |
 
+### RecetaLavado (`produccion_receta_lavado`)
+
+Receta y especificación técnica de lavado industrial.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(20) |  |  |
+| `nombre` | varchar(150) |  |  |
+| `categoria` | varchar(100) |  |  |
+| `descripcion` | text |  |  |
+| `temperatura_proceso` | varchar(40) |  |  |
+| `duracion_horas` | int |  |  |
+| `tarifa_sugerida` | decimal(12,2) |  |  |
+
+### RemisionLavanderia (`produccion_remision_lavanderia`)
+
+Guía de remisión y salida de lotes ensamblados a procesos externos (lavandería).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(30) |  |  |
+| `fecha_emision` | date |  |  |
+| `fecha_entrega_estimada` | date | nulo |  |
+| `lavanderia` | bigint | FK | → `Proveedor` |
+| `transportador_nombre` | varchar(150) |  |  |
+| `vehiculo_placa` | varchar(30) |  |  |
+| `tulas_bultos` | int |  |  |
+| `peso_kg` | decimal(10,2) |  |  |
+| `costo_estimado` | decimal(14,2) |  |  |
+| `estado` | varchar(20) |  |  |
+| `observaciones` | text |  |  |
+| `responsable` | bigint | FK, nulo | → `CustomUser` |
+| `creado_por` | bigint | FK, nulo | → `CustomUser` |
+
+### RemisionLote (`produccion_remision_lote`)
+
+Detalle de un lote remitido a lavandería.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `remision` | bigint | FK | → `RemisionLavanderia` |
+| `lote` | bigint | FK | → `Lote` |
+| `cantidad` | int |  |  |
+| `receta` | bigint | FK, nulo | → `RecetaLavado` |
+| `receta_nombre` | varchar(150) |  |  |
+| `instrucciones_especiales` | text |  |  |
+
+### RecepcionLavanderia (`produccion_recepcion_lavanderia`)
+
+Acta de reingreso y cotejo de prendas retornadas de lavandería externa (TE-58).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(30) |  |  |
+| `remision` | bigint | FK | → `RemisionLavanderia` |
+| `factura_remision_externa` | varchar(60) |  |  |
+| `fecha_recepcion` | date |  |  |
+| `total_enviado` | int |  |  |
+| `total_recibido_conforme` | int |  |  |
+| `total_merma` | int |  |  |
+| `total_danadas` | int |  |  |
+| `costo_total_perdida` | decimal(14,2) |  |  |
+| `costo_servicio_lavado` | decimal(14,2) |  |  |
+| `estado` | varchar(20) |  |  |
+| `observaciones` | text |  |  |
+| `responsable` | bigint | FK, nulo | → `CustomUser` |
+| `creado_por` | bigint | FK, nulo | → `CustomUser` |
+
+### RecepcionLote (`produccion_recepcion_lote`)
+
+Cotejo detallado de cada lote recibido de lavandería externa (TE-58).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `recepcion` | bigint | FK | → `RecepcionLavanderia` |
+| `remision_lote` | bigint | FK | → `RemisionLote` |
+| `lote` | bigint | FK | → `Lote` |
+| `cantidad_enviada` | int |  |  |
+| `cantidad_recibida_conforme` | int |  |  |
+| `cantidad_merma` | int |  |  |
+| `cantidad_danada` | int |  |  |
+| `motivo_merma` | varchar(200) |  |  |
+| `tipo_dano` | varchar(200) |  |  |
+| `costo_unitario_prenda` | decimal(12,2) |  |  |
+| `costo_perdida` | decimal(14,2) |  |  |
+| `observaciones` | text |  |  |
+
 ### OrdenCompra (`compras_orden`)
 
 Pedido de materiales a un proveedor. No es factura ni remisión: confirma lo pedido.
@@ -817,3 +1048,47 @@ Un producto recibido en una recepción, con su lote y su costo real, enlazado al
 | `cantidad` | decimal(12,2) |  |  |
 | `lote` | varchar(60) |  |  |
 | `costo_unitario` | decimal(14,4) | nulo |  |
+
+### TipoDefecto (`calidad_defecto`)
+
+Un defecto que se puede encontrar en una prenda (costura, tono, mancha, medida...).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(20) |  |  |
+| `nombre` | varchar(80) |  |  |
+| `descripcion` | varchar(255) |  |  |
+| `corregible` | boolean |  |  |
+| `activo` | boolean |  |  |
+
+### Inspeccion (`calidad_inspeccion`)
+
+Revisión final de un lote que volvió de lavandería: cuántas prendas son aptas y cuántas marras.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(20) |  |  |
+| `lote` | bigint | FK | → `Lote` |
+| `recepcion_lote` | bigint | FK | → `RecepcionLote` |
+| `cantidad_recibida` | int |  |  |
+| `aptas` | int |  |  |
+| `marras` | int |  |  |
+| `observaciones` | varchar(500) |  |  |
+| `inspector` | bigint | FK, nulo | → `CustomUser` |
+| `fecha` | date |  |  |
+
+### MarraDetalle (`calidad_marra_detalle`)
+
+Cuántas marras de un defecto hubo en una inspección. Guarda el nombre y el tipo del defecto tal como estaban.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `inspeccion` | bigint | FK | → `Inspeccion` |
+| `tipo_defecto` | bigint | FK | → `TipoDefecto` |
+| `defecto_nombre` | varchar(80) |  |  |
+| `corregible` | boolean |  |  |
+| `cantidad` | int |  |  |
+| `nota` | varchar(255) |  |  |

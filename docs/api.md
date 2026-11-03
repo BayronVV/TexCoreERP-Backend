@@ -37,11 +37,12 @@ Cada ruta exige un permiso por rol (RNF01), por ejemplo `inventario.ver` para co
 | 401 | Sin sesión, token vencido o credenciales inválidas |
 | 403 | El rol no tiene el permiso que la ruta exige |
 | 404 | No existe |
+| 409 | Conflicto con el estado actual; por ejemplo, el lote ya fue inspeccionado |
 | 429 | Demasiados intentos (límite de frecuencia) |
 
 ## Módulos
 
-La API tiene **66 rutas** y **98 operaciones**, todas descritas en Swagger con su etiqueta. Aquí solo el mapa; los detalles
+La API tiene **78 rutas** y **115 operaciones**, todas descritas en Swagger con su etiqueta. Aquí solo el mapa; los detalles
 de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permiso que exige cada operación está en
 [roles y permisos](roles-y-permisos.md), y las reglas de negocio de cada módulo en [módulos y reglas](modulos.md).
 
@@ -65,6 +66,8 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | `produccion` | `/api/produccion/ordenes/<id>/costos/` (liquidación financiera: costo real de materiales vs mano de obra por lote y etapa, distribución y costo por prenda) | TE-56, TE-130 |
 | `recursos` | `/api/produccion/operarios/` y `/api/produccion/operarios/<id>/` (catálogo de operarios: crear, editar, activar o desactivar), `/api/produccion/maquinas/` y `/api/produccion/maquinas/<id>/` (catálogo de máquinas con su estado físico). Las listas traen `ocupado_en` / `ocupada_en`, que se calcula con las etapas en curso | TE-54, TE-121 |
 | `recursos` | `/api/produccion/lotes/<id>/asignar/` (asigna, reasigna o quita el operario y la máquina de una etapa), `/api/produccion/lotes/<id>/desvincular/` y `/api/produccion/lotes/<id>/asignaciones/` (historial). Las etapas del lote y las tarjetas del monitor traen la asignación vigente | TE-54, TE-122 |
+| `calidad` | `/api/calidad/defectos/` y `/api/calidad/defectos/<id>/` (catálogo de defectos corregibles e incorregibles: listar con filtros `activo` y `q`, crear, editar y desactivar), `/api/calidad/pendientes/` (lotes devueltos de lavandería por inspeccionar) | TE-59 |
+| `calidad` | `/api/calidad/inspecciones/` (listar con filtros `lote`, `orden`, `desde`, `hasta` y `q`, y registrar la inspección de un lote) y `/api/calidad/inspecciones/<id>/` (consultar con su desglose de marras). No hay `PUT` ni `DELETE`: una inspección no se edita | TE-59 |
 | `compras` | `/api/compras/ordenes/` y `/api/compras/ordenes/<id>/` (órdenes de compra de materiales: crear, listar con filtros `estado`, `proveedor` y `q`, y editar mientras son borrador), `/api/compras/ordenes/<id>/aprobar/`, `cancelar/` y `cerrar/` (aprobación del Gerente, cancelación y cierre con motivo) | — |
 | `compras` | `/api/compras/recepciones/` (recibir mercancía con varios productos a la vez, contra una orden aprobada o suelta; cada fila entra al almacén con la misma regla del ingreso: stock, costo promedio y kardex) y `/api/compras/metadatos/` (estados y tolerancia de exceso) | — |
 | `salud` | `/api/health/`, `/api/health/db/` | — |
@@ -96,6 +99,21 @@ La respuesta trae `viable`, `lineas` (por material: requerido, disponible y falt
 `POST /api/produccion/ordenes/` enviando `referencia`, `cantidad`, `producto_resultado` (el pantalón genérico que resulta) y,
 opcionalmente, `lotes` con la forma `[{"cantidad": 30, "tallas": [{"variante": 5, "cantidad": 30}]}]`. Si falta material responde
 `400` con `faltantes` y no crea nada.
+
+## Ejemplo: registrar la inspección de un lote
+
+Primero se consultan los lotes por inspeccionar (`GET /api/calidad/pendientes/`), que traen `cantidad_recibida`: lo recibido conforme
+de lavandería. Después se envía la inspección con las aptas y el desglose de las marras por defecto (los ids salen de
+`GET /api/calidad/defectos/?activo=true`). Aquí el lote trae 40 prendas: 36 aptas y 4 marras.
+
+```bash
+curl -X POST http://localhost:8000/api/calidad/inspecciones/   -H "Authorization: Bearer <access>" -H "Content-Type: application/json"   -d '{"lote": 12, "aptas": 36, "defectos": [{"defecto": 1, "cantidad": 3, "nota": "Bolsillo trasero"}, {"defecto": 5, "cantidad": 1}], "observaciones": "Revisado al terminar el turno"}'
+```
+
+Respuesta `201` con la inspección (`INS-0001`), el lote y la orden, `cantidad_recibida`, `aptas`, `marras` y el `detalle` por defecto, que
+conserva el nombre y el tipo (corregible o no) que el defecto tenía al inspeccionar. Errores: `400` si la suma no cuadra
+(`{"aptas": ["Las aptas y las marras suman 39 y el lote trae 40: falta 1."]}`), si un defecto está desactivado o repetido, si el lote no
+tiene recepción de lavandería o si su orden está anulada; `409` si el lote ya fue inspeccionado.
 
 ## Mantener la documentación al día
 

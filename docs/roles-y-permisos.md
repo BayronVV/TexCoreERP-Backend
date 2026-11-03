@@ -10,9 +10,9 @@ tiene `<módulo>.ver`.
 |---|---|---|
 | `ADMIN` | Administrador | Gestiona usuarios, roles y la configuración. Tiene **todos** los permisos de forma implícita y no se puede restringir. |
 | `GERENTE` | Gerente | Consulta toda la operación, genera reportes y **aprueba las órdenes de compra**. |
-| `PRODUCCION` | Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo y órdenes de compra. |
+| `PRODUCCION` | Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo, órdenes de compra y criterios de calidad. |
 | `ALMACENISTA` | Almacenista | Proveedores, materias primas, movimientos y **recepción de mercancía**. |
-| `TERMINACION` | Personal de Terminación | Control de calidad (módulo futuro). |
+| `TERMINACION` | Personal de Terminación | Control de calidad: define los defectos e inspecciona los lotes que vuelven de lavandería. |
 | `SECRETARIA` | Secretaria | Producto terminado (módulo futuro). |
 | `VENDEDOR` | Vendedor | Ventas y despachos (módulo futuro). |
 | `PENDING` | Pendiente de aprobación | Cuenta recién registrada: **sin permisos** hasta que un administrador le asigne un rol. |
@@ -33,14 +33,14 @@ Cada módulo tiene `ver` (consultar) y `gestionar` (registrar y modificar). Marc
 | Fichas Técnicas | `fichas_tecnicas.ver`, `fichas_tecnicas.gestionar` | Activo. Se edita **dentro del Catálogo de jeans**, por eso no tiene entrada propia en el menú; sus permisos sí aparecen en *Roles y permisos* |
 | Producción y Trazabilidad | `produccion.ver`, `produccion.gestionar` | Activo |
 | Procesos Externos (Lavandería) | `lavanderia.ver`, `lavanderia.gestionar` | Previsto (la salida a lavandería se opera hoy desde Inventario) |
-| Control de Calidad | `calidad.ver`, `calidad.gestionar` | Previsto |
+| Control de Calidad | `calidad.ver`, `calidad.gestionar` | Activo (Inspecciones y Defectos) |
 | Producto Terminado | `producto_terminado.ver`, `producto_terminado.gestionar` | Previsto |
 | Ventas y Despachos | `ventas.ver`, `ventas.gestionar` | Previsto |
 | Reportes | `reportes.ver`, `reportes.gestionar` | Previsto |
 
 ## Matriz inicial rol → permiso
 
-Es la que dejan las migraciones (`0003`, `0007` y `0008` de `apps/users`). Después se ajusta desde la pantalla de
+Es la que dejan las migraciones (`0003`, `0007`, `0008` y `0010` de `apps/users`). Después se ajusta desde la pantalla de
 roles, así que la matriz real de un despliegue puede diferir. `ADMIN` no aparece porque lo tiene todo.
 
 | Permiso | GERENTE | PRODUCCION | ALMACENISTA | TERMINACION | SECRETARIA | VENDEDOR |
@@ -58,8 +58,8 @@ roles, así que la matriz real de un despliegue puede diferir. `ADMIN` no aparec
 | `produccion.gestionar` | | ✔ | | | | |
 | `lavanderia.ver` | ✔ | ✔ | | | | |
 | `lavanderia.gestionar` | | ✔ | | | | |
-| `calidad.ver` | ✔ | | | ✔ | | |
-| `calidad.gestionar` | | | | ✔ | | |
+| `calidad.ver` | ✔ | ✔ | | ✔ | | |
+| `calidad.gestionar` | | ✔ | | ✔ | | |
 | `producto_terminado.ver` | ✔ | | | | ✔ | ✔ |
 | `producto_terminado.gestionar` | | | | | ✔ | |
 | `ventas.ver` | ✔ | | | | | ✔ |
@@ -89,6 +89,8 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 | Listar referencias para elegir en una orden y consultar el consumo contra el stock | `inventario.ver` |
 | Simular la producción, ver órdenes, lotes, historial, monitor, costos, operarios, máquinas y asignaciones | `produccion.ver` |
 | Crear y anular órdenes de producción, controlar los tiempos de un lote, asignar o desvincular recursos, crear o editar operarios y máquinas, registrar tarifas | `produccion.gestionar` |
+| Consultar el catálogo de defectos, los lotes por inspeccionar y las inspecciones | `calidad.ver` |
+| Crear, editar, activar y desactivar defectos; registrar la inspección de un lote | `calidad.gestionar` |
 
 ### Reglas que no dependen del permiso
 
@@ -98,6 +100,8 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
   administradores, asignar roles con permisos de Seguridad, dar o quitar esos permisos ni editar los de su propio rol.
 - **Nadie sobre sí mismo:** no se cambia el propio rol ni se desactiva o elimina la propia cuenta, y siempre queda al
   menos un administrador activo.
+- **Calidad no se corrige:** una inspección registrada no se edita ni se borra, ni siquiera con `calidad.gestionar` o siendo
+  administrador; la ruta no existe.
 - **Falla cerrado:** una ruta sin permiso declarado niega el acceso (ver [arquitectura](arquitectura.md)).
 
 El frontend solo decide qué mostrar; el backend valida el permiso en cada petición.

@@ -59,17 +59,18 @@ Terminación (`TERMINACION`), Secretaria (`SECRETARIA`), Vendedor (`VENDEDOR`) y
 - **Monitor de estado (HU 4.5):** tablero Kanban de lotes con alertas por tiempo detenido y movimiento arrastrando la tarjeta.
 - **Costeo y liquidación (HU 4.6):** costo promedio ponderado en las compras, tarifas de mano de obra por minuto y liquidación por orden.
 - **Compras:** orden de compra (Producción) → aprobación (Gerente) → recepción de mercancía (Almacenista), con costo y kardex.
+- **Control de calidad (HU 6.1):** catálogo de defectos corregibles e incorregibles e inspección de los lotes que vuelven de lavandería, con las marras desglosadas por defecto.
 - **Datos de demostración:** comandos `seed_demo_*` para poblar un entorno de desarrollo.
 
 ## Calidad
 
 | Aspecto | Valor |
 |---|---|
-| Pruebas automatizadas del backend | 683 (usuarios, inventario, referencias, producción, compras y salud), todas aprobadas |
-| Pruebas automatizadas del frontend | 154 (lógica de las pantallas), todas aprobadas |
-| Rutas de la API | 66 (sin contar la documentación): 8 públicas, 58 internas con sesión y 57 de ellas con permiso por rol |
-| Documentación de la API | 98 operaciones descritas; el esquema se valida sin errores (4 advertencias de nombres de enumeraciones repetidas) |
-| Modelo de datos | 30 tablas en 5 apps (usuarios, inventario, referencias, producción y compras), con diagrama entidad-relación generado desde los modelos |
+| Pruebas automatizadas del backend | 738 (usuarios, inventario, referencias, producción, compras, calidad y salud), todas aprobadas |
+| Pruebas automatizadas del frontend | 171 (lógica de las pantallas), todas aprobadas |
+| Rutas de la API | 78 (sin contar la documentación): 8 públicas, 70 internas con sesión y 69 de ellas con permiso por rol |
+| Documentación de la API | 115 operaciones descritas; el esquema se valida sin errores (4 advertencias de nombres de enumeraciones repetidas) |
+| Modelo de datos | 39 tablas en 6 apps (usuarios, inventario, referencias, producción, compras y calidad), con diagrama entidad-relación generado desde los modelos |
 | Tiempo de respuesta medido | Consulta a la base en producción (`/api/health/db/`): mediana 0,41 s, n = 15 (7 oct 2026) |
 
 ## Requerimientos

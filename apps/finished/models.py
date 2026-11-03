@@ -5,6 +5,7 @@ Inventario de producto terminado (HU 6.2 / RF21). Nombres de tabla en español y
 - StockTerminado: cuántas prendas de primera calidad hay de cada variante (referencia, color y talla). Nunca es negativo.
 - MovimientoTerminado: el libro del stock. Solo se agregan filas; cada una guarda el saldo antes y después. El saldo y su
   movimiento se escriben siempre en la misma transacción, así que el saldo siempre es la suma del libro.
+- AjusteTerminado y AjusteLinea (HU 6.3): el comprobante inalterable de una corrección manual del stock contra el conteo físico.
 - IngresoTerminado e IngresoLinea: el ingreso de las aptas de una inspección (HU 6.1), repartidas por talla. Una inspección
   se ingresa una sola vez. Las marras no entran a este saldo.
 """
@@ -76,6 +77,51 @@ class IngresoLinea(BaseModel):
         ]
 
 
+class AjusteTerminado(BaseModel):
+    """Comprobante de un ajuste manual: quién corrigió qué contra el conteo físico, cuándo y por qué. No se edita ni se borra."""
+    codigo = models.CharField(max_length=20)
+    motivo = models.CharField(max_length=20, choices=catalog.ADJUST_REASON_CHOICES)
+    observacion = models.CharField(max_length=500)
+    realizado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True)
+    fecha = models.DateField()
+    token = models.UUIDField(help_text="Lo genera el formulario: el mismo token no ajusta dos veces (doble clic o reintento)")
+    unidades_faltantes = models.PositiveIntegerField(help_text="Suma de lo que faltaba (nunca se netea contra los sobrantes)")
+    unidades_sobrantes = models.PositiveIntegerField(help_text="Suma de lo que sobraba")
+
+    class Meta:
+        db_table = "terminado_ajuste"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["codigo"], condition=Q(deleted_at__isnull=True), name="uq_terminado_ajuste_codigo_activo"),
+            models.UniqueConstraint(fields=["token"], name="uq_terminado_ajuste_token"),
+            models.CheckConstraint(condition=~Q(observacion=""), name="ck_terminado_ajuste_observacion"),
+        ]
+        indexes = [models.Index(fields=["fecha"], name="ix_terminado_ajuste_fecha")]
+
+    def __str__(self):
+        return self.codigo
+
+
+class AjusteLinea(BaseModel):
+    """Una variante corregida: lo que decía el sistema, lo que se contó y la diferencia. Guarda talla y color tal como estaban."""
+    ajuste = models.ForeignKey(AjusteTerminado, on_delete=models.PROTECT, related_name="lineas")
+    variante = models.ForeignKey("references.Variante", on_delete=models.PROTECT, related_name="+")
+    talla = models.CharField(max_length=10)
+    color = models.CharField(max_length=60)
+    stock_antes = models.PositiveIntegerField()
+    stock_contado = models.PositiveIntegerField()
+    diferencia = models.IntegerField(help_text="Contado menos el stock anterior: negativa si faltaba, positiva si sobraba")
+
+    class Meta:
+        db_table = "terminado_ajuste_linea"
+        ordering = ["ajuste_id", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["ajuste", "variante"], condition=Q(deleted_at__isnull=True), name="uq_terminado_ajuste_linea_variante"),
+            models.CheckConstraint(condition=~Q(diferencia=0), name="ck_terminado_ajuste_linea_diferencia"),
+            models.CheckConstraint(condition=Q(diferencia=F("stock_contado") - F("stock_antes")), name="ck_terminado_ajuste_linea_cuadra"),
+        ]
+
+
 class MovimientoTerminado(BaseModel):
     """Una fila del libro del stock: de cuánto a cuánto pasó el saldo de una variante y por qué."""
     variante = models.ForeignKey("references.Variante", on_delete=models.PROTECT, related_name="movimientos_terminado")
@@ -84,8 +130,9 @@ class MovimientoTerminado(BaseModel):
     saldo_antes = models.PositiveIntegerField()
     saldo_despues = models.PositiveIntegerField()
     ingreso = models.ForeignKey(IngresoTerminado, on_delete=models.PROTECT, related_name="movimientos", null=True, blank=True)
+    ajuste = models.ForeignKey(AjusteTerminado, on_delete=models.PROTECT, related_name="movimientos", null=True, blank=True)
     lote = models.ForeignKey("production.Lote", on_delete=models.PROTECT, related_name="+", null=True, blank=True)
-    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True)
+    usuario =models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True)
     motivo = models.CharField(max_length=255, blank=True)
 
     class Meta:

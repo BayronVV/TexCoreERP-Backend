@@ -64,7 +64,9 @@ class SeedDataTests(TestCase):
             codes = Role.objects.get(code=role).permissions.filter(code__startswith="producto_terminado.")
             return set(codes.values_list("code", flat=True))
 
-        self.assertEqual(terminado("SECRETARIA"), {"producto_terminado.ver", "producto_terminado.gestionar"})
+        self.assertEqual(
+            terminado("SECRETARIA"), {"producto_terminado.ver", "producto_terminado.gestionar", "producto_terminado.ajustar"},
+        )
         self.assertEqual(terminado("VENDEDOR"), {"producto_terminado.ver"})
         self.assertEqual(terminado("GERENTE"), {"producto_terminado.ver"})
         for role in ("ALMACENISTA", "TERMINACION", "PRODUCCION"):

@@ -70,6 +70,7 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | `calidad` | `/api/calidad/inspecciones/` (listar con filtros `lote`, `orden`, `desde`, `hasta` y `q`, y registrar la inspección de un lote) y `/api/calidad/inspecciones/<id>/` (consultar con su desglose de marras). No hay `PUT` ni `DELETE`: una inspección no se edita | TE-59 |
 | `producto-terminado` | `/api/terminado/pendientes/` (inspecciones con aptas por ingresar, con las variantes de su referencia y lo planificado), `/api/terminado/ingresos/` (listar con filtros `referencia`, `lote`, `desde`, `hasta` y `q`, y registrar el ingreso de una inspección) y `/api/terminado/ingresos/<id>/` (consultar con su reparto por talla). No hay `PUT` ni `DELETE`: un ingreso no se edita | TE-60 |
 | `producto-terminado` | `/api/terminado/existencias/` (matriz referencia × color × talla, con las celdas en cero, filtro `referencia`) y `/api/terminado/movimientos/` (libro de solo lectura con saldo antes y después; filtros `referencia`, `variante`, `tipo`, `desde` y `hasta`) | TE-60 |
+| `producto-terminado` | `/api/terminado/ajustes/` (listar con filtros `referencia`, `motivo`, `desde`, `hasta`, `q` y `limit`, y ajustar el stock contra el conteo físico), `/api/terminado/ajustes/<id>/` (consultar el comprobante con sus líneas) y `/api/terminado/metadatos/` (motivos con su signo, umbral de unidades y mínimos de la observación). Ajustar exige `producto_terminado.ajustar`. No hay `PUT` ni `DELETE`: un ajuste no se edita | TE-61 |
 | `compras` | `/api/compras/ordenes/` y `/api/compras/ordenes/<id>/` (órdenes de compra de materiales: crear, listar con filtros `estado`, `proveedor` y `q`, y editar mientras son borrador), `/api/compras/ordenes/<id>/aprobar/`, `cancelar/` y `cerrar/` (aprobación del Gerente, cancelación y cierre con motivo) | — |
 | `compras` | `/api/compras/recepciones/` (recibir mercancía con varios productos a la vez, contra una orden aprobada o suelta; cada fila entra al almacén con la misma regla del ingreso: stock, costo promedio y kardex) y `/api/compras/metadatos/` (estados y tolerancia de exceso) | — |
 | `salud` | `/api/health/`, `/api/health/db/` | — |
@@ -132,6 +133,30 @@ Cada línea suma al saldo de su variante y deja un movimiento `ENTRADA_PRODUCCIO
 suma no cuadra (`{"lineas": ["Las tallas suman 35 y la inspección trae 36 aptas: falta 1."]}`), si una variante no es de la referencia del lote
 o se repite, o si la orden está anulada; `409` si la inspección ya fue ingresada
 (`{"inspeccion": ["La inspección INS-0001 ya fue ingresada al inventario."]}`).
+
+## Ejemplo: ajustar el stock contra el conteo físico
+
+Primero se leen los saldos con `GET /api/terminado/existencias/` (cada celda trae `variante` y `cantidad`) y las reglas con
+`GET /api/terminado/metadatos/`. Después se envía **solo lo que cambia**: por cada variante, el saldo que vio la persona (`esperado`) y lo
+que contó (`contado`). `token` es un UUID que genera el formulario y evita ajustar dos veces con un doble clic. Aquí faltan 2 prendas en la
+variante 11 y 1 en la 12.
+
+```bash
+curl -X POST http://localhost:8000/api/terminado/ajustes/   -H "Authorization: Bearer <access>" -H "Content-Type: application/json"   -d '{"motivo": "PERDIDA", "observacion": "Dos prendas no aparecieron en el conteo del viernes", "token": "7b0e6c2a-5d1f-4c8e-9a43-2f6b8d1e0c55", "lineas": [{"variante": 11, "esperado": 12, "contado": 10}, {"variante": 12, "esperado": 8, "contado": 7}]}'
+```
+
+Respuesta `201` con el comprobante (`AJT-0001`): `motivo_nombre`, `observacion`, `unidades_faltantes` y `unidades_sobrantes` (se suman por
+separado, sin netear), quién lo hizo y sus `lineas` (talla, color, `stock_antes`, `stock_contado` y `diferencia`). Cada línea con diferencia
+deja un movimiento `AJUSTE` en `GET /api/terminado/movimientos/`. Errores:
+
+- `400` si el motivo no es del catálogo, la observación tiene menos de 10 caracteres
+  (`{"observacion": ["Explica el ajuste en la observación (mínimo 10 caracteres)."]}`), no hay diferencias que ajustar, un motivo que solo
+  resta recibe un sobrante (o al revés), hay variantes repetidas o inexistentes, o falta el `token`. Si una línea cambia más de 20 unidades,
+  «Otro» no se acepta y la observación pide al menos 30 caracteres.
+- `409` si el saldo de alguna variante cambió desde que se leyó
+  (`{"detail": ["El stock cambió en: 30 Azul. Recarga la matriz y vuelve a contar."], "variantes": ["30 Azul"]}`): no se guarda nada.
+- `409` si ese `token` ya generó un comprobante (`{"detail": ["Este ajuste ya se registró como AJT-0001."], "ajuste": 1, "codigo": "AJT-0001"}`).
+- `403` si el rol no tiene `producto_terminado.ajustar`.
 
 ## Mantener la documentación al día
 

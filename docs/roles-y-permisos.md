@@ -13,8 +13,8 @@ tiene `<módulo>.ver`.
 | `PRODUCCION` | Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo, órdenes de compra y criterios de calidad. |
 | `ALMACENISTA` | Almacenista | Proveedores, materias primas, movimientos y **recepción de mercancía**. |
 | `TERMINACION` | Personal de Terminación | Control de calidad: define los defectos e inspecciona los lotes que vuelven de lavandería. |
-| `SECRETARIA` | Secretaria | Producto terminado (módulo futuro). |
-| `VENDEDOR` | Vendedor | Ventas y despachos (módulo futuro). |
+| `SECRETARIA` | Secretaria | Producto terminado: ingresa al inventario final las prendas aptas de cada inspección y consulta existencias y movimientos. |
+| `VENDEDOR` | Vendedor | Consulta el producto terminado disponible; ventas y despachos (módulo futuro). |
 | `PENDING` | Pendiente de aprobación | Cuenta recién registrada: **sin permisos** hasta que un administrador le asigne un rol. |
 
 Los roles base no se eliminan. Un administrador puede crear roles propios desde **Seguridad y Usuarios → Roles y
@@ -34,7 +34,7 @@ Cada módulo tiene `ver` (consultar) y `gestionar` (registrar y modificar). Marc
 | Producción y Trazabilidad | `produccion.ver`, `produccion.gestionar` | Activo |
 | Procesos Externos (Lavandería) | `lavanderia.ver`, `lavanderia.gestionar` | Previsto (la salida a lavandería se opera hoy desde Inventario) |
 | Control de Calidad | `calidad.ver`, `calidad.gestionar` | Activo (Inspecciones y Defectos) |
-| Producto Terminado | `producto_terminado.ver`, `producto_terminado.gestionar` | Previsto |
+| Producto Terminado | `producto_terminado.ver`, `producto_terminado.gestionar` | Activo (Ingreso, Existencias y Movimientos) |
 | Ventas y Despachos | `ventas.ver`, `ventas.gestionar` | Previsto |
 | Reportes | `reportes.ver`, `reportes.gestionar` | Previsto |
 
@@ -91,6 +91,8 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 | Crear y anular órdenes de producción, controlar los tiempos de un lote, asignar o desvincular recursos, crear o editar operarios y máquinas, registrar tarifas | `produccion.gestionar` |
 | Consultar el catálogo de defectos, los lotes por inspeccionar y las inspecciones | `calidad.ver` |
 | Crear, editar, activar y desactivar defectos; registrar la inspección de un lote | `calidad.gestionar` |
+| Consultar las inspecciones por ingresar, los ingresos, las existencias en matriz y el libro de movimientos de producto terminado | `producto_terminado.ver` |
+| Ingresar al inventario final las aptas de una inspección | `producto_terminado.gestionar` |
 
 ### Reglas que no dependen del permiso
 
@@ -102,6 +104,9 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
   menos un administrador activo.
 - **Calidad no se corrige:** una inspección registrada no se edita ni se borra, ni siquiera con `calidad.gestionar` o siendo
   administrador; la ruta no existe.
+- **Un ingreso no se edita:** un ingreso de producto terminado registrado no se modifica ni se borra, ni siquiera con
+  `producto_terminado.gestionar` o siendo administrador; la ruta no existe. Un error se corregirá con un ajuste (HU 6.3, pendiente). El libro
+  de movimientos tampoco se escribe desde la API: solo cambia al ingresar.
 - **Falla cerrado:** una ruta sin permiso declarado niega el acceso (ver [arquitectura](arquitectura.md)).
 
 El frontend solo decide qué mostrar; el backend valida el permiso en cada petición.

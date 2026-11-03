@@ -80,8 +80,9 @@ La lista completa y los valores por defecto están en `.env.example` y en el [RE
 | `python manage.py seed_demo_recursos` | Operarios y máquinas, asignados a las etapas en curso. |
 | `python manage.py seed_demo_compras` | Órdenes de compra: borrador, aprobada y con recepción parcial. |
 | `python manage.py seed_demo_calidad` | 8 defectos típicos de denim y dos lotes devueltos de lavandería: uno inspeccionado y otro por inspeccionar. Necesita antes `seed_demo_inventario` y `seed_demo_produccion`. |
+| `python manage.py seed_demo_terminado` | Ingresa al inventario final (producto terminado) las aptas de la inspección de demostración, por las mismas reglas de la aplicación. Necesita antes `seed_demo_calidad`. |
 | `python manage.py generar_erd --salida docs/modelo-de-datos.md` | Regenera el [modelo de datos](modelo-de-datos.md). |
-| `python manage.py test` | Ejecuta la suite de pruebas (738). |
+| `python manage.py test` | Ejecuta la suite de pruebas (763). |
 | `python manage.py spectacular --validate --file schema.yml` | Valida y exporta el esquema OpenAPI (borra después `schema.yml`). |
 
 ## Datos de demostración
@@ -97,9 +98,10 @@ python manage.py seed_demo_produccion     # 3. órdenes con lotes, tallas y tiem
 python manage.py seed_demo_recursos       # 4. operarios y máquinas asignados a las etapas en curso
 python manage.py seed_demo_compras        # 5. órdenes de compra en borrador, aprobada y con recepción parcial
 python manage.py seed_demo_calidad        # 6. defectos típicos y dos lotes devueltos de lavandería (uno ya inspeccionado)
+python manage.py seed_demo_terminado      # 7. ingresa al inventario final las aptas de la inspección de demostración
 ```
 
-- Los pasos 3 a 6 necesitan el 2; el 6 necesita además el 3 (los lotes salen de las órdenes de producción). `seed_demo_inventario` ya ejecuta `seed_inventario` y `seed_demo_referencias`.
+- Los pasos 3 a 7 necesitan el 2; el 6 necesita además el 3 (los lotes salen de las órdenes de producción) y el 7 necesita el 6 (ingresa las aptas de la inspección de demostración). `seed_demo_inventario` ya ejecuta `seed_inventario` y `seed_demo_referencias`.
 - Los usuarios que participan se toman de los que ya existen: `seed_demo_compras` busca uno de Producción para crear, un Gerente
   o Administrador para aprobar y un Almacenista distinto del creador para recibir; si falta el Almacenista, la orden queda
   aprobada sin recepción.
@@ -116,9 +118,9 @@ python manage.py test apps.inventory -v 2  # con detalle
 python manage.py test --parallel 4         # en paralelo, más rápido
 ```
 
-La suite cubre `users`, `inventory`, `references`, `production`, `purchasing`, `quality` y `core`. Las pruebas de los comandos de demostración
+La suite cubre `users`, `inventory`, `references`, `production`, `purchasing`, `quality`, `finished` y `core`. Las pruebas de los comandos de demostración
 (`test_seed*.py`) verifican que sean idempotentes. En el frontend, `npm test` prueba la lógica pura de las pantallas (reparto de
-lotes, tablero, costeo, recursos, compras, calidad...).
+lotes, tablero, costeo, recursos, compras, calidad, producto terminado...).
 
 Las pruebas usan siempre SQLite, nunca la base en la nube.
 

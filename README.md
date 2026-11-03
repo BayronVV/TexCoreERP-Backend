@@ -16,7 +16,8 @@ backend/
 │   ├── purchasing/    # Órdenes de compra (crear, aprobar) y recepción de mercancía
 │   ├── references/    # Referencias de jean (variantes, imágenes) y ficha técnica de consumo por unidad
 │   ├── production/    # Simulación de material, órdenes y lotes, tiempos, recursos, monitor y costeo
-│   └── quality/       # Control de calidad: catálogo de defectos, inspecciones y marras de los lotes
+│   ├── quality/       # Control de calidad: catálogo de defectos, inspecciones y marras de los lotes
+│   └── finished/      # Producto terminado: ingreso de las aptas, existencias por talla y libro de movimientos
 ├── docs/              # Documentación (sitio MkDocs): manuales, arquitectura, modelo de datos
 ├── mkdocs.yml         # Configuración del sitio de documentación
 ├── manage.py
@@ -25,7 +26,7 @@ backend/
 ```
 
 Los módulos de negocio de los próximos sprints (lavandería como proceso propio,
-producto terminado, ventas, reportes...) se agregan como `apps/<modulo>/` y se registran en
+ventas, reportes...) se agregan como `apps/<modulo>/` y se registran en
 `INSTALLED_APPS`.
 
 ## Documentación
@@ -193,7 +194,7 @@ limitaciones en [`docs/despliegue-render.md`](docs/despliegue-render.md).
 
 ```powershell
 python manage.py check
-python manage.py test        # 738 pruebas; usa SQLite temporal, nunca la base en la nube
+python manage.py test        # 763 pruebas; usa SQLite temporal, nunca la base en la nube
 python manage.py test apps.production   # solo un módulo
 python manage.py spectacular --validate --file schema.yml   # valida el esquema OpenAPI (borra después schema.yml)
 ```
@@ -316,6 +317,19 @@ App `apps/quality`. Todo bajo `/api/calidad/`. Ver requiere `calidad.ver`; crear
 
 Limitaciones: sin reproceso, sin valoración de las marras, sin muestreo AQL y sin corrección de una inspección mal digitada. Detalle en [`docs/modulos.md`](docs/modulos.md).
 
+## Producto terminado (HU 6.2)
+
+App `apps/finished`. Todo bajo `/api/terminado/`. Ver requiere `producto_terminado.ver` (Vendedor, Gerente, Secretaria y Admin); ingresar requiere `producto_terminado.gestionar` (Secretaria y Admin). No hay migración de permisos nueva.
+
+| Endpoint | Qué hace |
+|----------|----------|
+| `GET pendientes/` | Inspecciones con aptas por ingresar, con las variantes de su referencia y lo planificado en el lote. |
+| `GET/POST ingresos/`, `GET ingresos/<id>/` | Ingreso `IPT-0001` de las aptas de una inspección, repartidas por talla y color: la suma debe ser exactamente las aptas. Una sola vez por inspección (doble ingreso: 409) y sin `PUT`/`DELETE` (RF21). |
+| `GET existencias/` | Matriz referencia × color × talla de las prendas de primera calidad, con las celdas en cero. |
+| `GET movimientos/` | Libro de solo inserción (`ENTRADA_PRODUCCION` hoy; `AJUSTE` y `SALIDA_VENTA` para las HU 6.3 y 7.1) con saldo antes y después. |
+
+Todo es una transacción con la inspección bloqueada; el saldo nunca es negativo. Las marras no entran a este saldo. Limitaciones: sin reversa de ingresos (se corregirá con un ajuste, HU 6.3), sin ubicaciones controladas (solo texto libre), sin reservas ni valorización, sin recepción parcial, sin notificación por correo y las marras siguen sin inventario (HU 6.4). Detalle en [`docs/modulos.md`](docs/modulos.md).
+
 ## Datos de demostración
 
 Solo con `DJANGO_DEBUG=true`, idempotentes y por las mismas reglas de la aplicación:
@@ -327,6 +341,7 @@ python manage.py seed_demo_produccion    # órdenes con lotes, tallas y tiempos
 python manage.py seed_demo_recursos      # operarios y máquinas asignados
 python manage.py seed_demo_compras       # órdenes de compra en borrador, aprobada y parcial
 python manage.py seed_demo_calidad       # defectos típicos y dos lotes devueltos de lavandería (uno inspeccionado)
+python manage.py seed_demo_terminado     # ingresa al inventario final las aptas de la inspección de demostración
 ```
 
-Los comandos de los pasos 3 a 6 necesitan el 2; `seed_demo_calidad` necesita además `seed_demo_produccion`. No se siembran tarifas de mano de obra: se registran desde la pantalla de liquidación.
+Los comandos de los pasos 3 a 6 necesitan el 2; `seed_demo_calidad` necesita además `seed_demo_produccion`, y `seed_demo_terminado` necesita `seed_demo_calidad`. No se siembran tarifas de mano de obra: se registran desde la pantalla de liquidación.

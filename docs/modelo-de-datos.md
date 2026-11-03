@@ -416,14 +416,53 @@ erDiagram
         int cantidad
         varchar_255 nota
     }
+    StockTerminado {
+        bigint id PK
+        bigint variante FK
+        int cantidad
+    }
+    IngresoTerminado {
+        bigint id PK
+        varchar_20 codigo
+        bigint inspeccion FK
+        bigint lote FK
+        int aptas
+        varchar_80 ubicacion
+        varchar_500 observaciones
+        bigint recibido_por FK
+        date fecha
+    }
+    IngresoLinea {
+        bigint id PK
+        bigint ingreso FK
+        bigint variante FK
+        varchar_10 talla
+        varchar_60 color
+        int cantidad
+        int planificada
+    }
+    MovimientoTerminado {
+        bigint id PK
+        bigint variante FK
+        varchar_20 tipo
+        int cantidad
+        int saldo_antes
+        int saldo_despues
+        bigint ingreso FK
+        bigint lote FK
+        bigint usuario FK
+        varchar_255 motivo
+    }
     CustomUser |o--o{ AccessLog : "user"
     CustomUser |o--o{ AsignacionEtapa : "asignada_por"
     CustomUser |o--o{ EtapaLote : "responsable"
     CustomUser |o--o{ EventoEtapa : "usuario"
     CustomUser |o--o{ Evidencia : "subido_por"
     CustomUser |o--o{ FichaTecnica : "actualizado_por"
+    CustomUser |o--o{ IngresoTerminado : "recibido_por"
     CustomUser |o--o{ Inspeccion : "inspector"
     CustomUser |o--o{ Movimiento : "registrado_por"
+    CustomUser |o--o{ MovimientoTerminado : "usuario"
     CustomUser |o--o{ Operario : "usuario"
     CustomUser |o--o{ OrdenCompra : "aprobado_por"
     CustomUser |o--o{ OrdenCompra : "creado_por"
@@ -441,9 +480,14 @@ erDiagram
     EtapaLote ||--o{ AsignacionEtapa : "etapa_lote"
     EtapaLote ||--o{ EventoEtapa : "etapa_lote"
     FichaTecnica ||--o{ FichaLinea : "ficha"
+    IngresoTerminado |o--o{ MovimientoTerminado : "ingreso"
+    IngresoTerminado ||--o{ IngresoLinea : "ingreso"
+    Inspeccion ||--o{ IngresoTerminado : "inspeccion"
     Inspeccion ||--o{ MarraDetalle : "inspeccion"
     LineaCompra |o--o{ RecepcionLinea : "linea_compra"
+    Lote |o--o{ MovimientoTerminado : "lote"
     Lote ||--o{ EtapaLote : "lote"
+    Lote ||--o{ IngresoTerminado : "lote"
     Lote ||--o{ Inspeccion : "lote"
     Lote ||--o{ LoteTalla : "lote"
     Lote ||--o{ RecepcionLote : "lote"
@@ -486,7 +530,10 @@ erDiagram
     Role ||--o{ CustomUser : "role"
     Role ||--o{ RolePermission : "role"
     TipoDefecto ||--o{ MarraDetalle : "tipo_defecto"
+    Variante ||--o{ IngresoLinea : "variante"
     Variante ||--o{ LoteTalla : "variante"
+    Variante ||--o{ MovimientoTerminado : "variante"
+    Variante ||--o{ StockTerminado : "variante"
 ```
 
 ## Tablas
@@ -1092,3 +1139,60 @@ Cuántas marras de un defecto hubo en una inspección. Guarda el nombre y el tip
 | `corregible` | boolean |  |  |
 | `cantidad` | int |  |  |
 | `nota` | varchar(255) |  |  |
+
+### StockTerminado (`terminado_stock`)
+
+Prendas de primera calidad disponibles de una variante.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `variante` | bigint | FK | → `Variante` |
+| `cantidad` | int |  |  |
+
+### IngresoTerminado (`terminado_ingreso`)
+
+Ingreso de las aptas de un lote inspeccionado al inventario final, repartidas por talla.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(20) |  |  |
+| `inspeccion` | bigint | FK | → `Inspeccion` |
+| `lote` | bigint | FK | → `Lote` |
+| `aptas` | int |  |  |
+| `ubicacion` | varchar(80) |  |  |
+| `observaciones` | varchar(500) |  |  |
+| `recibido_por` | bigint | FK, nulo | → `CustomUser` |
+| `fecha` | date |  |  |
+
+### IngresoLinea (`terminado_ingreso_linea`)
+
+Cuántas prendas de una variante entraron en un ingreso. Guarda talla y color tal como estaban.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `ingreso` | bigint | FK | → `IngresoTerminado` |
+| `variante` | bigint | FK | → `Variante` |
+| `talla` | varchar(10) |  |  |
+| `color` | varchar(60) |  |  |
+| `cantidad` | int |  |  |
+| `planificada` | int | nulo |  |
+
+### MovimientoTerminado (`terminado_movimiento`)
+
+Una fila del libro del stock: de cuánto a cuánto pasó el saldo de una variante y por qué.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `variante` | bigint | FK | → `Variante` |
+| `tipo` | varchar(20) |  |  |
+| `cantidad` | int |  |  |
+| `saldo_antes` | int |  |  |
+| `saldo_despues` | int |  |  |
+| `ingreso` | bigint | FK, nulo | → `IngresoTerminado` |
+| `lote` | bigint | FK, nulo | → `Lote` |
+| `usuario` | bigint | FK, nulo | → `CustomUser` |
+| `motivo` | varchar(255) |  |  |

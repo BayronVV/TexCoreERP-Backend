@@ -19,6 +19,7 @@ cuerpos y respuestas) están en Swagger (`/api/docs/`); cómo se usa cada pantal
 | HU 4.5 (TE-55) | Monitor de estado | `production` | Monitor de estado |
 | HU 4.6 (TE-56) | Costeo y liquidación de órdenes | `production`, `inventory` | Liquidación de Órdenes |
 | HU 6.1 (TE-59) | Registro de marras y calidad | `quality` | Control de Calidad → Inspecciones y Defectos |
+| HU 6.2 (TE-60) | Ingreso a inventario final (producto terminado) | `finished` | Producto Terminado → Ingreso, Existencias y Movimientos |
 
 Cómo se conectan entre sí:
 
@@ -35,6 +36,7 @@ flowchart LR
     INV -- "costo unitario del material" --> COSTEO
     TIEMPOS -. "el lote sale a lavandería<br/>y vuelve recibido" .-> CAL["Control de calidad<br/>inspección del lote"]
     CAL -- "aptas · marras por defecto" --> RES["Resultado de la inspección<br/>(solo se agrega)"]
+    RES -- "solo las aptas, repartidas<br/>por talla y color" --> TER[("Producto terminado<br/>stock por variante · libro de movimientos")]
 ```
 
 ## Seguridad y usuarios (HU 1.x)
@@ -223,13 +225,66 @@ por la migración `users/0010_permisos_calidad_produccion`), el Gerente solo **c
 
 !!! warning "Limitaciones conocidas de la HU 6.1"
     - **Sin reproceso:** el tipo corregible/incorregible solo se registra; no hay flujo para reparar y volver a inspeccionar.
-    - **Sin valoración de las marras:** no se calcula su costo ni su pérdida, y las aptas todavía no pasan a un inventario de
-      producto terminado (módulo futuro).
+    - **Sin valoración de las marras:** no se calcula su costo ni su pérdida, y las aptas pasan al inventario de producto terminado
+      (HU 6.2), pero las marras no tienen inventario.
     - **Sin muestreo AQL:** se clasifica el lote completo, no una muestra.
     - **Una inspección por lote y sin corrección:** si se digita mal una inspección no hay forma de corregirla desde el sistema
       (queda como pregunta pendiente para el responsable del producto).
 
+## Producto terminado: ingreso al inventario final (HU 6.2, TE-60)
+
+App `apps/finished`, rutas bajo `/api/terminado/`, tablas `terminado_stock`, `terminado_ingreso`, `terminado_ingreso_linea` y
+`terminado_movimiento`. Cubre RF21 (ingreso de producto terminado). La lógica está en `services.py`; las constantes (permisos,
+prefijo `IPT`, tipos de movimiento, máximo de líneas por ingreso) en `catalog.py`.
+
+```mermaid
+flowchart LR
+    INS["Inspección de calidad<br/>(HU 6.1) con aptas"] --> PEND["Inspección por ingresar"]
+    PEND --> FORM["Ingreso: aptas repartidas<br/>por talla y color"]
+    REFV["Variantes de la referencia<br/>del lote"] --> FORM
+    FORM -- "tallas suman exactamente las aptas" --> OK["Ingreso registrado (IPT-0001, no se edita)"]
+    OK --> STOCK[("Stock por variante<br/>nunca negativo")]
+    OK --> LIBRO[("Libro de movimientos<br/>saldo antes y después")]
+    FORM -- "no cuadra · variante ajena · ya ingresada" --> ERR["400 / 409: no se guarda nada"]
+```
+
+| Regla | Detalle |
+|---|---|
+| Qué se ingresa | Solo las **aptas** de una inspección de calidad (HU 6.1). Las **marras no entran** a este saldo: siguen sin inventario hasta la HU 6.4 (TE-169). |
+| Inspección «por ingresar» | Tiene al menos una prenda apta, su orden **no está anulada** y todavía **no tiene ingreso**. La lista `GET /api/terminado/pendientes/` trae además las variantes (talla y color) de la referencia del lote y lo planificado por talla. |
+| La suma debe cuadrar | Las líneas por talla y color deben sumar **exactamente** las aptas de la inspección. Si no cuadra responde `400` indicando cuántas prendas faltan o sobran. Hasta 100 variantes por ingreso, sin repetir, con cantidades enteras mayores que cero. |
+| Variantes de la referencia | Cada talla y color debe ser una variante de la **referencia del lote**; una ajena se rechaza con `400`. |
+| Lo planificado es un dato | Lo que el lote tenía planificado por talla (`LoteTalla`) se copia a cada línea (`planificada`, con su `diferencia`) para comparar; **no es una regla**: se puede ingresar distinto de lo planificado mientras la suma cuadre. |
+| Un ingreso por inspección | Si la inspección ya fue ingresada responde `409` (también si otra persona la ingresó un instante antes). Una restricción única de la base lo respalda. |
+| Todo o nada | Una sola transacción con la inspección bloqueada: el ingreso (`IPT-0001`), el saldo de cada variante y su movimiento en el libro. Los saldos se bloquean por fila en orden de id para que dos ingresos simultáneos no se bloqueen entre sí. Si algo falla no queda nada ni se gasta el consecutivo. |
+| Saldo y libro | El saldo (`StockTerminado`) nunca es negativo y solo cambia con un movimiento. Cada movimiento (`MovimientoTerminado`) guarda cantidad con signo, saldo antes y saldo después, y una restricción de la base exige `saldo_después = saldo_antes + cantidad`. Tipos: `ENTRADA_PRODUCCION` (hoy), `AJUSTE` (HU 6.3) y `SALIDA_VENTA` (HU 7.1). |
+| Solo se agrega | No hay `PUT`, `PATCH` ni `DELETE`. Cada línea guarda la talla y el color tal como estaban al ingresar. |
+| Ubicación en bodega | Solo un texto libre opcional por ingreso (hasta 80 caracteres), sin controles. |
+| Código `IPT-0001` | No se usa `PT`, porque ese prefijo ya es el de los productos de la categoría Producto terminado del inventario de materias primas. |
+
+Rutas y permisos (la referencia exacta está en Swagger, etiqueta `producto-terminado`):
+
+| Ruta | Operaciones | Permiso |
+|---|---|---|
+| `/api/terminado/pendientes/` | `GET` | `producto_terminado.ver` |
+| `/api/terminado/ingresos/` | `GET` (filtros `referencia`, `lote`, `desde`, `hasta`, `q`, `limit`), `POST` | `producto_terminado.ver` / `producto_terminado.gestionar` |
+| `/api/terminado/ingresos/<id>/` | `GET` | `producto_terminado.ver` |
+| `/api/terminado/existencias/` | `GET` (filtro `referencia`): matriz referencia × color × talla, con las celdas en cero | `producto_terminado.ver` |
+| `/api/terminado/movimientos/` | `GET` (filtros `referencia`, `variante`, `tipo`, `desde`, `hasta`, `limit`) | `producto_terminado.ver` |
+
+Quién puede qué: la Secretaria y el Administrador **gestionan** (ingresan); el Vendedor y el Gerente solo **consultan**. Los permisos
+`producto_terminado.ver` y `producto_terminado.gestionar` ya existían desde la matriz inicial, así que **no hay migración de permisos
+nueva**. Ver [roles y permisos](roles-y-permisos.md).
+
+!!! warning "Limitaciones conocidas de la HU 6.2"
+    - **Sin reversa de ingresos:** un ingreso equivocado se corrige con un ajuste de la HU 6.3, que todavía no está hecha.
+    - **Sin ubicaciones controladas:** la ubicación es solo texto libre; el aviso MSG-WRN-05 queda pendiente.
+    - **Sin reservas ni valorización de costos:** el saldo es de cantidades; no se reserva para pedidos ni se calcula su valor.
+    - **Sin recepción parcial:** se ingresan todas las aptas de la inspección de una vez.
+    - **Sin notificación por correo** del nuevo stock (el aviso es una tarjeta en el inicio).
+    - **Las marras siguen sin inventario** (HU 6.4, TE-169).
+
 ## Datos de demostración
 
 Comandos solo para desarrollo (exigen `DJANGO_DEBUG=true`), idempotentes y que pasan por las mismas reglas que la aplicación.
-`seed_demo_calidad` crea 8 defectos típicos de denim y dos lotes devueltos de lavandería (uno inspeccionado y otro por inspeccionar); necesita antes `seed_demo_inventario` y `seed_demo_produccion`. Orden recomendado: ver [manual del sistema](manual-del-sistema.md#datos-de-demostracion).
+`seed_demo_calidad` crea 8 defectos típicos de denim y dos lotes devueltos de lavandería (uno inspeccionado y otro por inspeccionar); necesita antes `seed_demo_inventario` y `seed_demo_produccion`. `seed_demo_terminado` ingresa al inventario final las aptas de la inspección de demostración; necesita antes `seed_demo_calidad`. Orden recomendado: ver [manual del sistema](manual-del-sistema.md#datos-de-demostracion).

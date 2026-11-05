@@ -90,6 +90,7 @@ class MovimientoTerminadoSerializer(serializers.ModelSerializer):
     tipo_nombre = serializers.SerializerMethodField()
     ingreso_codigo = serializers.SerializerMethodField()
     ajuste_codigo = serializers.SerializerMethodField()
+    factura_numero = serializers.SerializerMethodField()
     lote_codigo = serializers.SerializerMethodField()
     usuario_nombre = serializers.SerializerMethodField()
 
@@ -97,7 +98,7 @@ class MovimientoTerminadoSerializer(serializers.ModelSerializer):
         model = MovimientoTerminado
         fields = [
             "id", "variante", "referencia", "referencia_nombre", "talla", "color", "tipo", "tipo_nombre", "cantidad", "saldo_antes",
-            "saldo_despues", "ingreso_codigo", "ajuste_codigo", "lote_codigo", "usuario_nombre", "motivo", "created_at",
+            "saldo_despues", "ingreso_codigo", "ajuste_codigo", "factura_numero", "lote_codigo", "usuario_nombre", "motivo", "created_at",
         ]
 
     def get_tipo_nombre(self, obj) -> str:
@@ -108,6 +109,9 @@ class MovimientoTerminadoSerializer(serializers.ModelSerializer):
 
     def get_ajuste_codigo(self, obj) -> str:
         return obj.ajuste.codigo if obj.ajuste else ""
+
+    def get_factura_numero(self, obj) -> str:
+        return obj.factura.numero if obj.factura else ""
 
     def get_lote_codigo(self, obj) -> str:
         return obj.lote.codigo if obj.lote else ""

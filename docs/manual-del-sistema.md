@@ -30,7 +30,7 @@ python manage.py runserver           # http://localhost:8000
 ```
 
 `migrate` crea las tablas de todos los módulos y carga los roles y permisos iniciales (incluidos los de referencias,
-fichas técnicas y compras). Al terminar, activa RLS en las tablas de Supabase (ver
+fichas técnicas, compras, calidad, producto terminado y ventas). Al terminar, activa RLS en las tablas de Supabase (ver
 [convenciones](convenciones-base-de-datos.md#4-seguridad-en-supabase)).
 
 Para trabajar **sin conexión** deja `DATABASE_URL` vacío: el sistema usa un archivo SQLite local (`db.sqlite3`, ignorado por
@@ -81,8 +81,9 @@ La lista completa y los valores por defecto están en `.env.example` y en el [RE
 | `python manage.py seed_demo_compras` | Órdenes de compra: borrador, aprobada y con recepción parcial. |
 | `python manage.py seed_demo_calidad` | 8 defectos típicos de denim y dos lotes devueltos de lavandería: uno inspeccionado y otro por inspeccionar. Necesita antes `seed_demo_inventario` y `seed_demo_produccion`. |
 | `python manage.py seed_demo_terminado` | Ingresa al inventario final (producto terminado) las aptas de la inspección de demostración, por las mismas reglas de la aplicación. Necesita antes `seed_demo_calidad`. |
+| `python manage.py seed_demo_ventas` | 4 clientes (distribuidor, mayoristas y detal) y el costo de fábrica y los precios de demostración de las referencias de la demo. No crea facturas. Necesita antes las referencias de demostración (`seed_demo_referencias`) y, para vender, `seed_demo_terminado`. |
 | `python manage.py generar_erd --salida docs/modelo-de-datos.md` | Regenera el [modelo de datos](modelo-de-datos.md). |
-| `python manage.py test` | Ejecuta la suite de pruebas (763). |
+| `python manage.py test` | Ejecuta la suite de pruebas (830). |
 | `python manage.py spectacular --validate --file schema.yml` | Valida y exporta el esquema OpenAPI (borra después `schema.yml`). |
 
 ## Datos de demostración
@@ -99,8 +100,10 @@ python manage.py seed_demo_recursos       # 4. operarios y máquinas asignados a
 python manage.py seed_demo_compras        # 5. órdenes de compra en borrador, aprobada y con recepción parcial
 python manage.py seed_demo_calidad        # 6. defectos típicos y dos lotes devueltos de lavandería (uno ya inspeccionado)
 python manage.py seed_demo_terminado      # 7. ingresa al inventario final las aptas de la inspección de demostración
+python manage.py seed_demo_ventas         # 8. clientes y precios de demostración para vender (no crea facturas)
 ```
 
+- El paso 8 necesita las referencias del 2 y, para tener prendas que facturar, el 7; las facturas se hacen en vivo desde **Ventas y Despachos → Nueva venta**.
 - Los pasos 3 a 7 necesitan el 2; el 6 necesita además el 3 (los lotes salen de las órdenes de producción) y el 7 necesita el 6 (ingresa las aptas de la inspección de demostración). `seed_demo_inventario` ya ejecuta `seed_inventario` y `seed_demo_referencias`.
 - Los usuarios que participan se toman de los que ya existen: `seed_demo_compras` busca uno de Producción para crear, un Gerente
   o Administrador para aprobar y un Almacenista distinto del creador para recibir; si falta el Almacenista, la orden queda
@@ -118,7 +121,7 @@ python manage.py test apps.inventory -v 2  # con detalle
 python manage.py test --parallel 4         # en paralelo, más rápido
 ```
 
-La suite cubre `users`, `inventory`, `references`, `production`, `purchasing`, `quality`, `finished` y `core`. Las pruebas de los comandos de demostración
+La suite cubre `users`, `inventory`, `references`, `production`, `purchasing`, `quality`, `finished`, `sales` y `core`. Las pruebas de los comandos de demostración
 (`test_seed*.py`) verifican que sean idempotentes. En el frontend, `npm test` prueba la lógica pura de las pantallas (reparto de
 lotes, tablero, costeo, recursos, compras, calidad, producto terminado...).
 
@@ -147,4 +150,6 @@ El sitio se publica solo en GitHub Pages cuando cambian `docs/` o `mkdocs.yml` e
 | Un comando `seed_demo_*` dice que solo funciona con `DJANGO_DEBUG=true` | Es a propósito: no se siembran datos de demostración fuera de desarrollo. |
 | La recepción de mercancía responde que quien creó la orden no puede recibirla | Separación de funciones: la recibe otro usuario con permiso de inventario (Almacenista). |
 | La liquidación muestra *Sin tarifa* o *Sin costo* | Falta registrar la tarifa por minuto de la etapa, o la compra del material no trajo costo unitario. El cálculo se marca como parcial. |
+| Al facturar dice «Falta el precio de venta de: …» | La referencia no tiene fila en *Ventas y Despachos → Precios*. El Gerente registra el costo de fábrica y los precios (o corre `seed_demo_ventas` en desarrollo). |
+| El servidor no arranca con `ModuleNotFoundError: reportlab` | Falta la dependencia del PDF de la factura (HU 7.1): `pip install -r requirements.txt`. |
 | Se creó una orden de producción y dice que falta material | El stock cambió entre la simulación y la creación; la orden no se guarda. Revisa la disponibilidad y vuelve a intentar. |

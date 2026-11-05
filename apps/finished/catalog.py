@@ -9,14 +9,16 @@ ENTRY_PREFIX = "IPT"  # no "PT": ese prefijo ya es el de los productos de la cat
 MAX_ENTRY_LINES = 100  # variantes (talla y color) distintas en un solo ingreso
 
 # Tipo de movimiento del libro de producto terminado. Solo se agregan filas: una corrección es otro movimiento.
-# La entrada por producción (HU 6.2) y el ajuste manual (HU 6.3) ya escriben en él; la salida por venta (HU 7.1) usará el mismo libro.
+# La entrada por producción (HU 6.2) y el ajuste manual (HU 6.3) ya escriben en él; la salida por venta y su anulación (HU 7.1) también.
 ENTRY_PRODUCTION = "ENTRADA_PRODUCCION"
 ADJUSTMENT = "AJUSTE"
 SALE_EXIT = "SALIDA_VENTA"
+SALE_RETURN = "DEVOLUCION_VENTA"  # reingreso por anular una factura (HU 7.1)
 MOVEMENT_TYPES = [
     (ENTRY_PRODUCTION, "Entrada de producción"),
     (ADJUSTMENT, "Ajuste manual"),
     (SALE_EXIT, "Salida por venta"),
+    (SALE_RETURN, "Reingreso por anulación de venta"),
 ]
 MOVEMENT_TYPE_NAMES = dict(MOVEMENT_TYPES)
 

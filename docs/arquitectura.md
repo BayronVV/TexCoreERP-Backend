@@ -27,9 +27,9 @@ flowchart LR
 
 - Django es **MVT** (Model, View, Template): su *View* hace de controlador. Aquí la plantilla la sustituye
   una SPA de React que es un proyecto aparte, así que MVC solo describe una parte del sistema.
-- Cada capa se cambia y se prueba sin tocar las demás: las pruebas del backend (763) y las funciones puras del frontend no dependen de la interfaz.
+- Cada capa se cambia y se prueba sin tocar las demás: las pruebas del backend (830) y las funciones puras del frontend no dependen de la interfaz.
 - Permite repartir el trabajo (frontend y backend) y cumple el requisito de arquitectura modular (RNF09):
-  `users`, `inventory`, `references`, `production`, `purchasing`, `quality`, `finished` y `core` son módulos independientes y los siguientes se añaden igual.
+  `users`, `inventory`, `references`, `production`, `purchasing`, `quality`, `finished`, `sales` y `core` son módulos independientes y los siguientes se añaden igual.
 
 Correspondencia con el modelo de análisis (interfaz / control / entidad):
 
@@ -52,7 +52,8 @@ backend/
 │   ├── references/ # referencias de jean (variantes, imágenes) y ficha técnica de consumo
 │   ├── production/ # simulación, órdenes y lotes, tiempos, recursos, monitor y costeo
 │   ├── quality/    # control de calidad: catálogo de defectos, inspecciones y marras
-│   └── finished/   # producto terminado: ingreso de las aptas, existencias por talla y libro de movimientos
+│   ├── finished/   # producto terminado: ingreso de las aptas, existencias por talla y libro de movimientos
+│   └── sales/      # ventas: clientes, precios, factura POS interna (con PDF y anulación) y descuento del producto terminado
 └── docs/          # esta documentación
 ```
 
@@ -66,15 +67,16 @@ backend/
 | `purchasing` | `core`, `inventory` | Órdenes de compra; recibir mercancía reutiliza `inventory.services.register_entry` |
 | `quality` | `core`, `inventory`, `production` | Defectos, inspecciones y marras de los lotes que vuelven de lavandería; lee los lotes y la recepción de lavandería de `production` y reutiliza los consecutivos de `inventory` |
 | `finished` | `core`, `inventory`, `references`, `production`, `quality` | Ingreso de las aptas de una inspección al inventario final, existencias por talla y color y libro de movimientos; lee `Inspeccion` de `quality`, `Lote` y `LoteTalla` de `production`, `Variante` de `references` y reutiliza el consecutivo y el estado de la orden de salida de `inventory` |
+| `sales` | `core`, `inventory`, `references`, `finished` | Clientes, precios por referencia y factura POS interna (no electrónica) con su PDF (reportlab) y su anulación; al facturar descuenta el stock y escribe en el libro de `finished` (`SALIDA_VENTA` y `DEVOLUCION_VENTA`) reutilizando sus servicios de bloqueo de saldos, y el consecutivo y el formato de error de `inventory` |
 
-`quality` depende de `production` (lee `Lote` y `RecepcionLote`, y no modifica ninguno); nada de `production` depende de `quality`. `inventory` y `references` se conocen entre sí: la orden de salida apunta a una referencia y la ficha técnica lee el catálogo de productos. `finished` depende de `quality` (lee la inspección y no la modifica) y de `production` (lee el lote y lo planificado por talla), y nada de ellas depende de `finished`. `production` y `purchasing` solo consumen a `inventory` a través de sus servicios, nunca escriben saldos por su cuenta.
+`quality` depende de `production` (lee `Lote` y `RecepcionLote`, y no modifica ninguno); nada de `production` depende de `quality`. `inventory` y `references` se conocen entre sí: la orden de salida apunta a una referencia y la ficha técnica lee el catálogo de productos. `finished` depende de `quality` (lee la inspección y no la modifica) y de `production` (lee el lote y lo planificado por talla), y nada de ellas depende de `finished`. `sales` depende de `finished` (usa su libro y su bloqueo de saldos); la única referencia en sentido contrario es la llave foránea opcional `MovimientoTerminado.factura`, declarada con el nombre `"sales.FacturaVenta"` para no importar el modelo. `production` y `purchasing` solo consumen a `inventory` a través de sus servicios, nunca escriben saldos por su cuenta.
 
 Cada app separa sus responsabilidades en `models.py`, `serializers.py`, `views.py`, `urls.py` y,
 cuando hay reglas de negocio, `services.py`. En `production` el motor de costeo (`costing.py`), el control de tiempos
 (`tracking.py`), el tablero (`monitor.py`) y los recursos (`resources.py`) son módulos de funciones sin dependencia de la vista,
 para probarlos por separado. Cada app guarda sus constantes en `catalog.py`.
 
-Las tablas llevan el prefijo de su módulo: `seguridad_`, `inventario_`, `referencias_`, `produccion_`, `compras_`, `calidad_` y `terminado_`
+Las tablas llevan el prefijo de su módulo: `seguridad_`, `inventario_`, `referencias_`, `produccion_`, `compras_`, `calidad_`, `terminado_` y `ventas_`
 (ver [convenciones](convenciones-base-de-datos.md)).
 
 ## Flujo de una petición
@@ -130,7 +132,11 @@ Las reglas de negocio fallan con un error 400 `{campo: [mensaje]}` que la interf
 | Recepción de mercancía en una sola transacción, con tolerancia de 5 % | Una fila con error no deja recepciones a medias; el proveedor a veces envía de más. |
 | Operarios y máquinas como catálogo simple, sin cuenta de usuario | Los operarios no usan el sistema; «ocupado» se calcula con las etapas en curso. |
 | Inspección de calidad inalterable, una por lote, con el nombre y el tipo del defecto copiados en cada línea | La inspección es un registro de auditoría: renombrar o desactivar un defecto después no cambia el historial, y la suma aptas + marras = recibidas la respalda una restricción de la base. |
-| Saldo de producto terminado por variante y libro de movimientos de solo inserción (`terminado_`) | Cada cambio del saldo es una fila nueva con saldo antes y después, escrita en la misma transacción que el saldo; una restricción de la base exige `saldo_después = saldo_antes + cantidad`. Así el saldo siempre es la suma del libro y los ajustes manuales (HU 6.3) ya escriben en el mismo libro y las salidas por venta (HU 7.1) lo usarán sin tocar este diseño. |
+| Saldo de producto terminado por variante y libro de movimientos de solo inserción (`terminado_`) | Cada cambio del saldo es una fila nueva con saldo antes y después, escrita en la misma transacción que el saldo; una restricción de la base exige `saldo_después = saldo_antes + cantidad`. Así el saldo siempre es la suma del libro y los ajustes manuales (HU 6.3) y las ventas (HU 7.1: `SALIDA_VENTA` y, al anular, `DEVOLUCION_VENTA`) escriben en el mismo libro sin tocar este diseño. |
+| Factura POS interna inalterable, que se anula y no se edita (`ventas_`) | Es un comprobante propio, no una factura electrónica (el alcance excluye la DIAN y la contabilidad). Guarda copia del cliente, el precio, el descuento y el IVA del momento, así que cambiar precios o datos después no la toca; anular reingresa las unidades por el libro y no reutiliza el número. |
+| Montos de la factura calculados solo en el servidor, en pesos enteros con redondeo de mitad hacia arriba | La factura es la suma de sus líneas y restricciones de la base exigen que las cuentas cuadren; lo que muestra la pantalla es una vista previa. |
+| Token único por formulario de venta | Un doble clic o un reintento no factura dos veces: el segundo envío responde `409` con el número ya creado. |
+| Descuento del vendedor con tope por tipo de cliente y piso en el costo de fábrica | La empresa deja decidir al vendedor sin vender por debajo del costo; el tope sale del tipo de cliente (Detal 5 %, Mayorista 15 %, Distribuidor 20 %). |
 | Ingreso de producto terminado único por inspección, con la suma por talla igual a las aptas | Evita ingresar dos veces las mismas prendas; lo planificado por talla solo se guarda como dato de comparación. |
 | Permisos propios para fichas técnicas y compras (`fichas_tecnicas.*`, `compras.aprobar`) | Separar quién diseña, quién aprueba y quién recibe. |
 

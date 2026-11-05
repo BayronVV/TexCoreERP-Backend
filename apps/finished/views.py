@@ -140,7 +140,7 @@ class MovimientoListView(APIView):
         responses={200: MovimientoTerminadoSerializer(many=True)},
     )
     def get(self, request):
-        movements = MovimientoTerminado.objects.select_related("variante__referencia", "ingreso", "ajuste", "lote", "usuario")
+        movements = MovimientoTerminado.objects.select_related("variante__referencia", "ingreso", "ajuste", "factura", "lote", "usuario")
         movements = apply_filters(
             movements, request.query_params,
             [("referencia", "variante__referencia_id"), ("variante", "variante_id"), ("tipo", "tipo"),

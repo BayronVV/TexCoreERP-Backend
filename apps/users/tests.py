@@ -72,6 +72,17 @@ class SeedDataTests(TestCase):
         for role in ("ALMACENISTA", "TERMINACION", "PRODUCCION"):
             self.assertEqual(terminado(role), set(), role)
 
+    def test_permisos_de_ventas_por_rol(self):
+        """El Vendedor factura y registra clientes; el Gerente consulta, administra precios y anula; el resto no entra (HU 7.1)."""
+        def ventas(role):
+            codes = Role.objects.get(code=role).permissions.filter(code__startswith="ventas.")
+            return set(codes.values_list("code", flat=True))
+
+        self.assertEqual(ventas("VENDEDOR"), {"ventas.ver", "ventas.gestionar"})
+        self.assertEqual(ventas("GERENTE"), {"ventas.ver", "ventas.precios", "ventas.anular"})
+        for role in ("SECRETARIA", "ALMACENISTA", "TERMINACION", "PRODUCCION"):
+            self.assertEqual(ventas(role), set(), role)
+
     def test_admin_tiene_todos_los_permisos(self):
         admin = make_user("a@t.co", "ADMIN")
         self.assertEqual(

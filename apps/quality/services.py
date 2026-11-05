@@ -149,7 +149,7 @@ def register_inspection(*, user, lote_id, aptas, defectos=None, observaciones=""
     """Registra la inspección de un lote. Todo o nada: si algo falla no queda nada ni se gasta el consecutivo."""
     if isinstance(lote_id, bool) or not isinstance(lote_id, int):
         fail("Elige el lote que vas a inspeccionar.", "lote")
-    lot = Lote.objects.select_for_update().select_related("orden__orden_salida").filter(pk=lote_id).first()
+    lot = Lote.objects.select_for_update(of=("self",)).select_related("orden__orden_salida").filter(pk=lote_id).first()
     if lot is None:
         fail("El lote no existe.", "lote")
     if lot.orden.orden_salida.estado == inventory_catalog.STATUS_CANCELLED:

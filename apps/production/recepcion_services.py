@@ -205,7 +205,7 @@ def create_laundry_reception(
     # Cargar y bloquear los detalles de lote de la remisión
     remision_lotes = {
         rl.id: rl
-        for rl in RemisionLote.objects.select_for_update()
+        for rl in RemisionLote.objects.select_for_update(of=("self",))
         .select_related("lote", "receta")
         .filter(remision=remision, deleted_at__isnull=True)
     }

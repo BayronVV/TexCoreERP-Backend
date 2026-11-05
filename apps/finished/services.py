@@ -120,7 +120,7 @@ def register_entry(*, user, inspeccion_id, lineas, ubicacion="", observaciones="
     if isinstance(inspeccion_id, bool) or not isinstance(inspeccion_id, int):
         fail("Elige la inspección que vas a ingresar.", "inspeccion")
     inspection = (
-        Inspeccion.objects.select_for_update().select_related("lote__orden__orden_salida", "lote__orden__referencia")
+        Inspeccion.objects.select_for_update(of=("self",)).select_related("lote__orden__orden_salida", "lote__orden__referencia")
         .filter(pk=inspeccion_id).first()
     )
     if inspection is None:

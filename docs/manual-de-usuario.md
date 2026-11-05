@@ -10,8 +10,8 @@ Lo que ves en el menú depende de tu rol: solo aparecen los módulos que tienes 
 | Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo, órdenes de compra y defectos de calidad | [6](#6-jefe-de-produccion-referencias-fichas-tecnicas-y-produccion) |
 | Personal de Terminación | Definir los defectos e inspeccionar los lotes que vuelven de lavandería (aptas y marras) | [7](#7-personal-de-terminacion-control-de-calidad) |
 | Secretaria | Ingresar al inventario final las prendas aptas de cada inspección, y consultar existencias y movimientos | [8](#8-secretaria-y-vendedor-producto-terminado) |
-| Vendedor | Consultar el producto terminado disponible (existencias, movimientos e ingresos) | [8](#8-secretaria-y-vendedor-producto-terminado) |
-| Gerente | Consultar toda la operación (producción, inventario, costos, calidad, producto terminado) y aprobar órdenes de compra | [9](#9-gerente-consulta-y-aprobacion) |
+| Vendedor | Consultar el producto terminado disponible (existencias, movimientos e ingresos); registrar clientes y hacer ventas con factura POS interna | [8](#8-secretaria-y-vendedor-producto-terminado) y [10](#10-vendedor-ventas-y-facturacion) |
+| Gerente | Consultar toda la operación (producción, inventario, costos, calidad, producto terminado, ventas), aprobar órdenes de compra, fijar precios y anular facturas | [9](#9-gerente-consulta-y-aprobacion) y [10](#10-vendedor-ventas-y-facturacion) |
 
 Las tablas completas de permisos están en el [apartado técnico de roles y permisos](roles-y-permisos.md).
 
@@ -68,7 +68,7 @@ Menú **Seguridad y Usuarios**.
 Define qué módulos puede ver y operar cada rol. Por cada módulo marca **Ver** y/o **Registrar y modificar**
 (al marcar *Registrar y modificar* se marca también *Ver*). El Administrador tiene todos los permisos y no se puede restringir.
 Con **Crear rol** puedes crear un rol propio; su código no se puede cambiar después.
-La lista incluye todos los módulos del sistema, también los que todavía no tienen pantalla (lavandería, ventas y reportes) y
+La lista incluye todos los módulos del sistema, también los que todavía no tienen pantalla (lavandería y reportes) y
 **Fichas Técnicas**, que no aparece en el menú porque la ficha se abre desde el Catálogo de jeans. Los permisos extra aparecen en la columna **Otros**: *Administrar roles y permisos* (Seguridad) y *Aprobar órdenes de compra* (Compras),
 que es el del Gerente. Los permisos que trae cada rol al empezar están en [roles y permisos](roles-y-permisos.md).
 
@@ -407,8 +407,7 @@ ven únicamente el historial.
 
 ### Movimientos
 
-Menú **Producto Terminado → Movimientos**. Es el historial del inventario final, de solo lectura: cada fila trae la fecha, el tipo (*Entrada de producción* o *Ajuste manual*; las
-salidas por venta llegarán con otra historia), la referencia, la talla y el color, la cantidad con su signo, el **saldo antes y después**, el origen (el ingreso y el lote) y el usuario.
+Menú **Producto Terminado → Movimientos**. Es el historial del inventario final, de solo lectura: cada fila trae la fecha, el tipo (*Entrada de producción*, *Ajuste manual*, *Salida por venta* o *Reingreso por anulación de venta*), la referencia, la talla y el color, la cantidad con su signo, el **saldo antes y después**, el origen (el ingreso y el lote) y el usuario.
 Filtra por tipo y por fechas.
 
 ### Aviso en el inicio
@@ -428,10 +427,84 @@ los últimos 7 días; pulsa **Ver existencias →** para abrir la matriz.
 ## 9. Gerente: consulta y aprobación
 
 El Gerente ve toda la operación en modo consulta: existencias y kardex, referencias y fichas, órdenes de producción, **Monitor de estado**, **Recursos**,
-tiempos, **Liquidación de Órdenes**, **Control de Calidad** (defectos e inspecciones) y **Producto Terminado** (ingresos, existencias, ajustes y movimientos). No crea ni modifica nada de producción, pero sí tiene una tarea propia:
+tiempos, **Liquidación de Órdenes**, **Control de Calidad** (defectos e inspecciones) y **Producto Terminado** (ingresos, existencias, ajustes y movimientos). No crea ni modifica nada de producción, pero sí tiene tareas propias:
 
 - **Aprobar órdenes de compra:** en **Compras → Órdenes de compra**, las órdenes en *Borrador* muestran el botón **Aprobar**. Antes de aprobar, el sistema
   pide confirmación, porque después la orden ya no se edita y el almacén puede recibir contra ella.
+- **Fijar los precios y anular facturas:** en **Ventas y Despachos → Precios** registra el costo de fábrica y los precios de cada referencia, y en
+  **Ventas y Despachos → Facturas** anula una factura con motivo (sección 10). El Gerente consulta las ventas, pero no emite facturas.
+
+## 10. Vendedor: ventas y facturación
+
+Menú **Ventas y Despachos**, con cinco pantallas: **Panel de ventas**, **Nueva venta**, **Facturas**, **Clientes** y **Precios**. El Vendedor (y el Administrador)
+registran clientes y facturan; el Gerente consulta, fija los precios y anula facturas.
+
+!!! warning "No es una factura electrónica"
+    La factura que genera TexCore es una **factura POS interna**: un comprobante propio de la empresa, **no una factura electrónica ante la DIAN**.
+    Lo verás escrito como *«Factura POS interna. No es factura electrónica.»* en el Panel de ventas, en la lista y el detalle de las facturas y en el PDF.
+    Toda venta es **contraentrega**: la transportadora cobra al cliente y gira después, así que cada factura queda **por cobrar**.
+
+### Hacer una venta
+
+Menú **Ventas y Despachos → Nueva venta**.
+
+1. **Cliente.** Elige el cliente de la lista, o pulsa **Nuevo cliente** para registrarlo sin salir de la pantalla. El tipo del cliente (*Detal*, *Mayorista* o *Distribuidor*)
+   decide el **precio** que se le aplica (detal, o mayorista para los dos últimos) y el **descuento máximo** que puedes darle.
+2. **Prendas.** Elige una **referencia**. Aparece la matriz de **color × talla** con cuántas prendas hay disponibles en cada celda; escribe la cantidad de cada talla y
+   color que se vende (un número entero; las celdas sin existencias no se pueden llenar). Puedes cambiar de referencia y seguir agregando: todas quedan en la misma factura.
+   Si una referencia no tiene precio verás *«Esta referencia no tiene precio de venta: pídele al Gerente que lo registre.»*
+3. **Detalle de la factura.** Cada fila muestra el precio, y puedes escribir un **descuento (%)** por línea. El descuento lo decides tú, pero con tope según el tipo de cliente:
+   **Detal 5 %, Mayorista 15 % y Distribuidor 20 %**, y el precio con descuento **nunca puede quedar por debajo del costo de fábrica**. Abajo ves los **totales en vivo**:
+   subtotal, descuento, base gravable, **IVA del 19 %** y **total a pagar**. Los precios y el descuento son *antes de IVA*; el IVA se suma al final. Todo en pesos enteros.
+4. **Despacho.** Elige la **transportadora** (*Interrapidísimo*, *Envía* u *Otra*, o déjala *Por definir*) y, si ya la tienes, el **número de guía**; si no, se asigna después.
+   Puedes añadir observaciones.
+5. **Facturar.** Pulsa **Facturar $total**. El sistema valida que haya stock de cada talla y color, descuenta el inventario y genera la factura (`FV-0001`). Si pulsas dos veces
+   por error, la segunda no factura otra vez.
+6. **PDF.** Aparece *Factura FV-0001 generada* con el botón **Descargar PDF**. El PDF también se descarga desde **Facturas → Ver**.
+
+### Ver y descargar facturas
+
+Menú **Ventas y Despachos → Facturas**. Lista con el número, cliente, fecha, estado (*Emitida* o *Anulada*) y total. Busca por número de factura, cliente o documento y filtra por
+**estado** y por **fechas** (*Desde* y *Hasta*). **Ver** abre el detalle con cada línea (precio, descuento e IVA del momento de la venta), el despacho y los totales, y el botón
+**Descargar PDF**. Una factura **no se edita ni se borra**: lo que se vendió queda como estaba aunque después cambien los precios o los datos del cliente.
+
+### Anular una factura (Gerente)
+
+Si una factura tiene un error o la venta se cae, el Gerente (o el Administrador) abre **Facturas → Ver → Anular**, escribe el **motivo** (mínimo 10 caracteres) y confirma. Al anular,
+las prendas **vuelven al inventario** (aparecen en *Producto Terminado → Movimientos* como *Reingreso por anulación de venta*), la factura queda como *Anulada* con su motivo y quién la anuló,
+y **su número no se reutiliza**: la nueva venta lleva el siguiente. Una factura anulada no se puede anular otra vez. Solo se anula la factura completa.
+
+### Clientes
+
+Menú **Ventas y Despachos → Clientes**. Busca por nombre, código o documento y filtra por tipo. Con **Nuevo cliente** registras el tipo y número de documento (de 5 a 15 dígitos, sin puntos ni guiones; el
+dígito de verificación solo para NIT), el nombre, el tipo de cliente, la ciudad, la dirección, el teléfono y, si quieres, el correo. El código (`CLI-0001`) lo asigna el sistema. **Editar** corrige los datos y
+**Desactivar** saca al cliente de la lista de ventas sin borrar su historial (**Activar** lo devuelve). No puede haber dos clientes con el mismo documento.
+
+### Precios (Gerente)
+
+Menú **Ventas y Despachos → Precios**. Lista las referencias activas con su **costo de fábrica**, su **precio mayorista** y su **precio de detal**, en pesos y antes de IVA. El Gerente pulsa **Registrar** (o **Editar**) y
+escribe los tres valores: el mayorista no puede ser menor que el costo de fábrica ni el de detal menor que el mayorista. El costo de fábrica es el **piso** de toda venta. Una referencia sin precio no se puede vender.
+Cambiar un precio no modifica las facturas ya emitidas. Los demás roles solo consultan.
+
+### Mensajes que puedes ver
+
+- *Stock insuficiente. …: hay N y pides M.* Alguna talla y color no alcanza; el mensaje lista **todas** las que faltan y no se factura nada. Baja la cantidad o espera nuevo stock.
+- *…: el descuento máximo para un cliente … es N %.* El descuento supera el tope del tipo de cliente.
+- *…: con N % el precio queda por debajo del costo de fábrica.* Baja el descuento de esa línea.
+- *Falta el precio de venta de: …* Pídele al Gerente que lo registre en **Precios**.
+- *Elige un cliente activo.* No hay cliente elegido, o está desactivado.
+- *Esta venta ya se facturó como FV-….* Enviaste el formulario dos veces; la primera ya quedó facturada.
+- *Explica por qué se anula (mínimo 10 caracteres).* El motivo de la anulación es muy corto.
+- *La factura FV-… ya está anulada.*
+
+!!! warning "Qué todavía no hace"
+    - **Factura electrónica:** el comprobante es interno; no se envía a la DIAN ni hace contabilidad.
+    - **Formas de pago:** solo contraentrega. No hay venta de contado, a crédito ni abonos; el cobro se registrará con una historia posterior.
+    - **Despacho:** la transportadora y la guía se guardan en la factura, pero su seguimiento llega con otra historia.
+    - **Pedidos y reservas:** se vende lo que hay en ese momento; no se reserva producto.
+    - **Devoluciones parciales y flete:** solo se anula la factura completa. En una devolución el flete se descuenta al vendedor, según la política de la empresa; eso se aplicará con el despacho y el cobro.
+    - **Precios y costo de fábrica:** los registra el Gerente a mano.
+    - **Filtros avanzados e impresión directa:** la lista filtra por texto, estado y fechas, y la factura se entrega solo en PDF.
 
 ## Preguntas frecuentes
 
@@ -460,6 +533,10 @@ tiempos, **Liquidación de Órdenes**, **Control de Calidad** (defectos e inspec
 **El ajuste dice «El stock cambió».** Otra persona ingresó producto (o cambió el saldo) mientras contabas. No se guardó nada; la matriz ya se recargó, así que vuelve a contar y registra de nuevo.
 
 **Veo ceros resaltados en Existencias.** Es normal: son las tallas y colores de la referencia que todavía no tienen prendas disponibles.
+
+**No puedo facturar una referencia.** Puede no tener precio (pídeselo al Gerente en *Ventas y Despachos → Precios*) o no tener existencias de esa talla y color. La factura es un comprobante interno, no una factura electrónica.
+
+**Me equivoqué en una factura.** No se edita ni se borra. El Gerente la anula en *Ventas y Despachos → Facturas* con un motivo; las prendas vuelven al inventario y se emite una factura nueva (sección 10).
 
 **La liquidación dice «Sin tarifa» o «Sin costo».** Falta registrar la tarifa por minuto de esa etapa (pestaña *Tarifas por Minuto*) o la compra del
 material se registró sin costo unitario. El cálculo se muestra como parcial hasta completarlo.

@@ -14,7 +14,7 @@ tiene `<módulo>.ver`.
 | `ALMACENISTA` | Almacenista | Proveedores, materias primas, movimientos y **recepción de mercancía**. |
 | `TERMINACION` | Personal de Terminación | Control de calidad: define los defectos e inspecciona los lotes que vuelven de lavandería. |
 | `SECRETARIA` | Secretaria | Producto terminado: ingresa al inventario final las prendas aptas de cada inspección, ajusta el inventario contra el conteo físico y consulta existencias y movimientos. |
-| `VENDEDOR` | Vendedor | Consulta el producto terminado disponible; ventas y despachos (módulo futuro). |
+| `VENDEDOR` | Vendedor | Consulta el producto terminado disponible, registra clientes y emite las facturas POS internas de venta (descuenta el inventario). Despachos y cobro llegan con las HU 7.2 y 7.3. |
 | `PENDING` | Pendiente de aprobación | Cuenta recién registrada: **sin permisos** hasta que un administrador le asigne un rol. |
 
 Los roles base no se eliminan. Un administrador puede crear roles propios desde **Seguridad y Usuarios → Roles y
@@ -35,12 +35,12 @@ Cada módulo tiene `ver` (consultar) y `gestionar` (registrar y modificar). Marc
 | Procesos Externos (Lavandería) | `lavanderia.ver`, `lavanderia.gestionar` | Previsto (la salida a lavandería se opera hoy desde Inventario) |
 | Control de Calidad | `calidad.ver`, `calidad.gestionar` | Activo (Inspecciones y Defectos) |
 | Producto Terminado | `producto_terminado.ver`, `producto_terminado.gestionar`, `producto_terminado.ajustar` | Activo (Ingreso, Existencias, Ajuste manual y Movimientos) |
-| Ventas y Despachos | `ventas.ver`, `ventas.gestionar` | Previsto |
+| Ventas y Despachos | `ventas.ver`, `ventas.gestionar`, `ventas.precios`, `ventas.anular` | Activo (Panel de ventas, Nueva venta, Facturas, Clientes y Precios; despachos y cobro, previstos) |
 | Reportes | `reportes.ver`, `reportes.gestionar` | Previsto |
 
 ## Matriz inicial rol → permiso
 
-Es la que dejan las migraciones (`0003`, `0007`, `0008`, `0010` y `0011` de `apps/users`). Después se ajusta desde la pantalla de
+Es la que dejan las migraciones (`0003`, `0007`, `0008`, `0010`, `0011` y `0012` de `apps/users`). Después se ajusta desde la pantalla de
 roles, así que la matriz real de un despliegue puede diferir. `ADMIN` no aparece porque lo tiene todo.
 
 | Permiso | GERENTE | PRODUCCION | ALMACENISTA | TERMINACION | SECRETARIA | VENDEDOR |
@@ -65,6 +65,8 @@ roles, así que la matriz real de un despliegue puede diferir. `ADMIN` no aparec
 | `producto_terminado.ajustar` | | | | | ✔ | |
 | `ventas.ver` | ✔ | | | | | ✔ |
 | `ventas.gestionar` | | | | | | ✔ |
+| `ventas.precios` | ✔ | | | | | |
+| `ventas.anular` | ✔ | | | | | |
 | `reportes.ver`, `reportes.gestionar` | ✔ | | | | | |
 
 `seguridad.*` solo lo tiene `ADMIN` por defecto.
@@ -96,6 +98,10 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 | Ingresar al inventario final las aptas de una inspección | `producto_terminado.gestionar` |
 | Consultar los ajustes manuales y sus motivos | `producto_terminado.ver` |
 | Ajustar el inventario de producto terminado contra el conteo físico | `producto_terminado.ajustar` |
+| Consultar clientes, precios, facturas (con su detalle y PDF) y los metadatos de ventas | `ventas.ver` |
+| Registrar y modificar clientes; **emitir una factura** (descuenta el inventario) | `ventas.gestionar` |
+| Registrar o actualizar el costo de fábrica y los precios de una referencia | `ventas.precios` |
+| Anular una factura | `ventas.anular` |
 
 ### Reglas que no dependen del permiso
 
@@ -112,6 +118,12 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
   de movimientos tampoco se escribe directamente desde la API: solo cambia al ingresar o al ajustar.
 - **Un ajuste no se edita:** un ajuste manual registrado tampoco se modifica ni se borra, ni siquiera siendo administrador; la
   ruta no existe. Un ajuste equivocado se corrige con otro ajuste.
+- **Una factura no se edita ni se borra:** una factura de venta emitida no se modifica ni se elimina, ni siquiera con `ventas.gestionar` o
+  siendo administrador; la ruta no existe. Solo se **anula** (con `ventas.anular` y un motivo), y entonces las unidades vuelven al inventario
+  por el libro y el número no se reutiliza. Los movimientos de venta (`SALIDA_VENTA` y `DEVOLUCION_VENTA`) solo los escribe la factura, no la API directamente.
+- **Factura interna, no electrónica:** la factura POS es un comprobante propio de TexCore y no sustituye la factura electrónica ante la DIAN.
+- **Quién decide los precios:** el Vendedor factura con los precios que fija el Gerente (`ventas.precios`); el descuento que da está limitado
+  por el tipo de cliente y nunca baja del costo de fábrica, sin importar el permiso.
 - **Falla cerrado:** una ruta sin permiso declarado niega el acceso (ver [arquitectura](arquitectura.md)).
 
 El frontend solo decide qué mostrar; el backend valida el permiso en cada petición.

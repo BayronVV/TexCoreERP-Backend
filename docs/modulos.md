@@ -21,6 +21,7 @@ cuerpos y respuestas) están en Swagger (`/api/docs/`); cómo se usa cada pantal
 | HU 6.1 (TE-59) | Registro de marras y calidad | `quality` | Control de Calidad → Inspecciones y Defectos |
 | HU 6.2 (TE-60) | Ingreso a inventario final (producto terminado) | `finished` | Producto Terminado → Ingreso, Existencias y Movimientos |
 | HU 6.3 (TE-61) | Ajuste manual de inventario de producto terminado | `finished` | Producto Terminado → Ajuste manual |
+| HU 7.1 (TE-62) | Facturación y descuento de inventario (factura POS interna) | `sales` | Ventas y Despachos → Panel de ventas, Nueva venta, Facturas, Clientes y Precios |
 
 Cómo se conectan entre sí:
 
@@ -39,6 +40,9 @@ flowchart LR
     CAL -- "aptas · marras por defecto" --> RES["Resultado de la inspección<br/>(solo se agrega)"]
     RES -- "solo las aptas, repartidas<br/>por talla y color" --> TER[("Producto terminado<br/>stock por variante · libro de movimientos")]
     CONTEO["Conteo físico de la bodega"] -- "ajuste manual (HU 6.3)<br/>movimientos AJUSTE" --> TER
+    TER -- "stock por talla y color" --> VEN["Ventas: factura POS interna<br/>(HU 7.1)"]
+    VEN -- "SALIDA_VENTA al facturar<br/>DEVOLUCION_VENTA al anular" --> TER
+    VEN -. "por cobrar · guía de la transportadora<br/>(HU 7.2 y 7.3, pendientes)" .-> COBRO["Despacho y cobro"]
 ```
 
 ## Seguridad y usuarios (HU 1.x)
@@ -259,7 +263,7 @@ flowchart LR
 | Lo planificado es un dato | Lo que el lote tenía planificado por talla (`LoteTalla`) se copia a cada línea (`planificada`, con su `diferencia`) para comparar; **no es una regla**: se puede ingresar distinto de lo planificado mientras la suma cuadre. |
 | Un ingreso por inspección | Si la inspección ya fue ingresada responde `409` (también si otra persona la ingresó un instante antes). Una restricción única de la base lo respalda. |
 | Todo o nada | Una sola transacción con la inspección bloqueada: el ingreso (`IPT-0001`), el saldo de cada variante y su movimiento en el libro. Los saldos se bloquean por fila en orden de id para que dos ingresos simultáneos no se bloqueen entre sí. Si algo falla no queda nada ni se gasta el consecutivo. |
-| Saldo y libro | El saldo (`StockTerminado`) nunca es negativo y solo cambia con un movimiento. Cada movimiento (`MovimientoTerminado`) guarda cantidad con signo, saldo antes y saldo después, y una restricción de la base exige `saldo_después = saldo_antes + cantidad`. Tipos: `ENTRADA_PRODUCCION` (HU 6.2), `AJUSTE` (HU 6.3) y `SALIDA_VENTA` (HU 7.1, todavía no hecha). |
+| Saldo y libro | El saldo (`StockTerminado`) nunca es negativo y solo cambia con un movimiento. Cada movimiento (`MovimientoTerminado`) guarda cantidad con signo, saldo antes y saldo después, y una restricción de la base exige `saldo_después = saldo_antes + cantidad`. Tipos: `ENTRADA_PRODUCCION` (HU 6.2), `AJUSTE` (HU 6.3), `SALIDA_VENTA` y `DEVOLUCION_VENTA` (HU 7.1, sección «Ventas» más abajo). |
 | Solo se agrega | No hay `PUT`, `PATCH` ni `DELETE`. Cada línea guarda la talla y el color tal como estaban al ingresar. |
 | Ubicación en bodega | Solo un texto libre opcional por ingreso (hasta 80 caracteres), sin controles. |
 | Código `IPT-0001` | No se usa `PT`, porque ese prefijo ya es el de los productos de la categoría Producto terminado del inventario de materias primas. |
@@ -353,7 +357,128 @@ por rol, los filtros y que las consultas no crezcan con las filas.
     - **Un motivo por ajuste:** si hay faltantes y sobrantes de causas distintas hay que registrar un ajuste por cada motivo.
     - **Sin anular ni editar:** un ajuste equivocado se corrige con otro ajuste.
 
+## Ventas: factura POS interna y descuento de inventario (HU 7.1, TE-62)
+
+App nueva `apps/sales`, rutas bajo `/api/ventas/`. Cubre RF23 (facturación y descuento de inventario). La lógica está en `invoicing.py`
+(emitir y anular), el PDF en `pdf.py` (con **reportlab**, dependencia nueva en `requirements.txt`) y las constantes (permisos, prefijos,
+IVA, topes de descuento, transportadoras, leyenda) en `catalog.py`.
+
+!!! warning "No es factura electrónica"
+    El documento que emite TexCore es una **factura POS interna**: un comprobante propio de la empresa, **no una factura electrónica ante
+    la DIAN**. La leyenda *«Factura POS interna. No es factura electrónica.»* aparece en pantalla (Panel de ventas, Facturas y su
+    detalle), en el PDF y en el campo `aviso` de la API. El alcance del proyecto excluye la facturación electrónica, la contabilidad,
+    la nómina, el comercio electrónico y la gestión tributaria.
+
+Tablas nuevas (prefijo `ventas_`, borrado lógico como el resto):
+
+| Tabla | Qué guarda |
+|---|---|
+| `ventas_cliente` | A quién se le vende: código `CLI-0001`, tipo y número de documento (único entre los activos), dígito de verificación (solo NIT), nombre, **tipo** (`DETAL`, `MAYORISTA` o `DISTRIBUIDOR`), ciudad, dirección, teléfono, correo opcional y `activo`. |
+| `ventas_precio_referencia` | Costo de fábrica, precio mayorista y precio de detal de **una referencia** (uno por referencia), en pesos enteros y antes de IVA, y quién lo actualizó. |
+| `ventas_factura` | La factura: número `FV-0001` (único), cliente y **copia** de su nombre, documento, tipo, ciudad, dirección y teléfono, vendedor, fecha, `estado` (`EMITIDA` o `ANULADA`), `modalidad_pago` (`CONTRAENTREGA`), `estado_cobro` (`POR_COBRAR`), `transportadora` y `numero_guia` (opcionales), observaciones, montos (`subtotal`, `descuento_total`, `base_gravable`, `iva_tarifa`, `iva_total`, `total`, `valor_a_recaudar`), el `token` único del formulario y los datos de la anulación (`motivo_anulacion`, `anulada_por`, `anulada_en`). |
+| `ventas_factura_linea` | Una variante (talla y color) vendida: referencia, talla y color tal como estaban, cantidad, precio unitario, `descuento_pct`, copia del costo de fábrica y los montos de la línea (`subtotal`, `descuento`, `base`, `iva`, `total`). |
+
+Además `terminado_movimiento` gana la llave foránea opcional `factura` (igual que ya tenía `ingreso` y `ajuste`) y un tipo nuevo,
+`DEVOLUCION_VENTA` («Reingreso por anulación de venta»), junto al `SALIDA_VENTA` que el libro ya tenía reservado (migración
+`finished/0003_ventas_facturacion`). Restricciones de la base respaldan las cuentas: `base = subtotal − descuento`, `total = base + IVA`
+y `valor_a_recaudar = total` en la factura; `subtotal = precio × cantidad` en la línea; y costo ≤ mayorista ≤ detal en los precios. El
+diagrama entidad-relación está en [modelo de datos](modelo-de-datos.md).
+
+```mermaid
+flowchart LR
+    FORM["Nueva venta: cliente + líneas<br/>(variante, cantidad, descuento %) + token"] --> TOK{"¿El token ya facturó?"}
+    TOK -- "sí" --> E409["409 con el número ya creado"]
+    TOK -- "no" --> VAL["Cliente activo · precios registrados<br/>stock por talla y color"]
+    VAL -- "falta stock" --> E19["400 con todas las faltantes (MSG-ERR-19)<br/>no se guarda nada"]
+    VAL -- "alcanza" --> DESC{"Descuento ≤ tope del tipo<br/>y precio ≥ costo de fábrica"}
+    DESC -- "no" --> E400["400: no se guarda nada"]
+    DESC -- "sí" --> OK["Factura FV-0001 + líneas<br/>(montos calculados en el servidor)"]
+    OK --> LIB[("Saldo − cantidad y movimiento<br/>SALIDA_VENTA en el libro")]
+    OK -. "anular con motivo" .-> ANU["Movimientos DEVOLUCION_VENTA<br/>y estado ANULADA (el número no se reutiliza)"]
+```
+
+Reglas, en el orden en que el servicio las aplica (la emisión es una sola transacción: si algo falla no queda nada, ni siquiera el consecutivo):
+
+| Regla | Detalle |
+|---|---|
+| Token contra el doble clic | El formulario genera un UUID (`token`) que la base exige único. Un `token` que no es UUID responde `400`. Si ya existe una factura con ese token, el segundo envío responde `409` con la factura ya creada (`factura` y `numero`); lo mismo si dos envíos con el mismo token compiten. |
+| Cliente y despacho | El cliente debe existir y estar **activo**. La transportadora, si viene, es una de la lista (`INTERRAPIDISIMO`, `ENVIA` u `OTRA`); el número de guía (hasta 40 caracteres) es opcional y la factura solo lo guarda: lo consulta la HU 7.2. Las observaciones admiten hasta 500 caracteres. |
+| Líneas | De 1 a **100** variantes distintas, cada una con cantidad entera mayor que cero, `descuento_pct` entero de 0 a 100 (por defecto 0) y una variante que exista. Una talla y color no puede repetirse. |
+| Precio registrado | Toda referencia vendida debe tener su fila en `ventas_precio_referencia`; si falta, `400` con los códigos que no tienen precio. |
+| Stock suficiente | Se bloquean los saldos por fila, en orden de id, y se compara cada línea con lo disponible. Si **alguna** talla y color no alcanza, responde `400` (MSG-ERR-19) con **todas** las faltantes en `faltantes` (variante, nombre, disponible y pedido) y **no guarda nada**. Si dos vendedores piden las últimas unidades, gana el primero y el otro recibe ese `400`. |
+| Precio de lista por tipo de cliente | `DETAL` paga el precio de detal; `MAYORISTA` y `DISTRIBUIDOR` pagan el mayorista. Todo antes de IVA. |
+| Descuento decidido por el vendedor, con tope | Lo digita el vendedor por línea; el máximo depende del tipo de cliente: **Detal 5 %, Mayorista 15 %, Distribuidor 20 %**. Pasarse responde `400` con el tope. |
+| Nunca por debajo del costo de fábrica | Aun dentro del tope, si el precio con descuento queda por debajo del costo de fábrica de la referencia, `400` indicando el costo (el costo exacto sí se permite). Los problemas de descuento de todas las líneas se devuelven juntos. |
+| Montos en pesos enteros | Los calcula siempre el servidor, con una sola regla de redondeo (**mitad hacia arriba**): cada línea redondea su descuento y su IVA, y la factura es la **suma de sus líneas**. Lo que muestra la pantalla es solo una vista previa. |
+| IVA | General del **19 %**, guardado en cada factura (`iva_tarifa`): cambiarlo después no toca las ya emitidas. |
+| Numeración sin huecos | `FV-0001`, `FV-0002`… dentro de la transacción: si algo falla antes no se gasta el número. |
+| Descuento del inventario | Por cada línea, el saldo baja y se escribe un movimiento `SALIDA_VENTA` en el libro (cantidad negativa, saldo antes y después, la factura y el usuario), así que el saldo sigue siendo la suma del libro. |
+| Contraentrega | Toda venta es `CONTRAENTREGA`: el `valor_a_recaudar` es el total y el `estado_cobro` queda en `POR_COBRAR` hasta que la HU 7.3 lo cobre. |
+| Copia de lo vendido | La factura guarda el cliente, el precio, el descuento, el costo de fábrica y el IVA del momento; cambiar después los datos del cliente o los precios no la toca. |
+| Sin edición ni borrado | No hay `PUT`, `PATCH` ni `DELETE` sobre facturas: se **anulan**. |
+| Anulación con motivo | Exige un motivo de **10 a 255 caracteres** (sin contar espacios de los extremos). Reingresa cada línea con un movimiento `DEVOLUCION_VENTA` (motivo `Anulación de FV-0001: …`), marca la factura `ANULADA` con quién y cuándo, y **no reutiliza el número**. Una factura ya anulada responde `409`. Anular exige un permiso propio. |
+
+Rutas y permisos (la referencia exacta está en Swagger, etiqueta `ventas`):
+
+| Ruta | Operaciones | Permiso |
+|---|---|---|
+| `/api/ventas/metadatos/` | `GET`: tipos de cliente con su lista de precios y descuento máximo, tipos de documento, transportadoras, IVA, la leyenda y el mínimo del motivo | `ventas.ver` |
+| `/api/ventas/clientes/` | `GET` (filtros `tipo`, `activo`, `q`, `limit`), `POST` | `ventas.ver` / `ventas.gestionar` |
+| `/api/ventas/clientes/<id>/` | `GET`, `PATCH` (un cliente no se borra: se desactiva con `activo`) | `ventas.ver` / `ventas.gestionar` |
+| `/api/ventas/precios/` | `GET` (filtro `q`): las referencias activas con su costo y precios (vacíos si todavía no se registran) | `ventas.ver` |
+| `/api/ventas/precios/<referencia>/` | `PUT`: registra o actualiza el costo de fábrica y los precios de una referencia | `ventas.precios` |
+| `/api/ventas/facturas/` | `GET` (filtros `cliente`, `estado`, `desde`, `hasta`, `q`, `limit`), `POST` (emite y descuenta) | `ventas.ver` / `ventas.gestionar` |
+| `/api/ventas/facturas/<id>/` | `GET` con sus líneas | `ventas.ver` |
+| `/api/ventas/facturas/<id>/pdf/` | `GET`: descarga `FV-0001.pdf` | `ventas.ver` |
+| `/api/ventas/facturas/<id>/anular/` | `POST` con `motivo` | `ventas.anular` |
+
+Validaciones de clientes y precios: el documento son de 5 a 15 dígitos, sin puntos ni guiones, y no puede repetirse entre clientes activos
+del mismo tipo de documento; el dígito de verificación (un solo número) solo aplica al NIT; el nombre pide al menos 3 caracteres y el
+teléfono 7 a 20 caracteres válidos. Los precios son enteros de 1 a 100.000.000 con **costo de fábrica ≤ mayorista ≤ detal**.
+
+**Permisos:** `ventas.ver` y `ventas.gestionar` ya existían desde la matriz inicial (migración `users/0003`). La migración
+`users/0012_permisos_ventas_precios_anular` crea `ventas.precios` (administrar precios y costo de fábrica) y `ventas.anular` (anular
+facturas) y los otorga al **Gerente**; el Administrador los tiene de forma implícita. El Vendedor queda con `ventas.ver` y
+`ventas.gestionar` (registra clientes y factura); el Gerente consulta, administra los precios y anula, pero no factura. Ver
+[roles y permisos](roles-y-permisos.md).
+
+**Pantallas** (menú *Ventas y Despachos*):
+
+- *Panel de ventas* (`/ventas/panel`): la leyenda de que la factura es interna, el resumen del día y las últimas facturas.
+- *Nueva venta* (`/ventas/nueva`, exige `ventas.gestionar`): elegir o crear el cliente, una **matriz de color × talla** con la disponibilidad de
+  cada celda, el descuento por línea con su tope, los **totales en vivo** (subtotal, descuento, base gravable, IVA y total), el despacho
+  (transportadora y guía) y el botón **Facturar**, que envía el `token` del formulario. Al terminar ofrece **Descargar PDF**.
+- *Facturas* (`/ventas/facturas`): lista con búsqueda por número, cliente o documento y filtros básicos de estado y fechas; el detalle muestra
+  las líneas con el precio, descuento e IVA del momento, el PDF y, con `ventas.anular`, la anulación con motivo.
+- *Clientes* (`/ventas/clientes`) y *Precios* (`/ventas/precios`): mantenimiento de clientes (con permiso de gestionar) y del costo de
+  fábrica y los precios por referencia (con `ventas.precios`).
+
+**Datos de demostración:** `python manage.py seed_demo_ventas` (solo con `DJANGO_DEBUG=true`, idempotente) crea **4 clientes** (un
+distribuidor, dos mayoristas y uno de detal) y los precios de demostración de cinco referencias (mayorista ≈ costo × 1,45 y detal ≈ costo × 1,90).
+No crea facturas, para hacerlas en vivo, y no toca una referencia que ya tenga precio. Necesita antes `seed_demo_referencias`
+(o `seed_demo_inventario`) y, para tener stock que vender, `seed_demo_terminado`.
+
+**Pruebas:** `apps/sales/test_ventas.py` cubre el redondeo y los montos de una línea, la emisión con descuento del stock y un movimiento por
+variante, el precio de detal y mayorista, que la factura sea la suma de sus líneas y el saldo la suma del libro, el `400` con todas las faltantes sin
+guardar nada, las últimas unidades para el primero, la numeración sin huecos, el tope de descuento por tipo de cliente, el piso del costo
+de fábrica (el costo exacto pasa y un peso menos no), el token único (y que la base impida repetirlo o totales que no cuadran), la anulación
+(devuelve las unidades, conserva la factura, no se repite y exige motivo y permiso), que las facturas no se editen ni se borren, los permisos por
+rol, los filtros, que las consultas no crezcan con las filas, el PDF, los metadatos, los clientes y los precios. Los permisos por rol de la
+migración se prueban en `apps/users/tests.py`.
+
+!!! warning "Limitaciones conocidas de la HU 7.1"
+    - **Sin factura electrónica:** es un comprobante interno; no hay numeración autorizada, CUFE ni envío a la DIAN, ni contabilidad.
+    - **Solo contraentrega:** no hay venta de contado, a crédito ni abonos (deuda técnica). La factura queda `POR_COBRAR` y la HU 7.3 la cobra.
+    - **Sin pedidos ni reservas:** se factura contra el stock disponible en ese instante; no se reserva producto para un pedido.
+    - **Sin devolución parcial ni flete:** solo se anula la factura completa. En una devolución el flete se descuenta al vendedor (política de
+      la empresa) y lo resolverán las HU 7.2 y 7.3; la factura ya guarda el vendedor para ello.
+    - **Precios y costo a mano:** el Gerente fija el costo de fábrica y los precios; a futuro el costo saldrá de la liquidación de la orden
+      (deuda técnica, ítem 19).
+    - **Despacho y cobro para después:** la transportadora y el número de guía se guardan, pero su seguimiento es de la HU 7.2.
+    - **Filtros avanzados e impresión directa:** quedan fuera; la lista tiene búsqueda, estado y fechas (Sprint 4) y el comprobante se entrega solo en PDF.
+    - **Un solo IVA:** tarifa general del 19 %, sin productos exentos ni retenciones.
+
 ## Datos de demostración
 
 Comandos solo para desarrollo (exigen `DJANGO_DEBUG=true`), idempotentes y que pasan por las mismas reglas que la aplicación.
-`seed_demo_calidad` crea 8 defectos típicos de denim y dos lotes devueltos de lavandería (uno inspeccionado y otro por inspeccionar); necesita antes `seed_demo_inventario` y `seed_demo_produccion`. `seed_demo_terminado` ingresa al inventario final las aptas de la inspección de demostración; necesita antes `seed_demo_calidad`. Orden recomendado: ver [manual del sistema](manual-del-sistema.md#datos-de-demostracion).
+`seed_demo_calidad` crea 8 defectos típicos de denim y dos lotes devueltos de lavandería (uno inspeccionado y otro por inspeccionar); necesita antes `seed_demo_inventario` y `seed_demo_produccion`. `seed_demo_terminado` ingresa al inventario final las aptas de la inspección de demostración; necesita antes `seed_demo_calidad`. `seed_demo_ventas` crea 4 clientes y los precios de demostración; necesita antes `seed_demo_referencias` (o `seed_demo_inventario`). Orden recomendado: ver [manual del sistema](manual-del-sistema.md#datos-de-demostracion).

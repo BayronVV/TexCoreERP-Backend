@@ -131,6 +131,7 @@ class MovimientoTerminado(BaseModel):
     saldo_despues = models.PositiveIntegerField()
     ingreso = models.ForeignKey(IngresoTerminado, on_delete=models.PROTECT, related_name="movimientos", null=True, blank=True)
     ajuste = models.ForeignKey(AjusteTerminado, on_delete=models.PROTECT, related_name="movimientos", null=True, blank=True)
+    factura = models.ForeignKey("sales.FacturaVenta", on_delete=models.PROTECT, related_name="movimientos", null=True, blank=True)
     lote = models.ForeignKey("production.Lote", on_delete=models.PROTECT, related_name="+", null=True, blank=True)
     usuario =models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True)
     motivo = models.CharField(max_length=255, blank=True)

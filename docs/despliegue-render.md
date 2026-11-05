@@ -40,7 +40,7 @@ despliegan la rama `main` y se redespliegan solos con cada merge.
 ### Migraciones y datos iniciales
 
 Cada arranque ejecuta `migrate --noinput`, así que un despliegue con migraciones nuevas las aplica solo. Eso incluye los
-**permisos y roles** de los módulos nuevos (`referencias.*`, `compras.*`, y los de calidad para el Jefe de Producción), que cargan las migraciones `0007`, `0008` y `0010` de `apps/users` (los de producto terminado ya venían en la matriz inicial: la app `finished` solo agrega sus cuatro tablas `terminado_*`),
+**permisos y roles** de los módulos nuevos (`referencias.*`, `compras.*`, y los de calidad para el Jefe de Producción), que cargan las migraciones `0007`, `0008` y `0010` de `apps/users` (los de producto terminado ya venían en la matriz inicial: la app `finished` solo agrega sus cuatro tablas `terminado_*`). Ventas (HU 7.1) suma la app `sales` con sus cuatro tablas `ventas_*`, la migración `users/0012` con los permisos `ventas.precios` y `ventas.anular` del Gerente, y la dependencia `reportlab` (se instala sola con `requirements.txt`),
 y el endurecimiento de la base (RLS) que corre al final de cada `migrate`.
 
 - No hace falta (ni conviene) correr nada más para tener la matriz de permisos inicial; después se ajusta desde **Roles y permisos**.

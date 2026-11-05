@@ -13,6 +13,7 @@ urlpatterns = [
     path("api/", include("apps.purchasing.urls")),
     path("api/", include("apps.quality.urls")),
     path("api/", include("apps.finished.urls")),
+    path("api/", include("apps.sales.urls")),
 ]
 
 if settings.API_DOCS_ENABLED:

@@ -14,6 +14,7 @@
 |---|---|
 | Backend | Python · Django 5.2 LTS · Django REST Framework 3.18 |
 | Autenticación | JSON Web Tokens (djangorestframework-simplejwt 5.5) |
+| PDF de la factura de venta | reportlab 4 (dependencia nueva de la HU 7.1) |
 | Documentación de la API | OpenAPI con drf-spectacular (`/api/docs/`) |
 | Base de datos | PostgreSQL en Supabase (SQLite local sin conexión) · driver psycopg 3 |
 | Servidor de aplicación | Gunicorn (producción) |
@@ -61,13 +62,15 @@ Terminación (`TERMINACION`), Secretaria (`SECRETARIA`), Vendedor (`VENDEDOR`) y
 - **Compras:** orden de compra (Producción) → aprobación (Gerente) → recepción de mercancía (Almacenista), con costo y kardex.
 - **Control de calidad (HU 6.1):** catálogo de defectos corregibles e incorregibles e inspección de los lotes que vuelven de lavandería, con las marras desglosadas por defecto.
 - **Producto terminado (HU 6.2):** ingreso al inventario final de las aptas de cada inspección, repartidas por talla y color; existencias en matriz y libro de movimientos.
+- **Ajuste manual (HU 6.3):** corrección del inventario de producto terminado contra el conteo físico, con motivo, observación y comprobante.
+- **Ventas y facturación (HU 7.1):** factura POS interna (comprobante propio, **no factura electrónica**) con descuento del inventario por talla y color, descuento del vendedor con tope por tipo de cliente, IVA del 19 %, PDF descargable y anulación con reingreso al inventario. Solo contraentrega; clientes y precios mantenidos a mano.
 - **Datos de demostración:** comandos `seed_demo_*` para poblar un entorno de desarrollo.
 
 ## Calidad
 
 | Aspecto | Valor |
 |---|---|
-| Pruebas automatizadas del backend | 763 (usuarios, inventario, referencias, producción, compras, calidad, producto terminado y salud), todas aprobadas |
+| Pruebas automatizadas del backend | 830 (usuarios, inventario, referencias, producción, compras, calidad, producto terminado y salud), todas aprobadas |
 | Pruebas automatizadas del frontend | 179 (lógica de las pantallas), todas aprobadas |
 | Rutas de la API | 83 (sin contar la documentación): 8 públicas, 75 internas con sesión y 74 de ellas con permiso por rol |
 | Documentación de la API | 121 operaciones descritas; el esquema se valida sin errores (4 advertencias de nombres de enumeraciones repetidas) |

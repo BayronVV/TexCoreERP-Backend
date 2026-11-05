@@ -471,18 +471,92 @@ erDiagram
         int saldo_despues
         bigint ingreso FK
         bigint ajuste FK
+        bigint factura FK
         bigint lote FK
         bigint usuario FK
         varchar_255 motivo
     }
+    Cliente {
+        bigint id PK
+        varchar_20 codigo
+        varchar_3 tipo_documento
+        varchar_20 documento
+        varchar_1 dv
+        varchar_150 nombre
+        varchar_12 tipo
+        varchar_80 ciudad
+        varchar_200 direccion
+        varchar_20 telefono
+        varchar_120 correo
+        boolean activo
+    }
+    PrecioReferencia {
+        bigint id PK
+        bigint referencia FK
+        positivebiginteger costo_fabrica
+        positivebiginteger precio_detal
+        positivebiginteger precio_mayorista
+        bigint actualizado_por FK
+    }
+    FacturaVenta {
+        bigint id PK
+        varchar_20 numero
+        bigint cliente FK
+        varchar_150 cliente_nombre
+        varchar_40 cliente_documento
+        varchar_12 cliente_tipo
+        varchar_80 cliente_ciudad
+        varchar_200 cliente_direccion
+        varchar_20 cliente_telefono
+        bigint vendedor FK
+        date fecha
+        varchar_10 estado
+        varchar_15 modalidad_pago
+        varchar_12 estado_cobro
+        varchar_16 transportadora
+        varchar_40 numero_guia
+        varchar_500 observaciones
+        positivebiginteger subtotal
+        positivebiginteger descuento_total
+        positivebiginteger base_gravable
+        positivesmallinteger iva_tarifa
+        positivebiginteger iva_total
+        positivebiginteger total
+        positivebiginteger valor_a_recaudar
+        uuid token
+        varchar_255 motivo_anulacion
+        bigint anulada_por FK
+        timestamp anulada_en
+    }
+    DetalleVenta {
+        bigint id PK
+        bigint factura FK
+        bigint variante FK
+        varchar_20 referencia_codigo
+        varchar_150 referencia_nombre
+        varchar_10 talla
+        varchar_60 color
+        int cantidad
+        positivebiginteger precio_unitario
+        positivesmallinteger descuento_pct
+        positivebiginteger costo_fabrica
+        positivebiginteger subtotal
+        positivebiginteger descuento
+        positivebiginteger base
+        positivebiginteger iva
+        positivebiginteger total
+    }
     AjusteTerminado |o--o{ MovimientoTerminado : "ajuste"
     AjusteTerminado ||--o{ AjusteLinea : "ajuste"
+    Cliente ||--o{ FacturaVenta : "cliente"
     CustomUser |o--o{ AccessLog : "user"
     CustomUser |o--o{ AjusteTerminado : "realizado_por"
     CustomUser |o--o{ AsignacionEtapa : "asignada_por"
     CustomUser |o--o{ EtapaLote : "responsable"
     CustomUser |o--o{ EventoEtapa : "usuario"
     CustomUser |o--o{ Evidencia : "subido_por"
+    CustomUser |o--o{ FacturaVenta : "anulada_por"
+    CustomUser |o--o{ FacturaVenta : "vendedor"
     CustomUser |o--o{ FichaTecnica : "actualizado_por"
     CustomUser |o--o{ IngresoTerminado : "recibido_por"
     CustomUser |o--o{ Inspeccion : "inspector"
@@ -493,6 +567,7 @@ erDiagram
     CustomUser |o--o{ OrdenCompra : "creado_por"
     CustomUser |o--o{ OrdenProduccion : "creado_por"
     CustomUser |o--o{ OrdenSalida : "registrado_por"
+    CustomUser |o--o{ PrecioReferencia : "actualizado_por"
     CustomUser |o--o{ Recepcion : "recibido_por"
     CustomUser |o--o{ RecepcionLavanderia : "creado_por"
     CustomUser |o--o{ RecepcionLavanderia : "responsable"
@@ -504,6 +579,8 @@ erDiagram
     CustomUser ||--o{ PasswordResetToken : "user"
     EtapaLote ||--o{ AsignacionEtapa : "etapa_lote"
     EtapaLote ||--o{ EventoEtapa : "etapa_lote"
+    FacturaVenta |o--o{ MovimientoTerminado : "factura"
+    FacturaVenta ||--o{ DetalleVenta : "factura"
     FichaTecnica ||--o{ FichaLinea : "ficha"
     IngresoTerminado |o--o{ MovimientoTerminado : "ingreso"
     IngresoTerminado ||--o{ IngresoLinea : "ingreso"
@@ -547,6 +624,7 @@ erDiagram
     Referencia ||--o{ FichaTecnica : "referencia"
     Referencia ||--o{ ImagenReferencia : "referencia"
     Referencia ||--o{ OrdenProduccion : "referencia"
+    Referencia ||--o{ PrecioReferencia : "referencia"
     Referencia ||--o{ Variante : "referencia"
     RemisionLavanderia ||--o{ RecepcionLavanderia : "remision"
     RemisionLavanderia ||--o{ RemisionLote : "remision"
@@ -556,6 +634,7 @@ erDiagram
     Role ||--o{ RolePermission : "role"
     TipoDefecto ||--o{ MarraDetalle : "tipo_defecto"
     Variante ||--o{ AjusteLinea : "variante"
+    Variante ||--o{ DetalleVenta : "variante"
     Variante ||--o{ IngresoLinea : "variante"
     Variante ||--o{ LoteTalla : "variante"
     Variante ||--o{ MovimientoTerminado : "variante"
@@ -1251,6 +1330,97 @@ Una fila del libro del stock: de cuánto a cuánto pasó el saldo de una variant
 | `saldo_despues` | int |  |  |
 | `ingreso` | bigint | FK, nulo | → `IngresoTerminado` |
 | `ajuste` | bigint | FK, nulo | → `AjusteTerminado` |
+| `factura` | bigint | FK, nulo | → `FacturaVenta` |
 | `lote` | bigint | FK, nulo | → `Lote` |
 | `usuario` | bigint | FK, nulo | → `CustomUser` |
 | `motivo` | varchar(255) |  |  |
+
+### Cliente (`ventas_cliente`)
+
+Persona o empresa a la que se le vende.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(20) |  |  |
+| `tipo_documento` | varchar(3) |  |  |
+| `documento` | varchar(20) |  |  |
+| `dv` | varchar(1) |  |  |
+| `nombre` | varchar(150) |  |  |
+| `tipo` | varchar(12) |  |  |
+| `ciudad` | varchar(80) |  |  |
+| `direccion` | varchar(200) |  |  |
+| `telefono` | varchar(20) |  |  |
+| `correo` | varchar(120) |  |  |
+| `activo` | boolean |  |  |
+
+### PrecioReferencia (`ventas_precio_referencia`)
+
+Costo de fábrica y precios de venta de una referencia (pesos enteros, antes de IVA).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `referencia` | bigint | FK | → `Referencia` |
+| `costo_fabrica` | positivebiginteger |  |  |
+| `precio_detal` | positivebiginteger |  |  |
+| `precio_mayorista` | positivebiginteger |  |  |
+| `actualizado_por` | bigint | FK, nulo | → `CustomUser` |
+
+### FacturaVenta (`ventas_factura`)
+
+Factura POS interna (no es factura electrónica). Inalterable: se anula, no se edita ni se borra.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `numero` | varchar(20) |  |  |
+| `cliente` | bigint | FK | → `Cliente` |
+| `cliente_nombre` | varchar(150) |  |  |
+| `cliente_documento` | varchar(40) |  |  |
+| `cliente_tipo` | varchar(12) |  |  |
+| `cliente_ciudad` | varchar(80) |  |  |
+| `cliente_direccion` | varchar(200) |  |  |
+| `cliente_telefono` | varchar(20) |  |  |
+| `vendedor` | bigint | FK, nulo | → `CustomUser` |
+| `fecha` | date |  |  |
+| `estado` | varchar(10) |  |  |
+| `modalidad_pago` | varchar(15) |  |  |
+| `estado_cobro` | varchar(12) |  |  |
+| `transportadora` | varchar(16) |  |  |
+| `numero_guia` | varchar(40) |  |  |
+| `observaciones` | varchar(500) |  |  |
+| `subtotal` | positivebiginteger |  |  |
+| `descuento_total` | positivebiginteger |  |  |
+| `base_gravable` | positivebiginteger |  |  |
+| `iva_tarifa` | positivesmallinteger |  |  |
+| `iva_total` | positivebiginteger |  |  |
+| `total` | positivebiginteger |  |  |
+| `valor_a_recaudar` | positivebiginteger |  |  |
+| `token` | uuid |  |  |
+| `motivo_anulacion` | varchar(255) |  |  |
+| `anulada_por` | bigint | FK, nulo | → `CustomUser` |
+| `anulada_en` | timestamp | nulo |  |
+
+### DetalleVenta (`ventas_factura_linea`)
+
+Una variante vendida: cantidad, precio, descuento e IVA del momento. Guarda referencia, talla y color tal como estaban.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `factura` | bigint | FK | → `FacturaVenta` |
+| `variante` | bigint | FK | → `Variante` |
+| `referencia_codigo` | varchar(20) |  |  |
+| `referencia_nombre` | varchar(150) |  |  |
+| `talla` | varchar(10) |  |  |
+| `color` | varchar(60) |  |  |
+| `cantidad` | int |  |  |
+| `precio_unitario` | positivebiginteger |  |  |
+| `descuento_pct` | positivesmallinteger |  |  |
+| `costo_fabrica` | positivebiginteger |  |  |
+| `subtotal` | positivebiginteger |  |  |
+| `descuento` | positivebiginteger |  |  |
+| `base` | positivebiginteger |  |  |
+| `iva` | positivebiginteger |  |  |
+| `total` | positivebiginteger |  |  |

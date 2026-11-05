@@ -15,9 +15,10 @@ físicas por una base de datos única, con permisos por rol.
 | Ficha técnica | Consumo de materiales por prenda con merma, PDF de la ficha extensa y consumo contra el stock | TE-50 |
 | Control de calidad | Catálogo de defectos y inspección de los lotes que vuelven de lavandería: aptas y marras desglosadas por defecto | TE-59 |
 | Producto terminado | Ingreso al inventario final de las prendas aptas de cada inspección, repartidas por talla y color; existencias en matriz y libro de movimientos | TE-60 |
+| Ventas | Factura POS interna (comprobante propio, **no factura electrónica**) con descuento del inventario por talla y color, descuento del vendedor con tope por tipo de cliente, IVA, PDF y anulación; clientes y precios. Solo contraentrega | TE-62 |
 | Producción y trazabilidad | Validación de material y planificación, órdenes de producción con lotes y tallas, control de tiempos por etapa, asignación de operarios y máquinas, monitor de estado tipo Kanban y liquidación con costeo por orden | TE-51, TE-52, TE-53, TE-54, TE-55, TE-56 |
 
-Los módulos de lavandería como proceso propio, ventas y reportes se construyen en los
+Los módulos de lavandería como proceso propio, despachos y cobro de las ventas, y reportes se construyen en los
 siguientes sprints. Sus permisos ya existen en el catálogo, pero todavía no tienen pantallas.
 
 ## Cómo está organizada esta documentación

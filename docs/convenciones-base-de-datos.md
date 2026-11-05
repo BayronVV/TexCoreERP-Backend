@@ -61,12 +61,13 @@ class Proveedor(BaseModel):
 | `referencias_` | `references` | `referencias_referencia`, `referencias_variante`, `referencias_ficha`, `referencias_ficha_linea` |
 | `produccion_` | `production` | `produccion_orden`, `produccion_lote`, `produccion_etapa_lote`, `produccion_asignacion_etapa` |
 | `compras_` | `purchasing` | `compras_orden`, `compras_linea`, `compras_recepcion`, `compras_recepcion_linea` |
+| `ventas_` | `sales` | `ventas_cliente`, `ventas_precio_referencia`, `ventas_factura`, `ventas_factura_linea` |
 
 La lista completa, con sus campos, está en el [modelo de datos](modelo-de-datos.md).
 
 ### Códigos consecutivos
 
-Los identificadores legibles (`OP-0001`, `LV-0001`, `OC-0001`, `RC-0001`, `REF-0001`, `OPE-0001`, `MAQ-0001`, `TEL-0001`...)
+Los identificadores legibles (`OP-0001`, `LV-0001`, `OC-0001`, `RC-0001`, `REF-0001`, `OPE-0001`, `MAQ-0001`, `TEL-0001`, `FV-0001`, `CLI-0001`...)
 salen de la tabla `inventario_consecutivo`, que se bloquea al asignar el número dentro de la transacción. Si la operación falla,
 el número no se gasta. Los lotes derivan del código de su orden (`OP-0001-L01`).
 

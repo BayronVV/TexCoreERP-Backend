@@ -42,7 +42,7 @@ Cada ruta exige un permiso por rol (RNF01), por ejemplo `inventario.ver` para co
 
 ## Módulos
 
-La API tiene **83 rutas** y **121 operaciones**, todas descritas en Swagger con su etiqueta. Aquí solo el mapa; los detalles
+La API tiene **95 rutas** y **137 operaciones**, todas descritas en Swagger con su etiqueta. Aquí solo el mapa; los detalles
 de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permiso que exige cada operación está en
 [roles y permisos](roles-y-permisos.md), y las reglas de negocio de cada módulo en [módulos y reglas](modulos.md).
 
@@ -71,6 +71,10 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | `producto-terminado` | `/api/terminado/pendientes/` (inspecciones con aptas por ingresar, con las variantes de su referencia y lo planificado), `/api/terminado/ingresos/` (listar con filtros `referencia`, `lote`, `desde`, `hasta` y `q`, y registrar el ingreso de una inspección) y `/api/terminado/ingresos/<id>/` (consultar con su reparto por talla). No hay `PUT` ni `DELETE`: un ingreso no se edita | TE-60 |
 | `producto-terminado` | `/api/terminado/existencias/` (matriz referencia × color × talla, con las celdas en cero, filtro `referencia`) y `/api/terminado/movimientos/` (libro de solo lectura con saldo antes y después; filtros `referencia`, `variante`, `tipo`, `desde` y `hasta`) | TE-60 |
 | `producto-terminado` | `/api/terminado/ajustes/` (listar con filtros `referencia`, `motivo`, `desde`, `hasta`, `q` y `limit`, y ajustar el stock contra el conteo físico), `/api/terminado/ajustes/<id>/` (consultar el comprobante con sus líneas) y `/api/terminado/metadatos/` (motivos con su signo, umbral de unidades y mínimos de la observación). Ajustar exige `producto_terminado.ajustar`. No hay `PUT` ni `DELETE`: un ajuste no se edita | TE-61 |
+| `ventas` | `/api/ventas/clientes/` (listar con filtros `tipo`, `activo`, `q` y `limit`, y registrar) y `/api/ventas/clientes/<id>/` (consultar y modificar o desactivar: un cliente no se borra) | TE-62 |
+| `ventas` | `/api/ventas/precios/` (referencias activas con su costo de fábrica y precios; filtro `q`) y `/api/ventas/precios/<referencia>/` (`PUT`: registrar o actualizar). Modificar exige `ventas.precios` | TE-62 |
+| `ventas` | `/api/ventas/facturas/` (listar con filtros `cliente`, `estado`, `desde`, `hasta`, `q` y `limit`, y emitir la factura POS interna descontando el inventario) y `/api/ventas/facturas/<id>/` (consultar con sus líneas). No hay `PUT` ni `DELETE`: una factura no se edita | TE-62 |
+| `ventas` | `/api/ventas/facturas/<id>/pdf/` (descarga el PDF), `/api/ventas/facturas/<id>/anular/` (anula con motivo y reingresa las unidades; exige `ventas.anular`) y `/api/ventas/metadatos/` (tipos de cliente con su lista de precios y descuento máximo, transportadoras, IVA y la leyenda «Factura POS interna. No es factura electrónica.») | TE-62 |
 | `compras` | `/api/compras/ordenes/` y `/api/compras/ordenes/<id>/` (órdenes de compra de materiales: crear, listar con filtros `estado`, `proveedor` y `q`, y editar mientras son borrador), `/api/compras/ordenes/<id>/aprobar/`, `cancelar/` y `cerrar/` (aprobación del Gerente, cancelación y cierre con motivo) | — |
 | `compras` | `/api/compras/recepciones/` (recibir mercancía con varios productos a la vez, contra una orden aprobada o suelta; cada fila entra al almacén con la misma regla del ingreso: stock, costo promedio y kardex) y `/api/compras/metadatos/` (estados y tolerancia de exceso) | — |
 | `salud` | `/api/health/`, `/api/health/db/` | — |
@@ -157,6 +161,38 @@ deja un movimiento `AJUSTE` en `GET /api/terminado/movimientos/`. Errores:
   (`{"detail": ["El stock cambió en: 30 Azul. Recarga la matriz y vuelve a contar."], "variantes": ["30 Azul"]}`): no se guarda nada.
 - `409` si ese `token` ya generó un comprobante (`{"detail": ["Este ajuste ya se registró como AJT-0001."], "ajuste": 1, "codigo": "AJT-0001"}`).
 - `403` si el rol no tiene `producto_terminado.ajustar`.
+
+## Ejemplo: emitir una factura POS interna
+
+Es una factura **interna** de TexCore (comprobante propio): **no es factura electrónica ante la DIAN**, y la respuesta lo recuerda en `aviso`.
+Antes se leen el cliente (`GET /api/ventas/clientes/`), las variantes y su disponibilidad (`GET /api/terminado/existencias/`) y las reglas
+(`GET /api/ventas/metadatos/`). Cada línea es una variante (talla y color) con su `cantidad` y el `descuento_pct` que decide el vendedor.
+`token` es un UUID que genera el formulario y evita facturar dos veces con un doble clic. `transportadora` (`INTERRAPIDISIMO`, `ENVIA` u
+`OTRA`), `numero_guia` y `observaciones` son opcionales. Aquí se venden 4 prendas a un cliente mayorista (tope de descuento: 15 %).
+
+```bash
+curl -X POST http://localhost:8000/api/ventas/facturas/   -H "Authorization: Bearer <access>" -H "Content-Type: application/json"   -d '{"cliente": 2, "lineas": [{"variante": 11, "cantidad": 3, "descuento_pct": 10}, {"variante": 12, "cantidad": 1}], "transportadora": "ENVIA", "numero_guia": "", "observaciones": "Entrega en la sede principal", "token": "3c9f6a52-8d1e-4b7a-a0c4-5e2d7b91f6a8"}'
+```
+
+Respuesta `201` con la factura (`FV-0001`): los datos del cliente, el `vendedor_nombre`, `modalidad_pago` (`CONTRAENTREGA`), `estado_cobro`
+(`POR_COBRAR`), los montos en pesos enteros (`subtotal`, `descuento_total`, `base_gravable`, `iva_tarifa`, `iva_total`, `total` y
+`valor_a_recaudar`), `aviso` y sus `lineas` (precio unitario, descuento, base, IVA y total de cada una). Cada línea baja el saldo de su
+variante y deja un movimiento `SALIDA_VENTA` en `GET /api/terminado/movimientos/`. Con `GET /api/ventas/facturas/<id>/pdf/` se descarga el PDF.
+Errores:
+
+- `400` si falta stock: no se guarda nada y se listan **todas** las faltantes
+  (`{"lineas": ["Stock insuficiente. REF-0001 30 Azul: hay 2 y pides 3."], "faltantes": [{"variante": 11, "nombre": "REF-0001 30 Azul", "disponible": 2, "pedido": 3}]}`).
+- `400` si el descuento pasa del tope del tipo de cliente (`«…: el descuento máximo para un cliente mayorista es 15 %.»`) o deja el precio por
+  debajo del costo de fábrica (`«…: con 15 % el precio queda por debajo del costo de fábrica ($50.000).»`).
+- `400` si no hay líneas, una variante se repite o no existe, una cantidad no es un entero mayor que cero, el cliente no existe o está inactivo,
+  una referencia no tiene precio registrado, la transportadora no es de la lista o falta el `token`.
+- `409` si ese `token` ya generó una factura (`{"detail": ["Esta venta ya se facturó como FV-0001."], "factura": 1, "numero": "FV-0001"}`).
+- `403` si el rol no tiene `ventas.gestionar`.
+
+Para anular se envía `POST /api/ventas/facturas/<id>/anular/` con `{"motivo": "El cliente canceló el pedido antes del despacho"}` (de 10 a 255
+caracteres). Responde `200` con la factura en estado `ANULADA` y deja un movimiento `DEVOLUCION_VENTA` por línea. Errores: `400` si el motivo
+es muy corto, `409` si la factura ya estaba anulada (`{"detail": ["La factura FV-0001 ya está anulada."]}`) y `403` si el rol no tiene
+`ventas.anular`.
 
 ## Mantener la documentación al día
 

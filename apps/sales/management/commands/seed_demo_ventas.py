@@ -6,15 +6,19 @@ Registra cuatro clientes de distintos tipos y el costo de fábrica y los precios
 con margen consistente: mayorista ≈ costo × 1,45 y detal ≈ costo × 1,90. Son valores de demostración: el Gerente los corrige en la
 pantalla de precios. No crea facturas, para hacerlas en vivo. Una referencia que ya tiene precio no se toca.
 """
+import uuid
+
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
+from apps.finished.models import StockTerminado
 from apps.inventory.services import next_code
 from apps.references.models import Referencia
 
-from ... import catalog
-from ...models import Cliente, PrecioReferencia
+from ... import catalog, invoicing
+from ...models import Cliente, FacturaVenta, PrecioReferencia, SaldoFinanciero
 
 # código de la referencia → (costo de fábrica, precio mayorista, precio detal)
 PRICES = {
@@ -57,4 +61,44 @@ class Command(BaseCommand):
                 continue
             PrecioReferencia.objects.create(referencia=reference, costo_fabrica=cost, precio_mayorista=wholesale, precio_detal=retail)
             priced += 1
-        self.stdout.write(self.style.SUCCESS(f"Clientes nuevos: {clients}. Referencias con precio nuevo: {priced}."))
+
+        invoices_count = 0
+        if FacturaVenta.objects.count() == 0:
+            User = get_user_model()
+            seller = User.objects.filter(role__name="Vendedor").first() or User.objects.first()
+            stocks = list(StockTerminado.objects.filter(variante__referencia__codigo="REF-0001", cantidad__gte=5).select_related("variante")[:3])
+            if stocks and len(stocks) >= 2:
+                v1, v2 = stocks[0].variante, stocks[1].variante
+                c1 = Cliente.objects.filter(tipo=catalog.CLIENT_WHOLESALE).first()
+                c2 = Cliente.objects.filter(tipo=catalog.CLIENT_DISTRIBUTOR).first()
+                c3 = Cliente.objects.filter(tipo=catalog.CLIENT_DETAL).first()
+
+                if c1 and v1:
+                    invoicing.issue_invoice(
+                        user=seller, cliente=c1.id,
+                        lineas=[{"variante": v1.id, "cantidad": 2, "descuento_pct": 5}],
+                        transportadora="INTERRAPIDISIMO", numero_guia="70001829102",
+                        observaciones="Despacho urgente a Medellín", token=uuid.uuid4(),
+                    )
+                    invoices_count += 1
+
+                if c2 and v2:
+                    invoicing.issue_invoice(
+                        user=seller, cliente=c2.id,
+                        lineas=[{"variante": v2.id, "cantidad": 3, "descuento_pct": 10}],
+                        transportadora="ENVIA", numero_guia="0284719283",
+                        observaciones="Envío contraentrega a bodega central", token=uuid.uuid4(),
+                    )
+                    invoices_count += 1
+
+                if c3 and v1:
+                    invoicing.issue_invoice(
+                        user=seller, cliente=c3.id,
+                        lineas=[{"variante": v1.id, "cantidad": 1, "descuento_pct": 0}],
+                        transportadora="OTRA", numero_guia="GUIA-CUC-991",
+                        observaciones="Entrega local en tienda", token=uuid.uuid4(),
+                    )
+                    invoices_count += 1
+
+        SaldoFinanciero.objects.get_or_create(nombre="Caja General", defaults={"saldo_actual": 0})
+        self.stdout.write(self.style.SUCCESS(f"Clientes nuevos: {clients}. Referencias con precio nuevo: {priced}. Facturas demo creadas: {invoices_count}."))

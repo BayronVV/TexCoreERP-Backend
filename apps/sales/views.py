@@ -17,7 +17,9 @@ from .models import Cliente, DetalleVenta, FacturaVenta, PrecioReferencia
 from .pdf import invoice_pdf
 from .serializers import (
     AnularInputSerializer,
+    CarteraResumenSerializer,
     ClienteSerializer,
+    ConciliarInputSerializer,
     FacturaInputSerializer,
     FacturaSerializer,
     MetadatosVentaSerializer,
@@ -34,14 +36,14 @@ CANCEL_PERMISSIONS = {"POST": catalog.SALES_CANCEL}
 
 
 def invoice_queryset():
-    return FacturaVenta.objects.select_related("vendedor", "anulada_por").prefetch_related(
+    return FacturaVenta.objects.select_related("vendedor", "anulada_por", "cobrado_por").prefetch_related(
         Prefetch("lineas", queryset=DetalleVenta.objects.order_by("id"))
     )
 
 
 @extend_schema(tags=["ventas"])
 class MetadatosVentaView(APIView):
-    """Tipos de cliente con su lista de precios y descuento máximo, transportadoras, IVA y la leyenda de la factura."""
+    """Tipos de cliente con su lista de precios y descuento máximo, transportadoras, estados de cobro, IVA y leyenda."""
     required_permissions = VIEW_PERMISSIONS
 
     @extend_schema(summary="Opciones y reglas de la venta", responses={200: MetadatosVentaSerializer})
@@ -53,6 +55,7 @@ class MetadatosVentaView(APIView):
             ],
             "tipos_documento": [{"codigo": code, "nombre": name} for code, name in catalog.DOCUMENT_TYPES],
             "transportadoras": [{"codigo": code, "nombre": name} for code, name in catalog.CARRIERS],
+            "estados_cobro": [{"codigo": code, "nombre": name} for code, name in catalog.COLLECT_STATES],
             "iva_tarifa": catalog.IVA_RATE, "aviso": catalog.INVOICE_NOTICE, "motivo_anulacion_minimo": catalog.MIN_CANCEL_REASON,
         })
 
@@ -164,9 +167,12 @@ class FacturaListCreateView(APIView):
     required_permissions = INVOICE_PERMISSIONS
 
     @extend_schema(
-        summary="Listar las facturas (filtros: cliente, estado, desde, hasta, q, limit)",
+        summary="Listar las facturas (filtros: cliente, estado, estado_cobro, transportadora, desde, hasta, q, limit)",
         parameters=[
-            LIMIT_PARAM, OpenApiParameter("cliente", int, description="Id del cliente"), OpenApiParameter("estado", str, description="EMITIDA o ANULADA"),
+            LIMIT_PARAM, OpenApiParameter("cliente", int, description="Id del cliente"),
+            OpenApiParameter("estado", str, description="EMITIDA o ANULADA"),
+            OpenApiParameter("estado_cobro", str, description="POR_COBRAR, PAGADO o DEVOLUCION"),
+            OpenApiParameter("transportadora", str, description="INTERRAPIDISIMO, ENVIA u OTRA"),
             OpenApiParameter("desde", str, description="Fecha mínima (AAAA-MM-DD)"), OpenApiParameter("hasta", str, description="Fecha máxima"),
             OpenApiParameter("q", str, description="Número de factura, cliente o documento"),
         ],
@@ -174,7 +180,10 @@ class FacturaListCreateView(APIView):
     )
     def get(self, request):
         invoices = apply_filters(
-            invoice_queryset(), request.query_params, [("cliente", "cliente_id"), ("estado", "estado"), ("desde", "fecha__gte"), ("hasta", "fecha__lte")],
+            invoice_queryset(), request.query_params, [
+                ("cliente", "cliente_id"), ("estado", "estado"), ("estado_cobro", "estado_cobro"),
+                ("transportadora", "transportadora"), ("desde", "fecha__gte"), ("hasta", "fecha__lte"),
+            ],
         )
         q = request.query_params.get("q", "").strip()
         if q:
@@ -240,4 +249,39 @@ class FacturaAnularView(APIView):
         data = AnularInputSerializer(data=request.data)
         data.is_valid(raise_exception=True)
         invoice = invoicing.cancel_invoice(user=request.user, factura_id=pk, motivo=data.validated_data["motivo"])
+        return Response(FacturaSerializer(invoice_queryset().get(pk=invoice.pk)).data)
+
+
+@extend_schema(tags=["ventas"])
+class CarteraResumenView(APIView):
+    """Totales consolidados de cartera y saldo financiero de la empresa (HU 7.3)."""
+    required_permissions = VIEW_PERMISSIONS
+
+    @extend_schema(summary="Resumen de cartera y saldo financiero", responses={200: CarteraResumenSerializer})
+    def get(self, request):
+        return Response(CarteraResumenSerializer(invoicing.get_cartera_summary()).data)
+
+
+@extend_schema(tags=["ventas"])
+class FacturaConciliarView(APIView):
+    """Acción rápida para cambiar el estado de cartera a Pagado o Devolución (HU 7.3)."""
+    required_permissions = INVOICE_PERMISSIONS
+
+    @extend_schema(
+        summary="Conciliar recaudo o devolución de una factura",
+        request=ConciliarInputSerializer,
+        responses={200: FacturaSerializer},
+        description="Cambia el estado de cobro a PAGADO (suma el recaudo al saldo financiero de la empresa) o a DEVOLUCION "
+                    "(reingresa las prendas a producto terminado por devolución contraentrega). Solo se permite sobre facturas emitidas por cobrar.",
+    )
+    def post(self, request, pk):
+        data = ConciliarInputSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        invoice = invoicing.reconcile_collection(
+            user=request.user,
+            factura_id=pk,
+            nuevo_estado=data.validated_data["estado_cobro"],
+            motivo=data.validated_data.get("motivo", ""),
+            observaciones=data.validated_data.get("observaciones", ""),
+        )
         return Response(FacturaSerializer(invoice_queryset().get(pk=invoice.pk)).data)

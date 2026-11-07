@@ -431,6 +431,8 @@ Rutas y permisos (la referencia exacta está en Swagger, etiqueta `ventas`):
 | `/api/ventas/facturas/<id>/` | `GET` con sus líneas | `ventas.ver` |
 | `/api/ventas/facturas/<id>/pdf/` | `GET`: descarga `FV-0001.pdf` | `ventas.ver` |
 | `/api/ventas/facturas/<id>/anular/` | `POST` con `motivo` | `ventas.anular` |
+| `/api/ventas/facturas/<id>/conciliar/` | `POST` con `estado_cobro` (`PAGADO` o `DEVOLUCION`), `motivo` u `observaciones` (HU 7.3) | `ventas.gestionar` |
+| `/api/ventas/cartera/resumen/` | `GET`: totales de cartera y saldo financiero de la empresa (HU 7.3) | `ventas.ver` |
 
 Validaciones de clientes y precios: el documento son de 5 a 15 dígitos, sin puntos ni guiones, y no puede repetirse entre clientes activos
 del mismo tipo de documento; el dígito de verificación (un solo número) solo aplica al NIT; el nombre pide al menos 3 caracteres y el
@@ -448,7 +450,11 @@ facturas) y los otorga al **Gerente**; el Administrador los tiene de forma impl�
 - *Nueva venta* (`/ventas/nueva`, exige `ventas.gestionar`): elegir o crear el cliente, una **matriz de color × talla** con la disponibilidad de
   cada celda, el descuento por línea con su tope, los **totales en vivo** (subtotal, descuento, base gravable, IVA y total), el despacho
   (transportadora y guía) y el botón **Facturar**, que envía el `token` del formulario. Al terminar ofrece **Descargar PDF**.
-- *Facturas* (`/ventas/facturas`): lista con búsqueda por número, cliente o documento y filtros básicos de estado y fechas; el detalle muestra
+- *Gestión de cartera* (`/ventas/cartera`, HU 7.3): tablero de cartera con saldo financiero de la empresa, total pendiente de recaudo,
+  recaudado y devoluciones. Filtros por pestañas de estado (destacando pedidos pendientes de cobro), transportadora y búsqueda.
+  Incluye **acciones rápidas** para marcar pedidos como `Pagado` (sumando el recaudo al saldo financiero) o registrar `Devolución`
+  (reingresando las prendas a producto terminado).
+- *Facturas* (`/ventas/facturas`): lista con búsqueda por número, cliente o documento y filtros básicos de estado, recaudo y fechas; el detalle muestra
   las líneas con el precio, descuento e IVA del momento, el PDF y, con `ventas.anular`, la anulación con motivo.
 - *Clientes* (`/ventas/clientes`) y *Precios* (`/ventas/precios`): mantenimiento de clientes (con permiso de gestionar) y del costo de
   fábrica y los precios por referencia (con `ventas.precios`).

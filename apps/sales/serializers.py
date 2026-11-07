@@ -109,8 +109,10 @@ class FacturaSerializer(serializers.ModelSerializer):
     """Factura POS interna (no es factura electrónica). Inalterable: solo se anula."""
     vendedor_nombre = serializers.SerializerMethodField()
     anulada_por_nombre = serializers.SerializerMethodField()
+    cobrado_por_nombre = serializers.SerializerMethodField()
     cliente_tipo_nombre = serializers.SerializerMethodField()
     transportadora_nombre = serializers.SerializerMethodField()
+    estado_cobro_nombre = serializers.SerializerMethodField()
     unidades = serializers.SerializerMethodField()
     aviso = serializers.SerializerMethodField(help_text="Leyenda que acompaña a la factura")
     lineas = DetalleVentaSerializer(many=True, read_only=True)
@@ -119,10 +121,10 @@ class FacturaSerializer(serializers.ModelSerializer):
         model = FacturaVenta
         fields = [
             "id", "numero", "estado", "fecha", "cliente", "cliente_nombre", "cliente_documento", "cliente_tipo", "cliente_tipo_nombre",
-            "cliente_ciudad", "cliente_direccion", "cliente_telefono", "vendedor_nombre", "modalidad_pago", "estado_cobro",
+            "cliente_ciudad", "cliente_direccion", "cliente_telefono", "vendedor_nombre", "modalidad_pago", "estado_cobro", "estado_cobro_nombre",
             "transportadora", "transportadora_nombre", "numero_guia", "observaciones", "subtotal", "descuento_total", "base_gravable",
             "iva_tarifa", "iva_total", "total", "valor_a_recaudar", "unidades", "motivo_anulacion", "anulada_por_nombre", "anulada_en",
-            "aviso", "lineas", "created_at",
+            "fecha_cobro", "cobrado_por_nombre", "motivo_devolucion", "aviso", "lineas", "created_at",
         ]
 
     def get_vendedor_nombre(self, obj) -> str:
@@ -131,8 +133,14 @@ class FacturaSerializer(serializers.ModelSerializer):
     def get_anulada_por_nombre(self, obj) -> str:
         return _name(obj.anulada_por) if obj.anulada_por else ""
 
+    def get_cobrado_por_nombre(self, obj) -> str:
+        return _name(obj.cobrado_por) if obj.cobrado_por else ""
+
     def get_cliente_tipo_nombre(self, obj) -> str:
         return catalog.CLIENT_TYPE_NAMES.get(obj.cliente_tipo, obj.cliente_tipo)
+
+    def get_estado_cobro_nombre(self, obj) -> str:
+        return catalog.COLLECT_STATE_NAMES.get(obj.estado_cobro, obj.estado_cobro)
 
     def get_transportadora_nombre(self, obj) -> str:
         return catalog.CARRIER_NAMES.get(obj.transportadora, "")
@@ -165,6 +173,24 @@ class AnularInputSerializer(serializers.Serializer):
     motivo = serializers.CharField(max_length=255)
 
 
+class ConciliarInputSerializer(serializers.Serializer):
+    """Acción rápida para cambiar el estado de cartera: PAGADO o DEVOLUCION (HU 7.3)."""
+    estado_cobro = serializers.ChoiceField(choices=[catalog.COLLECT_PAID, catalog.COLLECT_RETURNED])
+    motivo = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    observaciones = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+
+
+class CarteraResumenSerializer(serializers.Serializer):
+    """Resumen consolidado de cartera y saldo financiero de la empresa."""
+    saldo_financiero = serializers.IntegerField()
+    total_por_cobrar = serializers.IntegerField()
+    conteo_por_cobrar = serializers.IntegerField()
+    total_recaudado = serializers.IntegerField()
+    conteo_pagadas = serializers.IntegerField()
+    total_devoluciones = serializers.IntegerField()
+    conteo_devoluciones = serializers.IntegerField()
+
+
 class OpcionSerializer(serializers.Serializer):
     codigo = serializers.CharField()
     nombre = serializers.CharField()
@@ -180,6 +206,7 @@ class MetadatosVentaSerializer(serializers.Serializer):
     tipos_cliente = TipoClienteSerializer(many=True)
     tipos_documento = OpcionSerializer(many=True)
     transportadoras = OpcionSerializer(many=True)
+    estados_cobro = OpcionSerializer(many=True)
     iva_tarifa = serializers.IntegerField()
     aviso = serializers.CharField()
     motivo_anulacion_minimo = serializers.IntegerField()

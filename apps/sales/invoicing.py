@@ -13,6 +13,7 @@ Factura POS interna y descuento de inventario (HU 7.1 / RF23).
 import uuid
 
 from django.db import IntegrityError, transaction
+from django.db.models import Sum
 from django.http import Http404
 from django.utils import timezone
 from rest_framework.exceptions import APIException
@@ -24,7 +25,7 @@ from apps.inventory.services import fail, next_code
 from apps.references.models import Variante
 
 from . import catalog
-from .models import Cliente, DetalleVenta, FacturaVenta, PrecioReferencia
+from .models import Cliente, DetalleVenta, FacturaVenta, MovimientoCartera, PrecioReferencia, SaldoFinanciero
 
 
 class AlreadyInvoiced(APIException):
@@ -199,6 +200,10 @@ def cancel_invoice(*, user, factura_id, motivo):
         raise Http404("La factura no existe.")
     if invoice.estado == catalog.STATUS_CANCELLED:
         raise AlreadyCancelled({"detail": [f"La factura {invoice.numero} ya está anulada."]})
+    if invoice.estado_cobro == catalog.COLLECT_PAID:
+        fail("No se puede anular una factura que ya fue recaudada.", "estado_cobro")
+    if invoice.estado_cobro == catalog.COLLECT_RETURNED:
+        fail("La factura ya fue gestionada como devolución.", "estado_cobro")
     lines = list(invoice.lineas.order_by("variante_id"))
     stocks = lock_stock([line.variante_id for line in lines])
     for line in lines:
@@ -216,3 +221,117 @@ def cancel_invoice(*, user, factura_id, motivo):
     invoice.anulada_en = timezone.now()
     invoice.save(update_fields=["estado", "motivo_anulacion", "anulada_por", "anulada_en", "updated_at"])
     return invoice
+
+
+@transaction.atomic
+def reconcile_collection(*, user, factura_id, nuevo_estado, motivo="", observaciones=""):
+    """
+    Concilia una factura de venta (HU 7.3):
+    - PAGADO: confirma el recaudo de la transportadora, marca la factura PAGADO,
+      actualiza el saldo financiero de la empresa y registra el movimiento de cartera.
+    - DEVOLUCION: si el cliente no recibió o rechazó el pedido, reingresa las prendas
+      al inventario de producto terminado (SALE_RETURN), marca la factura DEVOLUCION y registra el motivo.
+    """
+    if nuevo_estado not in (catalog.COLLECT_PAID, catalog.COLLECT_RETURNED):
+        fail(f"Estado de cobro inválido. Debe ser {catalog.COLLECT_PAID} o {catalog.COLLECT_RETURNED}.", "estado_cobro")
+
+    invoice = FacturaVenta.objects.select_for_update().filter(pk=factura_id).first()
+    if invoice is None:
+        raise Http404("La factura no existe.")
+    if invoice.estado == catalog.STATUS_CANCELLED:
+        fail("No se puede conciliar una factura anulada.", "estado")
+    if invoice.estado_cobro != catalog.COLLECT_PENDING:
+        current_name = catalog.COLLECT_STATE_NAMES.get(invoice.estado_cobro, invoice.estado_cobro)
+        fail(f"La factura ya fue gestionada como {current_name}.", "estado_cobro")
+
+    saldo_obj, _ = SaldoFinanciero.objects.select_for_update().get_or_create(nombre="Caja General", defaults={"saldo_actual": 0})
+    before = saldo_obj.saldo_actual
+    now = timezone.now()
+
+    if nuevo_estado == catalog.COLLECT_PAID:
+        amount = invoice.valor_a_recaudar
+        after = before + amount
+        saldo_obj.saldo_actual = after
+        saldo_obj.save(update_fields=["saldo_actual", "updated_at"])
+
+        invoice.estado_cobro = catalog.COLLECT_PAID
+        invoice.fecha_cobro = now
+        invoice.cobrado_por = user
+        if observaciones:
+            obs = str(observaciones).strip()[:500]
+            invoice.observaciones = f"{invoice.observaciones} | Cobro: {obs}" if invoice.observaciones else f"Cobro: {obs}"
+        invoice.save(update_fields=["estado_cobro", "fecha_cobro", "cobrado_por", "observaciones", "updated_at"])
+
+        MovimientoCartera.objects.create(
+            factura=invoice,
+            tipo=catalog.FINANCIAL_LEDGER_RECAUDO,
+            monto=amount,
+            saldo_antes=before,
+            saldo_despues=after,
+            usuario=user,
+            observaciones=str(observaciones or f"Recaudo de {invoice.numero} confirmado")[:255],
+        )
+
+    elif nuevo_estado == catalog.COLLECT_RETURNED:
+        reason = str(motivo or "").strip()
+        if len(reason) < 5:
+            fail("Indica el motivo de la devolución (mínimo 5 caracteres).", "motivo")
+        if len(reason) > 255:
+            fail("El motivo de devolución admite máximo 255 caracteres.", "motivo")
+
+        lines = list(invoice.lineas.order_by("variante_id"))
+        stocks = lock_stock([line.variante_id for line in lines])
+        for line in lines:
+            stock = stocks[line.variante_id]
+            s_before = stock.cantidad
+            stock.cantidad = s_before + line.cantidad
+            stock.save(update_fields=["cantidad", "updated_at"])
+            MovimientoTerminado.objects.create(
+                variante_id=line.variante_id,
+                tipo=finished_catalog.SALE_RETURN,
+                cantidad=line.cantidad,
+                saldo_antes=s_before,
+                saldo_despues=stock.cantidad,
+                factura=invoice,
+                usuario=user,
+                motivo=f"Devolución contraentrega de {invoice.numero}: {reason}"[:255],
+            )
+
+        invoice.estado_cobro = catalog.COLLECT_RETURNED
+        invoice.motivo_devolucion = reason
+        invoice.fecha_cobro = now
+        invoice.cobrado_por = user
+        invoice.save(update_fields=["estado_cobro", "motivo_devolucion", "fecha_cobro", "cobrado_por", "updated_at"])
+
+        MovimientoCartera.objects.create(
+            factura=invoice,
+            tipo=catalog.FINANCIAL_LEDGER_DEVOLUCION,
+            monto=0,
+            saldo_antes=before,
+            saldo_despues=before,
+            usuario=user,
+            observaciones=f"Devolución: {reason}"[:255],
+        )
+
+    return invoice
+
+
+def get_cartera_summary():
+    """Calcula los totales de cartera y el saldo financiero actual de la empresa."""
+    saldo_obj = SaldoFinanciero.objects.first()
+    saldo_actual = saldo_obj.saldo_actual if saldo_obj else 0
+
+    issued = FacturaVenta.objects.filter(estado=catalog.STATUS_ISSUED)
+    por_cobrar = issued.filter(estado_cobro=catalog.COLLECT_PENDING)
+    pagadas = issued.filter(estado_cobro=catalog.COLLECT_PAID)
+    devoluciones = issued.filter(estado_cobro=catalog.COLLECT_RETURNED)
+
+    return {
+        "saldo_financiero": saldo_actual,
+        "total_por_cobrar": por_cobrar.aggregate(s=Sum("valor_a_recaudar"))["s"] or 0,
+        "conteo_por_cobrar": por_cobrar.count(),
+        "total_recaudado": pagadas.aggregate(s=Sum("valor_a_recaudar"))["s"] or 0,
+        "conteo_pagadas": pagadas.count(),
+        "total_devoluciones": devoluciones.aggregate(s=Sum("valor_a_recaudar"))["s"] or 0,
+        "conteo_devoluciones": devoluciones.count(),
+    }

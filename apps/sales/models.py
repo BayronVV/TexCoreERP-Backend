@@ -91,6 +91,9 @@ class FacturaVenta(BaseModel):
     motivo_anulacion = models.CharField(max_length=255, blank=True)
     anulada_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True, blank=True)
     anulada_en = models.DateTimeField(null=True, blank=True)
+    fecha_cobro = models.DateTimeField(null=True, blank=True, help_text="Fecha y hora de confirmación del recaudo o devolución")
+    cobrado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True, blank=True)
+    motivo_devolucion = models.CharField(max_length=255, blank=True)
 
     class Meta:
         db_table = "ventas_factura"
@@ -137,3 +140,41 @@ class DetalleVenta(BaseModel):
             models.CheckConstraint(condition=Q(base=F("subtotal") - F("descuento")), name="ck_ventas_linea_base"),
             models.CheckConstraint(condition=Q(total=F("base") + F("iva")), name="ck_ventas_linea_total"),
         ]
+
+
+class SaldoFinanciero(BaseModel):
+    """
+    Saldo financiero general de la empresa (pesos colombianos enteros).
+    Acumula el dinero disponible por recaudos de facturación contraentrega (HU 7.3).
+    """
+    nombre = models.CharField(max_length=100, default="Caja General")
+    saldo_actual = models.BigIntegerField(default=0)
+
+    class Meta:
+        db_table = "ventas_saldo_financiero"
+        verbose_name = "Saldo financiero"
+
+    def __str__(self):
+        return f"{self.nombre}: ${self.saldo_actual}"
+
+
+class MovimientoCartera(BaseModel):
+    """
+    Libro de movimientos del saldo financiero por conciliación de cartera (HU 7.3).
+    Registra cada entrada de dinero por recaudo confirmado o registro de devolución.
+    """
+    factura = models.ForeignKey(FacturaVenta, on_delete=models.PROTECT, related_name="movimientos_cartera")
+    tipo = models.CharField(max_length=20, choices=catalog.FINANCIAL_LEDGER_TYPES)
+    monto = models.BigIntegerField(help_text="Monto recaudado en pesos enteros (cero si es devolución)")
+    saldo_antes = models.BigIntegerField()
+    saldo_despues = models.BigIntegerField()
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    observaciones = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        db_table = "ventas_movimiento_cartera"
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.tipo} {self.factura.numero}: ${self.monto}"
+

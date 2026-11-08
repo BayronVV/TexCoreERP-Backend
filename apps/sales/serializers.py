@@ -3,6 +3,8 @@ import re
 
 from rest_framework import serializers
 
+from apps.shipping import catalog as shipping_catalog
+
 from . import catalog
 from .models import Cliente, DetalleVenta, FacturaVenta
 
@@ -113,6 +115,7 @@ class FacturaSerializer(serializers.ModelSerializer):
     cliente_tipo_nombre = serializers.SerializerMethodField()
     transportadora_nombre = serializers.SerializerMethodField()
     estado_cobro_nombre = serializers.SerializerMethodField()
+    guia = serializers.SerializerMethodField(help_text="Guía vigente de la factura (HU 7.2): estado, color de semáforo y rastreo")
     unidades = serializers.SerializerMethodField()
     aviso = serializers.SerializerMethodField(help_text="Leyenda que acompaña a la factura")
     lineas = DetalleVentaSerializer(many=True, read_only=True)
@@ -124,7 +127,7 @@ class FacturaSerializer(serializers.ModelSerializer):
             "cliente_ciudad", "cliente_direccion", "cliente_telefono", "vendedor_nombre", "modalidad_pago", "estado_cobro", "estado_cobro_nombre",
             "transportadora", "transportadora_nombre", "numero_guia", "observaciones", "subtotal", "descuento_total", "base_gravable",
             "iva_tarifa", "iva_total", "total", "valor_a_recaudar", "unidades", "motivo_anulacion", "anulada_por_nombre", "anulada_en",
-            "fecha_cobro", "cobrado_por_nombre", "motivo_devolucion", "aviso", "lineas", "created_at",
+            "fecha_cobro", "cobrado_por_nombre", "motivo_devolucion", "guia", "aviso", "lineas", "created_at",
         ]
 
     def get_vendedor_nombre(self, obj) -> str:
@@ -141,6 +144,19 @@ class FacturaSerializer(serializers.ModelSerializer):
 
     def get_estado_cobro_nombre(self, obj) -> str:
         return catalog.COLLECT_STATE_NAMES.get(obj.estado_cobro, obj.estado_cobro)
+
+    def get_guia(self, obj):
+        guides = getattr(obj, "guia_vigente", None)
+        if guides is None:  # fuera de `invoice_queryset` (sin precarga)
+            guides = list(obj.guias.filter(vigente=True))
+        if not guides:
+            return None
+        guide = guides[0]
+        return {
+            "id": guide.id, "estado": guide.estado, "estado_nombre": shipping_catalog.STATE_NAMES.get(guide.estado, guide.estado),
+            "color": shipping_catalog.STATE_COLORS.get(guide.estado, "gris"), "rastreo_estado": guide.rastreo_estado,
+            "consultada_en": guide.rastreo_consultado_en, "novedad": guide.novedad,
+        }
 
     def get_transportadora_nombre(self, obj) -> str:
         return catalog.CARRIER_NAMES.get(obj.transportadora, "")

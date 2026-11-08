@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     "apps.finished",
     "apps.sales",
     "apps.reports",
+    "apps.shipping",
 ]
 
 MIDDLEWARE = [
@@ -253,3 +254,18 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
 ]
+
+# --- Rastreo de guías con Track123 (HU 7.2) ---
+# La clave NUNCA va en el código: sale del entorno (.env local, ignorado por git, o las variables de Render). Las pruebas no consultan
+# la API real: el rastreo queda apagado cuando se corre `manage.py test`.
+TRACK123_API_KEY = os.getenv("TRACK123_API_KEY", "").strip()
+TRACK123_ENABLED = env_bool("TRACK123_ENABLED", False) and "test" not in sys.argv
+TRACK123_BASE_URL = os.getenv("TRACK123_BASE_URL", "https://api.track123.com/gateway/open-api/tk/v2.1").rstrip("/")
+TRACK123_TIMEOUT = int(os.getenv("TRACK123_TIMEOUT", "10"))
+TRACK123_COOLDOWN_MINUTES = int(os.getenv("TRACK123_COOLDOWN_MINUTES", "10"))  # no se consulta una guía antes de este tiempo
+TRACK123_QUOTA_RESERVE = int(os.getenv("TRACK123_QUOTA_RESERVE", "10"))  # no se registran guías nuevas con menos cuota que esta
+
+# --- Siembra de datos de demostración al desplegar (opcional) ---
+# Con SEED_DEMO_ON_DEPLOY=true, el `migrate --noinput` del arranque de Render corre al final `seed_demo_completo --permitir-produccion`
+# (idempotente, no borra nada, nunca bloquea el arranque). Los datos del sistema son simulados. Se apaga solo al correr las pruebas.
+SEED_DEMO_ON_DEPLOY = env_bool("SEED_DEMO_ON_DEPLOY", False) and "test" not in sys.argv

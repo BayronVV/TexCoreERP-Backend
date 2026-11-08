@@ -27,9 +27,9 @@ flowchart LR
 
 - Django es **MVT** (Model, View, Template): su *View* hace de controlador. Aquí la plantilla la sustituye
   una SPA de React que es un proyecto aparte, así que MVC solo describe una parte del sistema.
-- Cada capa se cambia y se prueba sin tocar las demás: las pruebas del backend (830) y las funciones puras del frontend no dependen de la interfaz.
+- Cada capa se cambia y se prueba sin tocar las demás: las pruebas del backend (922) y las funciones puras del frontend no dependen de la interfaz.
 - Permite repartir el trabajo (frontend y backend) y cumple el requisito de arquitectura modular (RNF09):
-  `users`, `inventory`, `references`, `production`, `purchasing`, `quality`, `finished`, `sales` y `core` son módulos independientes y los siguientes se añaden igual.
+  `users`, `inventory`, `references`, `production`, `purchasing`, `quality`, `finished`, `sales`, `shipping` y `core` son módulos independientes y los siguientes se añaden igual.
 
 Correspondencia con el modelo de análisis (interfaz / control / entidad):
 
@@ -53,7 +53,8 @@ backend/
 │   ├── production/ # simulación, órdenes y lotes, tiempos, recursos, monitor y costeo
 │   ├── quality/    # control de calidad: catálogo de defectos, inspecciones y marras
 │   ├── finished/   # producto terminado: ingreso de las aptas, existencias por talla y libro de movimientos
-│   └── sales/      # ventas: clientes, precios, factura POS interna (con PDF y anulación) y descuento del producto terminado
+│   ├── sales/      # ventas: clientes, precios, factura POS interna (con PDF y anulación) y descuento del producto terminado
+│   └── shipping/   # envíos: guías, relaciones de despacho (con PDF), devolución física y rastreo con Track123
 └── docs/          # esta documentación
 ```
 
@@ -68,15 +69,16 @@ backend/
 | `quality` | `core`, `inventory`, `production` | Defectos, inspecciones y marras de los lotes que vuelven de lavandería; lee los lotes y la recepción de lavandería de `production` y reutiliza los consecutivos de `inventory` |
 | `finished` | `core`, `inventory`, `references`, `production`, `quality` | Ingreso de las aptas de una inspección al inventario final, existencias por talla y color y libro de movimientos; lee `Inspeccion` de `quality`, `Lote` y `LoteTalla` de `production`, `Variante` de `references` y reutiliza el consecutivo y el estado de la orden de salida de `inventory` |
 | `sales` | `core`, `inventory`, `references`, `finished` | Clientes, precios por referencia y factura POS interna (no electrónica) con su PDF (reportlab) y su anulación; al facturar descuenta el stock y escribe en el libro de `finished` (`SALIDA_VENTA` y `DEVOLUCION_VENTA`) reutilizando sus servicios de bloqueo de saldos, y el consecutivo y el formato de error de `inventory` |
+| `shipping` | `core`, `inventory`, `sales` | Guías de envío de las facturas con su semáforo y su historial, relaciones de despacho `RD-0001` con PDF (reportlab), devolución física (reutiliza `reconcile_collection` de `sales`, que reingresa el stock) y rastreo opcional de Interrapidísimo con la API de Track123 (`track123.py` es el cliente HTTP y `tracking.py` aplica la respuesta); reutiliza el consecutivo y el formato de error de `inventory` |
 
-`quality` depende de `production` (lee `Lote` y `RecepcionLote`, y no modifica ninguno); nada de `production` depende de `quality`. `inventory` y `references` se conocen entre sí: la orden de salida apunta a una referencia y la ficha técnica lee el catálogo de productos. `finished` depende de `quality` (lee la inspección y no la modifica) y de `production` (lee el lote y lo planificado por talla), y nada de ellas depende de `finished`. `sales` depende de `finished` (usa su libro y su bloqueo de saldos); la única referencia en sentido contrario es la llave foránea opcional `MovimientoTerminado.factura`, declarada con el nombre `"sales.FacturaVenta"` para no importar el modelo. `production` y `purchasing` solo consumen a `inventory` a través de sus servicios, nunca escriben saldos por su cuenta.
+`quality` depende de `production` (lee `Lote` y `RecepcionLote`, y no modifica ninguno); nada de `production` depende de `quality`. `inventory` y `references` se conocen entre sí: la orden de salida apunta a una referencia y la ficha técnica lee el catálogo de productos. `finished` depende de `quality` (lee la inspección y no la modifica) y de `production` (lee el lote y lo planificado por talla), y nada de ellas depende de `finished`. `sales` depende de `finished` (usa su libro y su bloqueo de saldos); la única referencia en sentido contrario es la llave foránea opcional `MovimientoTerminado.factura`, declarada con el nombre `"sales.FacturaVenta"` para no importar el modelo. `production` y `purchasing` solo consumen a `inventory` a través de sus servicios, nunca escriben saldos por su cuenta. `shipping` depende de `sales` (la guía apunta a la factura y la devolución usa su conciliación de cartera) y `sales` llama a `shipping.services` para crear la guía al facturar y para anular la guía al anular la factura; ese sentido contrario se resuelve con un import local dentro de la función, y `sales` solo lee la guía vigente para mostrarla en la factura (campo `guia`). `FacturaVenta.transportadora` y `numero_guia` son el espejo de la guía vigente y solo los escribe el servicio de guías.
 
 Cada app separa sus responsabilidades en `models.py`, `serializers.py`, `views.py`, `urls.py` y,
 cuando hay reglas de negocio, `services.py`. En `production` el motor de costeo (`costing.py`), el control de tiempos
 (`tracking.py`), el tablero (`monitor.py`) y los recursos (`resources.py`) son módulos de funciones sin dependencia de la vista,
 para probarlos por separado. Cada app guarda sus constantes en `catalog.py`.
 
-Las tablas llevan el prefijo de su módulo: `seguridad_`, `inventario_`, `referencias_`, `produccion_`, `compras_`, `calidad_`, `terminado_` y `ventas_`
+Las tablas llevan el prefijo de su módulo: `seguridad_`, `inventario_`, `referencias_`, `produccion_`, `compras_`, `calidad_`, `terminado_`, `ventas_` y `envios_`
 (ver [convenciones](convenciones-base-de-datos.md)).
 
 ## Flujo de una petición
@@ -137,6 +139,9 @@ Las reglas de negocio fallan con un error 400 `{campo: [mensaje]}` que la interf
 | Montos de la factura calculados solo en el servidor, en pesos enteros con redondeo de mitad hacia arriba | La factura es la suma de sus líneas y restricciones de la base exigen que las cuentas cuadren; lo que muestra la pantalla es una vista previa. |
 | Token único por formulario de venta | Un doble clic o un reintento no factura dos veces: el segundo envío responde `409` con el número ya creado. |
 | Descuento del vendedor con tope por tipo de cliente y piso en el costo de fábrica | La empresa deja decidir al vendedor sin vender por debajo del costo; el tope sale del tipo de cliente (Detal 5 %, Mayorista 15 %, Distribuidor 20 %). |
+| Guía de envío con máquina de estados, una sola guía vigente por factura e historial de solo inserción (`envios_`) | Las transiciones permitidas están en una tabla (`catalog.TRANSITIONS`) y todo cambio deja un evento con su origen (manual, Track123 o sistema). Reemplazar una guía no borra la anterior: pasa a `ANULADA`. Índices únicos parciales impiden dos guías vigentes por factura o el mismo número en dos facturas. |
+| Relación de despacho atómica con token | Todas las guías pasan a `EN_TRANSITO` en una transacción o ninguna, y el consecutivo `RD` no se gasta si algo falla; un doble clic responde `409` con la relación ya creada. |
+| Rastreo con Track123 solo por botón, con la cuota cuidada y sin bloquear nada | El plan tiene pocos registros de guías nuevas: registrar gasta cuota, consultar no. Por eso nunca es automático, hay enfriamiento por guía, una reserva de cuota y la última respuesta queda guardada y se reutiliza. Una falla de la API (503) deja la guía como estaba: vender y despachar no dependen de un tercero. La clave sale de variables de entorno, nunca del repositorio. |
 | Ingreso de producto terminado único por inspección, con la suma por talla igual a las aptas | Evita ingresar dos veces las mismas prendas; lo planificado por talla solo se guarda como dato de comparación. |
 | Permisos propios para fichas técnicas y compras (`fichas_tecnicas.*`, `compras.aprobar`) | Separar quién diseña, quién aprueba y quién recibe. |
 

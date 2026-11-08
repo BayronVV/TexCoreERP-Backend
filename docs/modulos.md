@@ -22,6 +22,7 @@ cuerpos y respuestas) están en Swagger (`/api/docs/`); cómo se usa cada pantal
 | HU 6.2 (TE-60) | Ingreso a inventario final (producto terminado) | `finished` | Producto Terminado → Ingreso, Existencias y Movimientos |
 | HU 6.3 (TE-61) | Ajuste manual de inventario de producto terminado | `finished` | Producto Terminado → Ajuste manual |
 | HU 7.1 (TE-62) | Facturación y descuento de inventario (factura POS interna) | `sales` | Ventas y Despachos → Panel de ventas, Nueva venta, Facturas, Clientes y Precios |
+| HU 7.2 (TE-63) | Gestión de guías de envío | `shipping` | Envíos → Guías, Por despachar / sin guía, Relaciones de despacho y Resumen |
 
 Cómo se conectan entre sí:
 
@@ -42,7 +43,11 @@ flowchart LR
     CONTEO["Conteo físico de la bodega"] -- "ajuste manual (HU 6.3)<br/>movimientos AJUSTE" --> TER
     TER -- "stock por talla y color" --> VEN["Ventas: factura POS interna<br/>(HU 7.1)"]
     VEN -- "SALIDA_VENTA al facturar<br/>DEVOLUCION_VENTA al anular" --> TER
-    VEN -. "por cobrar · guía de la transportadora<br/>(HU 7.2 y 7.3, pendientes)" .-> COBRO["Despacho y cobro"]
+    VEN -- "guía anotada al facturar<br/>(o después, si falta)" --> ENV["Envíos: guía y semáforo<br/>relación de despacho (HU 7.2)"]
+    ENV -. "estado real de Interrapidísimo<br/>solo con el botón Consultar estado" .-> T123["Track123"]
+    ENV -- "paquete devuelto: reingreso<br/>de las prendas, una sola vez" --> TER
+    VEN -. "por cobrar (HU 7.3)" .-> COBRO["Cobro: cartera"]
+    ENV -. "entregada: ya se puede cobrar" .-> COBRO
 ```
 
 ## Seguridad y usuarios (HU 1.x)
@@ -476,15 +481,151 @@ migración se prueban en `apps/users/tests.py`.
     - **Sin factura electrónica:** es un comprobante interno; no hay numeración autorizada, CUFE ni envío a la DIAN, ni contabilidad.
     - **Solo contraentrega:** no hay venta de contado, a crédito ni abonos (deuda técnica). La factura queda `POR_COBRAR` y la HU 7.3 la cobra.
     - **Sin pedidos ni reservas:** se factura contra el stock disponible en ese instante; no se reserva producto para un pedido.
-    - **Sin devolución parcial ni flete:** solo se anula la factura completa. En una devolución el flete se descuenta al vendedor (política de
-      la empresa) y lo resolverán las HU 7.2 y 7.3; la factura ya guarda el vendedor para ello.
+    - **Sin devolución parcial:** solo se anula la factura completa. En una devolución el flete se descuenta al vendedor (política de
+      la empresa): la HU 7.2 lo registra y lo reporta por vendedor, pero no lo descuenta (no hay nómina).
     - **Precios y costo a mano:** el Gerente fija el costo de fábrica y los precios; a futuro el costo saldrá de la liquidación de la orden
       (deuda técnica, ítem 19).
-    - **Despacho y cobro para después:** la transportadora y el número de guía se guardan, pero su seguimiento es de la HU 7.2.
+    - **Despacho y cobro:** la transportadora y la guía de la factura son el espejo de la guía vigente que administra el módulo de envíos
+      (HU 7.2, más abajo); el cobro es de la cartera (HU 7.3).
     - **Filtros avanzados e impresión directa:** quedan fuera; la lista tiene búsqueda, estado y fechas (Sprint 4) y el comprobante se entrega solo en PDF.
     - **Un solo IVA:** tarifa general del 19 %, sin productos exentos ni retenciones.
+
+## Envíos: guías de envío y relaciones de despacho (HU 7.2, TE-63)
+
+App nueva `apps/shipping`, rutas bajo `/api/envios/`, tablas `envios_*`. La lógica está en `services.py` (anotar la guía, cambiar estados,
+relación de despacho, flete y devolución), el rastreo en `tracking.py` (aplica la respuesta) y `track123.py` (cliente HTTP con la biblioteca estándar), el PDF
+de la relación en `pdf.py` (reportlab) y las constantes (permisos, estados, transiciones, plazos y mapeo de Track123) en `catalog.py`.
+
+**Cómo trabaja la empresa:** el vendedor genera la guía en el portal de la transportadora **antes de facturar** y la anota en *Nueva venta*. Anotarla es
+opcional, pero debe hacerse **lo antes posible**: una factura emitida sin guía pide *atención* desde **4 horas** y queda *vencida* desde **24 horas**
+(`/api/envios/pendientes/` trae `horas_sin_guia` y `urgencia`). Mientras falta, la factura aparece en **Por despachar / sin guía**. Cuando los paquetes
+salen de la bodega se agrupan en una **relación de despacho** (`RD-0001`), que pasa todas sus guías a *En tránsito*.
+
+Tablas nuevas (prefijo `envios_`, borrado lógico como el resto; el detalle de campos está en [modelo de datos](modelo-de-datos.md)):
+
+| Tabla | Qué guarda |
+|---|---|
+| `envios_guia` | La guía de una factura: transportadora y `numero_guia`, `estado`, `vigente`, la relación a la que pertenece, la `novedad` abierta, `valor_flete` y `flete_vendedor` (pesos enteros), las fechas de despacho, entrega y devolución, y los campos del rastreo (`rastreo_registrado`, `rastreo_estado`, `rastreo_subestado`, `rastreo_consultado_en`, `rastreo_proxima_consulta`, la última respuesta de Track123 en `rastreo_respuesta` y `rastreo_sintetico` para los datos de demostración). |
+| `envios_evento` | El historial de cada guía: estado antes y después, nota, origen del cambio (`MANUAL`, `TRACK123` o `SISTEMA`) y usuario. **Solo inserción**: el modelo rechaza editar un evento. |
+| `envios_relacion` | La relación de despacho: código `RD-0001` (único), transportadora, fecha, responsable, observaciones, quién la creó y el `token` único del formulario. |
+
+Restricciones de la base: una sola guía **vigente** por factura, el mismo número de una transportadora no puede estar en dos guías vigentes,
+fletes no negativos y número de guía no vacío (ver [convenciones](convenciones-base-de-datos.md#restricciones-de-los-envios)). `FacturaVenta.transportadora`
+y `numero_guia` se conservan como **espejo de la guía vigente** y solo los escribe el servicio de guías (un único camino de escritura), por lo que el PDF de la factura, la
+cartera y la búsqueda siguen funcionando.
+
+### Estados y semáforo
+
+| Estado | Color | Significa |
+|---|---|---|
+| `POR_DESPACHAR` | gris | Tiene guía, pero el paquete sigue en la bodega. |
+| `EN_TRANSITO` | azul | Ya salió con la transportadora (por una relación de despacho o por el rastreo). |
+| `EN_NOVEDAD` | amarillo | Hay un problema con la entrega; guarda qué pasó en `novedad`. |
+| `ENTREGADA` | verde | El cliente recibió el paquete. |
+| `DEVUELTA` | rojo | El paquete regresa a la empresa; guarda el motivo. |
+| `ANULADA` | gris | Reemplazada por otra guía o anulada con su factura (no cuenta en el semáforo del resumen). |
+
+```mermaid
+stateDiagram-v2
+    [*] --> POR_DESPACHAR: anotar la guía
+    POR_DESPACHAR --> EN_TRANSITO: relación de despacho
+    POR_DESPACHAR --> ANULADA: se reemplaza o se anula la factura
+    EN_TRANSITO --> ENTREGADA
+    EN_TRANSITO --> EN_NOVEDAD: con nota
+    EN_TRANSITO --> DEVUELTA: con nota
+    EN_NOVEDAD --> EN_TRANSITO
+    EN_NOVEDAD --> ENTREGADA
+    EN_NOVEDAD --> DEVUELTA: con nota
+    ENTREGADA --> [*]
+    DEVUELTA --> [*]
+    ANULADA --> [*]
+```
+
+Reglas del servicio (cada cambio de estado deja un evento; cada operación es una sola transacción):
+
+| Regla | Detalle |
+|---|---|
+| Transiciones | Solo las del diagrama; cualquier otra responde `400`. Los estados finales (`ENTREGADA`, `DEVUELTA`, `ANULADA`) no se mueven, ni a mano ni por el rastreo. |
+| Nota obligatoria | **Novedad** y **devolución** exigen una nota de al menos **5 caracteres** (máximo 255). |
+| Una guía vigente por factura | Anotar un número distinto sobre una factura con guía **por despachar** anula la anterior (evento «Reemplazada por…») y crea la nueva. Si la guía ya salió, no se puede reemplazar. Repetir el mismo número y transportadora no hace nada. |
+| Número único | El mismo número de una transportadora no puede estar en dos facturas (`400` con la factura que ya lo tiene). Los espacios se quitan; máximo 40 caracteres. Una guía de Interrapidísimo que no tenga 12 dígitos se acepta, pero trae `aviso_formato` (advierte, no bloquea). |
+| Guía al facturar | `POST /api/ventas/facturas/` con `numero_guia` crea la guía en la misma transacción de la factura (la transportadora es obligatoria si hay número). Sin número, la factura queda sin guía. |
+| Factura anulada | Anular una factura con guía **despachada** (en tránsito, con novedad, entregada o devuelta) se rechaza con `400`; con la guía **por despachar**, la guía se anula también. No se anota guía a una factura anulada ni a una ya gestionada como devolución. |
+| Relación de despacho | Atómica: todas las guías (hasta 100) deben estar por despachar, ser de **la misma transportadora** y tener la factura emitida; si una falla no cambia ninguna ni se gasta el consecutivo `RD`. Cada guía pasa a `EN_TRANSITO` y queda enlazada a la relación. El `token` del formulario evita el doble clic: una relación ya creada con ese `token` responde **`409`** con su código. El PDF (`RD-0001.pdf`, con reportlab) lista guías, facturas, clientes, el total a recaudar y los espacios para firmar la entrega. |
+| Flete | Entero en pesos de 0 a 10.000.000, en cualquier guía no anulada. En una guía devuelta se copia a `flete_vendedor`. |
+| Devolución física | `POST /api/envios/guias/<id>/devolucion/` solo para una guía devuelta cuya factura siga por cobrar. Reutiliza `reconcile_collection` de la HU 7.3: las prendas vuelven al inventario **una sola vez** y la factura queda en devolución. |
+| Flete de la devolución | Queda como `flete_vendedor` de la guía y el resumen lo suma por vendedor. **Solo se registra y se reporta**: descontarlo del vendedor queda fuera de alcance (no hay nómina). |
+
+### Rastreo con Track123
+
+Consulta el estado real de las guías de **Interrapidísimo** (código de transportadora de Track123 `inter-rapidisimo-inter-rapidsimo`, enviado siempre de forma
+explícita porque la autodetección falló en 2 de 3 guías reales). Envía y Otra no se consultan: sus estados son manuales. Rutas vigentes `/tk/v2.1/`.
+
+| Regla | Detalle |
+|---|---|
+| Nunca automático | Solo ocurre cuando alguien con `envios.gestionar` pulsa **Consultar estado** (`POST /api/envios/guias/<id>/rastrear/`). Ninguna tarea ni la lectura de una pantalla llama a Track123. |
+| Cuota | Registrar una guía nueva gasta **1 de la cuota del plan (50 registros)**; **consultar no gasta**. Se registra una sola vez por guía. Antes de registrar se lee la cuota y, si queda la **reserva (10)** o menos, no se inscriben más guías (`400` con un mensaje claro). `GET /api/envios/rastreo/estado/` muestra la cuota sin gastarla. |
+| Enfriamiento | Una guía no se vuelve a consultar antes de **10 minutos** (`429` con los `segundos` que faltan); `forzar` lo salta. Una guía entregada o devuelta con su respuesta ya guardada tampoco se consulta. |
+| Respuesta guardada | La última respuesta (estado, sub-estado y línea de tiempo de eventos) queda en la guía y se muestra sin volver a llamar a la API. |
+| No bloquea | Si Track123 está apagado, sin clave, con la clave inválida o no responde, la consulta responde `503` y la guía conserva su estado; vender y despachar nunca dependen de Track123. La clave sale de `TRACK123_API_KEY` (ver [despliegue](despliegue-render.md#rastreo-de-guias-con-track123)). |
+| Solo propone | El estado de la transportadora pasa por la misma tabla de transiciones. Lo que no encaja (por ejemplo, intentar mover una guía final) se ignora y se avisa en `aviso`. Si la guía seguía «por despachar» pero la transportadora ya la reporta, avanza por los estados intermedios, cada uno con su evento. |
+
+Hechos verificados con la API real que el cliente respeta: una **clave inválida responde HTTP 200 con el código `B0001`** (no un error HTTP); una guía no registrada
+llega en `rejected` con «trackNo not registered»; y en Track123 **no existe un estado «devuelto»**: la devolución viene dentro de `ABNORMAL` (sub-estados
+`ABNORMAL_05`, `06` y `07`) y la novedad en `DELIVERY_FAILED_*` o `ABNORMAL_*`. Mapeo al estado de TexCore:
+
+| Track123 (`transitStatus` / sub-estado) | Estado de la guía |
+|---|---|
+| `DELIVERED` | `ENTREGADA` |
+| `ABNORMAL_05`, `ABNORMAL_06`, `ABNORMAL_07` (el destinatario rechaza, lo recibió el remitente, va de regreso) | `DEVUELTA` |
+| `DELIVERY_FAILED*`, `ABNORMAL` (otros sub-estados), `WAITING_DELIVERY_03` | `EN_NOVEDAD` |
+| `IN_TRANSIT`, `INFO_RECEIVED`, `WAITING_DELIVERY` | `EN_TRANSITO` |
+| `INIT`, `NO_RECORD`, `EXPIRED` o sin dato | Sin cambio (se avisa «sin información todavía») |
+
+Las pruebas **jamás llaman a la API real**: con `manage.py test` el rastreo queda apagado y el transporte HTTP se sustituye por respuestas guardadas
+(`apps/shipping/fixtures/track123_entregadas.json` trae las respuestas reales de tres guías entregadas, sin la clave).
+
+Rutas y permisos (la referencia exacta está en Swagger, etiqueta `envios`):
+
+| Ruta | Operaciones | Permiso |
+|---|---|---|
+| `/api/envios/metadatos/` | `GET`: estados con color, transiciones, transportadoras (y cuál se rastrea), plazos de atención y si el rastreo está habilitado | `envios.ver` |
+| `/api/envios/resumen/` | `GET`: conteo por estado, facturas sin guía (total, con atención, vencidas), últimas novedades, devoluciones por vendedor con su flete y entregadas por cobrar | `envios.ver` |
+| `/api/envios/pendientes/` | `GET`: facturas emitidas sin guía, de la más antigua a la más reciente | `envios.ver` |
+| `/api/envios/guias/` | `GET` (filtros `estado`, `transportadora`, `factura`, `desde`, `hasta`, `q`, `todas`, `limit`; por defecto solo las vigentes) | `envios.ver` |
+| `/api/envios/guias/<id>/` | `GET`: detalle con historial y línea de tiempo de la transportadora | `envios.ver` |
+| `/api/envios/facturas/<id>/guia/` | `POST`: anotar o reemplazar la guía de una factura | `envios.anotar` |
+| `/api/envios/guias/<id>/estado/` | `POST` con `estado` y `nota` | `envios.gestionar` |
+| `/api/envios/guias/<id>/flete/` | `PATCH` con `valor_flete` | `envios.gestionar` |
+| `/api/envios/guias/<id>/rastrear/` | `POST` (opcional `forzar`): consulta Track123 y aplica el estado | `envios.gestionar` |
+| `/api/envios/rastreo/estado/` | `GET`: rastreo habilitado y cuota restante | `envios.gestionar` |
+| `/api/envios/guias/<id>/devolucion/` | `POST`: devolución física en cartera | `envios.devolucion` |
+| `/api/envios/relaciones/` | `GET` (filtro `transportadora`, `limit`) / `POST` (crea y despacha) | `envios.ver` / `envios.gestionar` |
+| `/api/envios/relaciones/<id>/` y `…/pdf/` | `GET`: detalle y PDF | `envios.ver` |
+
+**Permisos:** la migración `users/0013_permisos_envios` crea `envios.ver`, `envios.anotar`, `envios.gestionar` y `envios.devolucion`. Ver (Vendedor, Almacenista,
+Secretaria y Gerente), anotar (Vendedor, Almacenista y Secretaria), gestionar (Almacenista y Secretaria) y devolución (Almacenista y Gerente); el Administrador los
+tiene todos de forma implícita. Ver [roles y permisos](roles-y-permisos.md).
+
+**Datos existentes:** la migración `shipping/0002_importar_guias_de_facturas` convierte en guías las que las facturas ya traían como texto, de forma idempotente.
+
+**Pantallas** (módulo *Envíos*): *Guías* (tabla con semáforo, filtros y detalle con la línea de tiempo y el botón **Consultar estado**), *Por despachar / sin guía*
+(facturas sin guía con su urgencia y un formulario rápido para anotarla), *Relaciones de despacho* (armar la relación con las guías por despachar de una transportadora,
+despachar y descargar el PDF) y *Resumen* (semáforo, novedades y devoluciones por vendedor). Además *Nueva venta* pide la guía antes de facturar y *Facturas* muestra su estado.
+
+**Datos de demostración:** `python manage.py seed_demo_envios` (solo con `DJANGO_DEBUG=true`, idempotente, **no llama a Track123 ni gasta cuota**). Deja las **tres guías reales de
+Interrapidísimo** del PO `ENTREGADAS` con la respuesta real guardada (si las facturas demo traen guías ficticias, las reemplaza) y **guías sintéticas** (marcadas con
+`rastreo_sintetico`) para ver el semáforo completo: una por despachar, dos en tránsito dentro de una relación, una con novedad, una devuelta con su flete y una factura sin guía.
+Necesita antes `seed_demo_ventas` y stock de producto terminado. Orden: ver [manual del sistema](manual-del-sistema.md#datos-de-demostracion).
+
+!!! warning "Limitaciones conocidas de la HU 7.2"
+    - **Rastreo solo de Interrapidísimo y solo por botón:** Envía y Otra se manejan a mano; no hay consulta automática ni webhooks. La cuota del plan es corta.
+    - **El flete de una devolución no se descuenta:** se registra a nombre del vendedor y se reporta; no hay nómina ni contabilidad.
+    - **Devolución completa:** se devuelve la factura entera; no hay devoluciones parciales.
+    - **Una guía despachada no se reemplaza:** el servicio lo rechaza.
+    - **Datos simulados:** las facturas, clientes y guías del sistema son de demostración; las tres guías reales de Interrapidísimo sirven de referencia.
 
 ## Datos de demostración
 
 Comandos solo para desarrollo (exigen `DJANGO_DEBUG=true`), idempotentes y que pasan por las mismas reglas que la aplicación.
-`seed_demo_calidad` crea 8 defectos típicos de denim y dos lotes devueltos de lavandería (uno inspeccionado y otro por inspeccionar); necesita antes `seed_demo_inventario` y `seed_demo_produccion`. `seed_demo_terminado` ingresa al inventario final las aptas de la inspección de demostración; necesita antes `seed_demo_calidad`. `seed_demo_ventas` crea 4 clientes y los precios de demostración; necesita antes `seed_demo_referencias` (o `seed_demo_inventario`). Orden recomendado: ver [manual del sistema](manual-del-sistema.md#datos-de-demostracion).
+`seed_demo_calidad` crea 8 defectos típicos de denim y dos lotes devueltos de lavandería (uno inspeccionado y otro por inspeccionar); necesita antes `seed_demo_inventario` y `seed_demo_produccion`. `seed_demo_terminado` ingresa al inventario final las aptas de la inspección de demostración; necesita antes `seed_demo_calidad`. `seed_demo_ventas` crea 4 clientes y los precios de demostración; necesita antes `seed_demo_referencias` (o `seed_demo_inventario`). `seed_demo_envios` deja las guías de demostración (las tres reales de Interrapidísimo entregadas y otras sintéticas para ver el semáforo) sin llamar a Track123; necesita antes `seed_demo_ventas` y stock de producto terminado. Orden recomendado: ver [manual del sistema](manual-del-sistema.md#datos-de-demostracion).

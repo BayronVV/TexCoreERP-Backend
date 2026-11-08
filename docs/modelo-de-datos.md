@@ -527,6 +527,9 @@ erDiagram
         varchar_255 motivo_anulacion
         bigint anulada_por FK
         timestamp anulada_en
+        timestamp fecha_cobro
+        bigint cobrado_por FK
+        varchar_255 motivo_devolucion
     }
     DetalleVenta {
         bigint id PK
@@ -546,6 +549,62 @@ erDiagram
         positivebiginteger iva
         positivebiginteger total
     }
+    SaldoFinanciero {
+        bigint id PK
+        varchar_100 nombre
+        bigint saldo_actual
+    }
+    MovimientoCartera {
+        bigint id PK
+        bigint factura FK
+        varchar_20 tipo
+        bigint monto
+        bigint saldo_antes
+        bigint saldo_despues
+        bigint usuario FK
+        varchar_255 observaciones
+    }
+    RelacionDespacho {
+        bigint id PK
+        varchar_20 codigo
+        varchar_16 transportadora
+        date fecha
+        varchar_120 responsable
+        varchar_255 observaciones
+        uuid token
+        bigint creada_por FK
+    }
+    Guia {
+        bigint id PK
+        bigint factura FK
+        varchar_16 transportadora
+        varchar_40 numero_guia
+        varchar_14 estado
+        boolean vigente
+        bigint relacion FK
+        varchar_255 novedad
+        bigint valor_flete
+        bigint flete_vendedor
+        timestamp despachada_en
+        timestamp entregada_en
+        timestamp devuelta_en
+        boolean rastreo_registrado
+        varchar_20 rastreo_estado
+        varchar_30 rastreo_subestado
+        timestamp rastreo_consultado_en
+        timestamp rastreo_proxima_consulta
+        json rastreo_respuesta
+        boolean rastreo_sintetico
+    }
+    EventoGuia {
+        bigint id PK
+        bigint guia FK
+        varchar_14 estado_antes
+        varchar_14 estado_despues
+        varchar_255 nota
+        varchar_10 origen
+        bigint usuario FK
+    }
     AjusteTerminado |o--o{ MovimientoTerminado : "ajuste"
     AjusteTerminado ||--o{ AjusteLinea : "ajuste"
     Cliente ||--o{ FacturaVenta : "cliente"
@@ -554,8 +613,10 @@ erDiagram
     CustomUser |o--o{ AsignacionEtapa : "asignada_por"
     CustomUser |o--o{ EtapaLote : "responsable"
     CustomUser |o--o{ EventoEtapa : "usuario"
+    CustomUser |o--o{ EventoGuia : "usuario"
     CustomUser |o--o{ Evidencia : "subido_por"
     CustomUser |o--o{ FacturaVenta : "anulada_por"
+    CustomUser |o--o{ FacturaVenta : "cobrado_por"
     CustomUser |o--o{ FacturaVenta : "vendedor"
     CustomUser |o--o{ FichaTecnica : "actualizado_por"
     CustomUser |o--o{ IngresoTerminado : "recibido_por"
@@ -576,12 +637,17 @@ erDiagram
     CustomUser |o--o{ RemisionLavanderia : "responsable"
     CustomUser |o--o{ RolePermission : "granted_by"
     CustomUser |o--o{ TarifaManoObra : "creado_por"
+    CustomUser ||--o{ MovimientoCartera : "usuario"
     CustomUser ||--o{ PasswordResetToken : "user"
+    CustomUser ||--o{ RelacionDespacho : "creada_por"
     EtapaLote ||--o{ AsignacionEtapa : "etapa_lote"
     EtapaLote ||--o{ EventoEtapa : "etapa_lote"
     FacturaVenta |o--o{ MovimientoTerminado : "factura"
     FacturaVenta ||--o{ DetalleVenta : "factura"
+    FacturaVenta ||--o{ Guia : "factura"
+    FacturaVenta ||--o{ MovimientoCartera : "factura"
     FichaTecnica ||--o{ FichaLinea : "ficha"
+    Guia ||--o{ EventoGuia : "guia"
     IngresoTerminado |o--o{ MovimientoTerminado : "ingreso"
     IngresoTerminado ||--o{ IngresoLinea : "ingreso"
     Inspeccion ||--o{ IngresoTerminado : "inspeccion"
@@ -626,6 +692,7 @@ erDiagram
     Referencia ||--o{ OrdenProduccion : "referencia"
     Referencia ||--o{ PrecioReferencia : "referencia"
     Referencia ||--o{ Variante : "referencia"
+    RelacionDespacho |o--o{ Guia : "relacion"
     RemisionLavanderia ||--o{ RecepcionLavanderia : "remision"
     RemisionLavanderia ||--o{ RemisionLote : "remision"
     RemisionLote ||--o{ RecepcionLote : "remision_lote"
@@ -1401,6 +1468,9 @@ Factura POS interna (no es factura electrónica). Inalterable: se anula, no se e
 | `motivo_anulacion` | varchar(255) |  |  |
 | `anulada_por` | bigint | FK, nulo | → `CustomUser` |
 | `anulada_en` | timestamp | nulo |  |
+| `fecha_cobro` | timestamp | nulo |  |
+| `cobrado_por` | bigint | FK, nulo | → `CustomUser` |
+| `motivo_devolucion` | varchar(255) |  |  |
 
 ### DetalleVenta (`ventas_factura_linea`)
 
@@ -1424,3 +1494,84 @@ Una variante vendida: cantidad, precio, descuento e IVA del momento. Guarda refe
 | `base` | positivebiginteger |  |  |
 | `iva` | positivebiginteger |  |  |
 | `total` | positivebiginteger |  |  |
+
+### SaldoFinanciero (`ventas_saldo_financiero`)
+
+Saldo financiero general de la empresa (pesos colombianos enteros).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `nombre` | varchar(100) |  |  |
+| `saldo_actual` | bigint |  |  |
+
+### MovimientoCartera (`ventas_movimiento_cartera`)
+
+Libro de movimientos del saldo financiero por conciliación de cartera (HU 7.3).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `factura` | bigint | FK | → `FacturaVenta` |
+| `tipo` | varchar(20) |  |  |
+| `monto` | bigint |  |  |
+| `saldo_antes` | bigint |  |  |
+| `saldo_despues` | bigint |  |  |
+| `usuario` | bigint | FK | → `CustomUser` |
+| `observaciones` | varchar(255) |  |  |
+
+### RelacionDespacho (`envios_relacion`)
+
+Paquetes que una transportadora recoge juntos. Al crearla, todas sus guías pasan a EN_TRANSITO.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `codigo` | varchar(20) |  |  |
+| `transportadora` | varchar(16) |  |  |
+| `fecha` | date |  |  |
+| `responsable` | varchar(120) |  |  |
+| `observaciones` | varchar(255) |  |  |
+| `token` | uuid |  |  |
+| `creada_por` | bigint | FK | → `CustomUser` |
+
+### Guia (`envios_guia`)
+
+Guía de envío de una factura.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `factura` | bigint | FK | → `FacturaVenta` |
+| `transportadora` | varchar(16) |  |  |
+| `numero_guia` | varchar(40) |  |  |
+| `estado` | varchar(14) |  |  |
+| `vigente` | boolean |  |  |
+| `relacion` | bigint | FK, nulo | → `RelacionDespacho` |
+| `novedad` | varchar(255) |  |  |
+| `valor_flete` | bigint | nulo |  |
+| `flete_vendedor` | bigint |  |  |
+| `despachada_en` | timestamp | nulo |  |
+| `entregada_en` | timestamp | nulo |  |
+| `devuelta_en` | timestamp | nulo |  |
+| `rastreo_registrado` | boolean |  |  |
+| `rastreo_estado` | varchar(20) |  |  |
+| `rastreo_subestado` | varchar(30) |  |  |
+| `rastreo_consultado_en` | timestamp | nulo |  |
+| `rastreo_proxima_consulta` | timestamp | nulo |  |
+| `rastreo_respuesta` | json | nulo |  |
+| `rastreo_sintetico` | boolean |  |  |
+
+### EventoGuia (`envios_evento`)
+
+Historial de una guía. Solo inserción.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `guia` | bigint | FK | → `Guia` |
+| `estado_antes` | varchar(14) |  |  |
+| `estado_despues` | varchar(14) |  |  |
+| `nota` | varchar(255) |  |  |
+| `origen` | varchar(10) |  |  |
+| `usuario` | bigint | FK, nulo | → `CustomUser` |

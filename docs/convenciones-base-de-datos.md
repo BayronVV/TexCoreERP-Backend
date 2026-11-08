@@ -62,12 +62,13 @@ class Proveedor(BaseModel):
 | `produccion_` | `production` | `produccion_orden`, `produccion_lote`, `produccion_etapa_lote`, `produccion_asignacion_etapa` |
 | `compras_` | `purchasing` | `compras_orden`, `compras_linea`, `compras_recepcion`, `compras_recepcion_linea` |
 | `ventas_` | `sales` | `ventas_cliente`, `ventas_precio_referencia`, `ventas_factura`, `ventas_factura_linea` |
+| `envios_` | `shipping` | `envios_guia`, `envios_evento`, `envios_relacion` |
 
 La lista completa, con sus campos, está en el [modelo de datos](modelo-de-datos.md).
 
 ### Códigos consecutivos
 
-Los identificadores legibles (`OP-0001`, `LV-0001`, `OC-0001`, `RC-0001`, `REF-0001`, `OPE-0001`, `MAQ-0001`, `TEL-0001`, `FV-0001`, `CLI-0001`...)
+Los identificadores legibles (`OP-0001`, `LV-0001`, `OC-0001`, `RC-0001`, `REF-0001`, `OPE-0001`, `MAQ-0001`, `TEL-0001`, `FV-0001`, `CLI-0001`, `RD-0001`...)
 salen de la tabla `inventario_consecutivo`, que se bloquea al asignar el número dentro de la transacción. Si la operación falla,
 el número no se gasta. Los lotes derivan del código de su orden (`OP-0001-L01`).
 
@@ -79,7 +80,21 @@ el número no se gasta. Los lotes derivan del código de su orden (`OP-0001-L01`
   línea de compra se calculan al consultar. Lo que sí se guarda es una **foto** cuando el valor puede cambiar después y el
   histórico debe conservarse (por ejemplo el costo unitario de cada línea de una orden de salida).
 - Las tablas de historial (`produccion_evento_etapa`, `produccion_asignacion_etapa`, `produccion_tarifa_mano_obra`) solo reciben filas
-  nuevas; un cambio cierra o reemplaza el registro vigente y abre otro.
+  nuevas; un cambio cierra o reemplaza el registro vigente y abre otro. Lo mismo vale para `envios_evento` (historial de cada guía): el
+  modelo rechaza guardar un evento que ya existe, y reemplazar una guía no la borra, la pasa a `ANULADA` con `vigente = false`.
+- Los pesos son enteros (`bigint`), sin decimales: `envios_guia.valor_flete` y `flete_vendedor` (el flete de una devolución, que solo se
+  registra y reporta) siguen la misma convención que los montos de `ventas_`.
+
+### Restricciones de los envíos
+
+Las dos primeras son índices únicos parciales como pide la regla de unicidad de la sección 1: ignoran los borrados y solo cuentan las guías **vigentes**.
+
+| Restricción | Garantiza |
+|---|---|
+| `uq_envios_guia_vigente_factura` (`factura` donde `vigente` y no borrada) | Una factura tiene una sola guía vigente; las reemplazadas quedan anuladas. |
+| `uq_envios_guia_numero` (`transportadora` + `numero_guia` donde `vigente` y no borrada) | El mismo número de una transportadora no está en dos facturas, pero sí puede reaparecer en una guía anulada. |
+| `uq_envios_relacion_codigo` y `uq_envios_relacion_token` | El código `RD-0001` no se repite y un doble clic no crea dos relaciones. |
+| `ck_envios_guia_flete`, `ck_envios_guia_flete_vendedor`, `ck_envios_guia_numero` | Fletes no negativos y número de guía no vacío. |
 
 ## 3. Migraciones
 
@@ -92,7 +107,11 @@ el número no se gasta. Los lotes derivan del código de su orden (`OP-0001-L01`
   cambiarlo después de migrar.
 - Cada app mantiene su cadena de migraciones (`apps/<app>/migrations/`). Las migraciones de datos que cargan catálogos
   (roles, permisos, clasificación de productos) congelan sus valores dentro del archivo: no importan constantes del código que
-  puedan cambiar. Ejemplos: `users/0003_roles_y_permisos`, `0007_permisos_referencias` y `0008_permisos_compras`.
+  puedan cambiar. Ejemplos: `users/0003_roles_y_permisos`, `0007_permisos_referencias`, `0008_permisos_compras` y `0013_permisos_envios`. La migración de datos
+  `shipping/0002_importar_guias_de_facturas` convierte las guías que las facturas traían como texto (`transportadora` y `numero_guia`) en
+  registros de `envios_guia` con su evento «Guía importada de la factura»; es idempotente (no repite una factura que ya tiene guía ni pisa un
+  número que otra guía vigente ya usa) y deduce el estado de lo que la factura ya sabe (pagada, entregada; devuelta, devuelta; anulada, anulada;
+  el resto, por despachar).
 - Al desplegar, Render ejecuta `python manage.py migrate --noinput` en cada arranque (ver [despliegue](despliegue-render.md)),
   así que una migración nueva se aplica sola al fusionar en `main`. Si dos entornos comparten la base, el código viejo debe
   tolerar el esquema nuevo.

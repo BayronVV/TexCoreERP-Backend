@@ -11,6 +11,7 @@ from apps.inventory.services import next_code
 from apps.inventory.views import apply_filters, limited
 from apps.references import catalog as reference_catalog
 from apps.references.models import Referencia
+from apps.shipping.models import Guia
 
 from . import catalog, invoicing
 from .models import Cliente, DetalleVenta, FacturaVenta, PrecioReferencia
@@ -37,7 +38,8 @@ CANCEL_PERMISSIONS = {"POST": catalog.SALES_CANCEL}
 
 def invoice_queryset():
     return FacturaVenta.objects.select_related("vendedor", "anulada_por", "cobrado_por").prefetch_related(
-        Prefetch("lineas", queryset=DetalleVenta.objects.order_by("id"))
+        Prefetch("lineas", queryset=DetalleVenta.objects.order_by("id")),
+        Prefetch("guias", queryset=Guia.objects.filter(vigente=True), to_attr="guia_vigente"),
     )
 
 

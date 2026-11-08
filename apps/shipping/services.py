@@ -170,6 +170,7 @@ def change_state(*, guide_id, new_state, note="", user):
 
 # --- Asignar la guía a una factura -------------------------------------------------------------------------------------------------
 
+@transaction.atomic
 def assign_guide_to(invoice, carrier, number, user, origin=catalog.ORIGIN_MANUAL):
     """Crea la guía vigente de una factura (la factura ya viene bloqueada o recién creada). Reemplaza la anterior solo si no se despachó."""
     if invoice.estado != sales_catalog.STATUS_ISSUED:

@@ -1,0 +1,224 @@
+{
+ "_nota": "Respuestas reales de Track123 (consulta de 3 guías de Interrapidísimo del PO, todas entregadas) del 8/nov/2026. Sin clave ni datos de acceso. Las usan las pruebas y la siembra de demostración para no gastar cuota.",
+ "guias": [
+  {
+   "id": "907251952042156033",
+   "trackNo": "700200165317",
+   "createTime": "2026-11-08 12:55:21",
+   "shipFrom": "CO",
+   "trackingStatus": "001",
+   "transitStatus": "DELIVERED",
+   "transitSubStatus": "DELIVERED_01",
+   "receiptTime": "2026-07-22 10:08:37",
+   "deliveredTime": "2026-07-23 15:48:29",
+   "lastTrackingTime": "2026-07-23 15:48:29",
+   "deliveredDays": 2,
+   "lastCheckedTime": "2026-11-08 12:55:22",
+   "transitDays": 2,
+   "localLogisticsInfo": {
+    "courierCode": "inter-rapidisimo-inter-rapidsimo",
+    "courierNameCN": "Inter Rapidisimo (INTER RAPIDÍSIMO)",
+    "courierNameEN": "Inter Rapidisimo (INTER RAPIDÍSIMO)",
+    "courierHomePage": "https://www.interrapidisimo.com/",
+    "courierTrackingLink": "",
+    "trackingDetails": [
+     {
+      "address": "BUCARAMANGA SANT COL",
+      "eventTime": "2026-07-23 15:48:29",
+      "eventTimeZeroUTC": "2026-07-23T12:48:29Z",
+      "timezone": "+03:00",
+      "eventDetail": "Tú envío fue entregado",
+      "transitSubStatus": "DELIVERED_01"
+     },
+     {
+      "address": "BUCARAMANGA SANT COL",
+      "eventTime": "2026-07-23 13:42:30",
+      "eventTimeZeroUTC": "2026-07-23T10:42:30Z",
+      "timezone": "+03:00",
+      "eventDetail": "En camino hacia ti",
+      "transitSubStatus": "IN_TRANSIT_01"
+     },
+     {
+      "address": "BUCARAMANGA SANT COL",
+      "eventTime": "2026-07-23 07:52:10",
+      "eventTimeZeroUTC": "2026-07-23T04:52:10Z",
+      "timezone": "+03:00",
+      "eventDetail": "En Centro Logístico Destino",
+      "transitSubStatus": "IN_TRANSIT_01"
+     },
+     {
+      "address": "CUCUTA NORT COL",
+      "eventTime": "2026-07-22 23:31:37",
+      "eventTimeZeroUTC": "2026-07-22T20:31:37Z",
+      "timezone": "+03:00",
+      "eventDetail": "Viajando a tu destino",
+      "transitSubStatus": "IN_TRANSIT_01"
+     },
+     {
+      "address": "CUCUTA NORT COL",
+      "eventTime": "2026-07-22 20:11:40",
+      "eventTimeZeroUTC": "2026-07-22T17:11:40Z",
+      "timezone": "+03:00",
+      "eventDetail": "En Centro Logístico Origen",
+      "transitSubStatus": "IN_TRANSIT_01"
+     },
+     {
+      "address": "CUCUTA NORT COL",
+      "eventTime": "2026-07-22 10:08:37",
+      "eventTimeZeroUTC": "2026-07-22T07:08:37Z",
+      "timezone": "+03:00",
+      "eventDetail": "Recibimos tú envío",
+      "transitSubStatus": "IN_TRANSIT_01"
+     }
+    ]
+   },
+   "shipmentType": ""
+  },
+  {
+   "id": "907251952042156032",
+   "trackNo": "700187211301",
+   "createTime": "2026-11-08 12:55:21",
+   "shipFrom": "CO",
+   "trackingStatus": "001",
+   "transitStatus": "DELIVERED",
+   "transitSubStatus": "DELIVERED_01",
+   "receiptTime": "2026-03-14 16:26:03",
+   "deliveredTime": "2026-03-16 18:59:56",
+   "lastTrackingTime": "2026-03-16 18:59:56",
+   "deliveredDays": 3,
+   "lastCheckedTime": "2026-11-08 12:55:31",
+   "transitDays": 3,
+   "localLogisticsInfo": {
+    "courierCode": "inter-rapidisimo-inter-rapidsimo",
+    "courierNameCN": "Inter Rapidisimo (INTER RAPIDÍSIMO)",
+    "courierNameEN": "Inter Rapidisimo (INTER RAPIDÍSIMO)",
+    "courierHomePage": "https://www.interrapidisimo.com/",
+    "courierTrackingLink": "",
+    "trackingDetails": [
+     {
+      "address": "CUCUTA NORT COL",
+      "eventTime": "2026-03-16 18:59:56",
+      "eventTimeZeroUTC": "2026-03-16T16:59:56Z",
+      "timezone": "+02:00",
+      "eventDetail": "Tú envío fue entregado",
+      "transitSubStatus": "DELIVERED_01"
+     },
+     {
+      "address": "CUCUTA NORT COL",
+      "eventTime": "2026-03-16 02:07:30",
+      "eventTimeZeroUTC": "2026-03-16T00:07:30Z",
+      "timezone": "+02:00",
+      "eventDetail": "En camino hacia ti",
+      "transitSubStatus": "IN_TRANSIT_01"
+     },
+     {
+      "address": "CUCUTA NORT COL",
+      "eventTime": "2026-03-16 02:07:29",
+      "eventTimeZeroUTC": "2026-03-16T00:07:29Z",
+      "timezone": "+02:00",
+      "eventDetail": "En Centro Logístico Destino",
+      "transitSubStatus": "IN_TRANSIT_01"
+     },
+     {
+      "address": "BOGOTA CUND COL",
+      "eventTime": "2026-03-14 20:10:06",
+      "eventTimeZeroUTC": "2026-03-14T18:10:06Z",
+      "timezone": "+02:00",
+      "eventDetail": "Viajando a tu destino",
+      "transitSubStatus": "IN_TRANSIT_01"
+     },
+     {
+      "address": "BOGOTA CUND COL",
+      "eventTime": "2026-03-14 17:24:17",
+      "eventTimeZeroUTC": "2026-03-14T15:24:17Z",
+      "timezone": "+02:00",
+      "eventDetail": "En Centro Logístico Origen",
+      "transitSubStatus": "IN_TRANSIT_01"
+     },
+     {
+      "address": "BOGOTA CUND COL",
+      "eventTime": "2026-03-14 16:26:03",
+      "eventTimeZeroUTC": "2026-03-14T14:26:03Z",
+      "timezone": "+02:00",
+      "eventDetail": "Recibimos tú envío",
+      "transitSubStatus": "IN_TRANSIT_01"
+     }
+    ]
+   },
+   "shipmentType": ""
+  },
+  {
+   "id": "907251816503234561",
+   "trackNo": "700180879081",
+   "createTime": "2026-11-08 12:54:49",
+   "shipFrom": "CO",
+   "trackingStatus": "001",
+   "transitStatus": "DELIVERED",
+   "transitSubStatus": "DELIVERED_01",
+   "receiptTime": "2026-01-10 04:54:01",
+   "deliveredTime": "2026-01-13 15:43:25",
+   "lastTrackingTime": "2026-01-13 15:43:25",
+   "deliveredDays": 4,
+   "lastCheckedTime": "2026-11-08 12:55:00",
+   "transitDays": 4,
+   "localLogisticsInfo": {
+    "courierCode": "inter-rapidisimo-inter-rapidsimo",
+    "courierNameCN": "Inter Rapidisimo (INTER RAPIDÍSIMO)",
+    "courierNameEN": "Inter Rapidisimo (INTER RAPIDÍSIMO)",
+    "courierHomePage": "https://www.interrapidisimo.com/",
+    "courierTrackingLink": "",
+    "trackingDetails": [
+     {
+      "address": "CUCUTA NORT COL",
+      "eventTime": "2026-01-13 15:43:25",
+      "eventTimeZeroUTC": "2026-01-13T13:43:25Z",
+      "timezone": "+02:00",
+      "eventDetail": "Tú envío fue entregado",
+      "transitSubStatus": "DELIVERED_01"
+     },
+     {
+      "address": "CUCUTA NORT COL",
+      "eventTime": "2026-01-13 03:56:16",
+      "eventTimeZeroUTC": "2026-01-13T01:56:16Z",
+      "timezone": "+02:00",
+      "eventDetail": "En camino hacia ti",
+      "transitSubStatus": "IN_TRANSIT_01"
+     },
+     {
+      "address": "CUCUTA NORT COL",
+      "eventTime": "2026-01-13 03:56:14",
+      "eventTimeZeroUTC": "2026-01-13T01:56:14Z",
+      "timezone": "+02:00",
+      "eventDetail": "En Centro Logístico Destino",
+      "transitSubStatus": "IN_TRANSIT_01"
+     },
+     {
+      "address": "BOGOTA CUND COL",
+      "eventTime": "2026-01-10 19:37:33",
+      "eventTimeZeroUTC": "2026-01-10T17:37:33Z",
+      "timezone": "+02:00",
+      "eventDetail": "En Centro Logístico Origen",
+      "transitSubStatus": "IN_TRANSIT_01"
+     },
+     {
+      "address": "BOGOTA CUND COL",
+      "eventTime": "2026-01-10 19:37:33",
+      "eventTimeZeroUTC": "2026-01-10T17:37:33Z",
+      "timezone": "+02:00",
+      "eventDetail": "Viajando a tu destino",
+      "transitSubStatus": "IN_TRANSIT_01"
+     },
+     {
+      "address": "BOGOTA CUND COL",
+      "eventTime": "2026-01-10 04:54:01",
+      "eventTimeZeroUTC": "2026-01-10T02:54:01Z",
+      "timezone": "+02:00",
+      "eventDetail": "Recibimos tú envío",
+      "transitSubStatus": "IN_TRANSIT_01"
+     }
+    ]
+   },
+   "shipmentType": ""
+  }
+ ]
+}

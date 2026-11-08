@@ -30,7 +30,7 @@ python manage.py runserver           # http://localhost:8000
 ```
 
 `migrate` crea las tablas de todos los módulos y carga los roles y permisos iniciales (incluidos los de referencias,
-fichas técnicas, compras, calidad, producto terminado y ventas). Al terminar, activa RLS en las tablas de Supabase (ver
+fichas técnicas, compras, calidad, producto terminado, ventas y envíos). Al terminar, activa RLS en las tablas de Supabase (ver
 [convenciones](convenciones-base-de-datos.md#4-seguridad-en-supabase)).
 
 Para trabajar **sin conexión** deja `DATABASE_URL` vacío: el sistema usa un archivo SQLite local (`db.sqlite3`, ignorado por
@@ -65,6 +65,9 @@ La variable `VITE_API_URL` apunta al backend (por defecto `http://localhost:8000
 | `PASSWORD_RESET_TOKEN_MINUTES`, `ACCOUNT_INVITE_TOKEN_HOURS` | Vigencia del enlace de recuperación (15 min) y de la invitación (48 h). |
 | `MEDIA_ROOT` | Carpeta de las evidencias de inventario (por defecto `backend/media/`). |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Datos que usa `seed_admin` si no se pasan por argumento. |
+| `TRACK123_API_KEY` | Clave de la API de Track123 para consultar el estado de las guías (HU 7.2). Secreto: va en el `.env` local (git lo ignora) y en las variables de Render, nunca en el repositorio. Vacía = rastreo apagado. |
+| `TRACK123_ENABLED` | `true` enciende el rastreo; por defecto `false`. Se apaga solo al correr `manage.py test`. |
+| `TRACK123_BASE_URL`, `TRACK123_TIMEOUT`, `TRACK123_COOLDOWN_MINUTES`, `TRACK123_QUOTA_RESERVE` | Opcionales. Por defecto: ruta `https://api.track123.com/gateway/open-api/tk/v2.1`, 10 segundos de espera, 10 minutos de enfriamiento entre consultas de una misma guía y 10 registros de cuota de reserva. |
 
 La lista completa y los valores por defecto están en `.env.example` y en el [README](https://github.com/BayronVV/TexCoreERP-Backend#readme).
 
@@ -82,8 +85,12 @@ La lista completa y los valores por defecto están en `.env.example` y en el [RE
 | `python manage.py seed_demo_calidad` | 8 defectos típicos de denim y dos lotes devueltos de lavandería: uno inspeccionado y otro por inspeccionar. Necesita antes `seed_demo_inventario` y `seed_demo_produccion`. |
 | `python manage.py seed_demo_terminado` | Ingresa al inventario final (producto terminado) las aptas de la inspección de demostración, por las mismas reglas de la aplicación. Necesita antes `seed_demo_calidad`. |
 | `python manage.py seed_demo_ventas` | 4 clientes (distribuidor, mayoristas y detal) y el costo de fábrica y los precios de demostración de las referencias de la demo. No crea facturas. Necesita antes las referencias de demostración (`seed_demo_referencias`) y, para vender, `seed_demo_terminado`. |
+| `python manage.py seed_demo_envios` | Guías de demostración (HU 7.2): las 3 guías reales de Interrapidísimo del PO quedan entregadas con la respuesta real guardada, y guías sintéticas (marcadas) para ver todo el semáforo: por despachar, en tránsito dentro de una relación, con novedad, devuelta con su flete y una factura sin guía. Idempotente, solo con `DJANGO_DEBUG=true` y **no llama a Track123 ni gasta cuota**. Necesita antes `seed_demo_ventas` y stock de producto terminado. |
+| `python manage.py seed_demo_tarifas` | Una tarifa de mano de obra por minuto para corte, confección y terminación (vigentes desde el 1 de enero de 2026), para que la liquidación de las órdenes no marque el costo como incompleto. Idempotente. |
+| `python manage.py seed_demo_stock` | Entre 12 y 20 unidades en cada talla y color de las referencias activas, por ajuste manual (motivo «Sobrante o hallazgo», con su comprobante `AJT`). Solo sube lo que está por debajo de la meta. |
+| `python manage.py seed_demo_completo` | **Todo en uno**: encadena los comandos anteriores en su orden, salta los módulos que ya tienen datos y al final imprime cuántos registros tiene cada módulo (falla si alguno quedó vacío). Con `--permitir-produccion` corre también con `DJANGO_DEBUG=false`: es la siembra de los datos **simulados** de la demostración sobre la base compartida; no borra nada ni toca usuarios, roles ni permisos. |
 | `python manage.py generar_erd --salida docs/modelo-de-datos.md` | Regenera el [modelo de datos](modelo-de-datos.md). |
-| `python manage.py test` | Ejecuta la suite de pruebas (830). |
+| `python manage.py test` | Ejecuta la suite de pruebas (922). |
 | `python manage.py spectacular --validate --file schema.yml` | Valida y exporta el esquema OpenAPI (borra después `schema.yml`). |
 
 ## Datos de demostración
@@ -101,9 +108,13 @@ python manage.py seed_demo_compras        # 5. órdenes de compra en borrador, a
 python manage.py seed_demo_calidad        # 6. defectos típicos y dos lotes devueltos de lavandería (uno ya inspeccionado)
 python manage.py seed_demo_terminado      # 7. ingresa al inventario final las aptas de la inspección de demostración
 python manage.py seed_demo_ventas         # 8. clientes y precios de demostración para vender (no crea facturas)
+python manage.py seed_demo_envios         # 9. guías de demostración: las 3 reales entregadas y otras sintéticas para el semáforo
+# o, todo de una vez (incluye tarifas y stock por talla y color):
+python manage.py seed_demo_completo       # --permitir-produccion para correrlo contra la base de producción (datos simulados)
 ```
 
 - El paso 8 necesita las referencias del 2 y, para tener prendas que facturar, el 7; las facturas se hacen en vivo desde **Ventas y Despachos → Nueva venta**.
+- El paso 9 emite sus propias facturas de demostración (observaciones «Demo envíos: …») por las mismas reglas que *Nueva venta*, así que necesita el 8 y stock de producto terminado (el 7). Puede correrse varias veces: no duplica nada. Si las facturas demo de la HU 7.3 traen guías ficticias, las reemplaza por las tres reales.
 - Los pasos 3 a 7 necesitan el 2; el 6 necesita además el 3 (los lotes salen de las órdenes de producción) y el 7 necesita el 6 (ingresa las aptas de la inspección de demostración). `seed_demo_inventario` ya ejecuta `seed_inventario` y `seed_demo_referencias`.
 - Los usuarios que participan se toman de los que ya existen: `seed_demo_compras` busca uno de Producción para crear, un Gerente
   o Administrador para aprobar y un Almacenista distinto del creador para recibir; si falta el Almacenista, la orden queda
@@ -111,6 +122,33 @@ python manage.py seed_demo_ventas         # 8. clientes y precios de demostraci�
 - No se siembran tarifas de mano de obra: en la **Liquidación de Órdenes** la mano de obra aparece *Sin tarifa* hasta que alguien
   registre una en la pestaña **Tarifas por Minuto**.
 - Las cuentas que se usen para mirar la demo se crean desde **Seguridad y Usuarios**; no hay usuarios de demostración por rol.
+
+## Rastreo de guías con Track123 (HU 7.2)
+
+El módulo de envíos puede consultar el estado real de las guías de **Interrapidísimo** en la API de Track123. Es opcional: sin `TRACK123_API_KEY`
+o con `TRACK123_ENABLED=false` todo funciona y los estados se cambian a mano.
+
+Para encenderlo en local: pide la clave en Track123 (Developers > API), escríbela en tu `.env` (`TRACK123_API_KEY=<tu-clave>` y `TRACK123_ENABLED=true`) y reinicia.
+**Nunca la subas al repositorio ni la pegues en un chat o un documento**; en Render va solo como variable de entorno (ver [despliegue](despliegue-render.md#rastreo-de-guias-con-track123)).
+
+**Cuida la cuota.** El plan actual permite **50 registros de guías nuevas**: registrar una guía gasta 1, consultar una ya registrada no gasta. Por eso:
+
+- El rastreo es **siempre manual** (botón **Consultar estado**); ninguna pantalla ni tarea lo dispara sola.
+- Cada guía se registra una vez, no se vuelve a consultar antes de 10 minutos y la última respuesta queda guardada y se muestra sin llamar de nuevo.
+- Con 10 registros o menos de cuota ya no se inscriben guías nuevas. `GET /api/envios/rastreo/estado/` (o el contador de la pantalla) muestra lo que queda sin gastar nada.
+- No uses guías de prueba inventadas: cada intento de registrar una gasta cuota. Para la demostración existe `seed_demo_envios`, que no consulta.
+
+**Verificaciones hechas** con la clave real del PO (8 de noviembre de 2026), que corrigen la documentación del proveedor:
+
+- Las rutas vigentes son `/tk/v2.1/...` (no las anteriores).
+- El `courierCode` de Interrapidísimo es `inter-rapidisimo-inter-rapidsimo` y hay que enviarlo siempre: con la autodetección, 2 de las 3 guías reales quedaron con otra transportadora y respondieron `NO_RECORD`.
+- Registrar gasta 1 de cuota por guía y consultar no gasta.
+- Una clave inválida **no** da un error HTTP: Track123 responde `200` con el código `B0001`. El sistema lo trata como «clave no válida» (503 para el usuario, sin mostrar la clave).
+- Una guía no registrada llega en `rejected` con «trackNo not registered».
+- No existe un estado «devuelto»: la devolución viene dentro de `ABNORMAL` (sub-estados `ABNORMAL_05`, `06` y `07`).
+- Las tres guías de referencia (`700187211301`, `700180879081`, `700200165317`) salen `DELIVERED` con seis eventos cada una; sus respuestas, sin la clave, son los datos de prueba (`apps/shipping/fixtures/track123_entregadas.json`).
+
+**Las pruebas automáticas jamás llaman a la API real:** al correr `manage.py test` el rastreo queda apagado y el transporte HTTP se reemplaza por respuestas guardadas.
 
 ## Pruebas
 
@@ -121,7 +159,7 @@ python manage.py test apps.inventory -v 2  # con detalle
 python manage.py test --parallel 4         # en paralelo, más rápido
 ```
 
-La suite cubre `users`, `inventory`, `references`, `production`, `purchasing`, `quality`, `finished`, `sales` y `core`. Las pruebas de los comandos de demostración
+La suite cubre `users`, `inventory`, `references`, `production`, `purchasing`, `quality`, `finished`, `sales`, `shipping` y `core`. Las pruebas de los comandos de demostración
 (`test_seed*.py`) verifican que sean idempotentes. En el frontend, `npm test` prueba la lógica pura de las pantallas (reparto de
 lotes, tablero, costeo, recursos, compras, calidad, producto terminado...).
 
@@ -151,5 +189,10 @@ El sitio se publica solo en GitHub Pages cuando cambian `docs/` o `mkdocs.yml` e
 | La recepción de mercancía responde que quien creó la orden no puede recibirla | Separación de funciones: la recibe otro usuario con permiso de inventario (Almacenista). |
 | La liquidación muestra *Sin tarifa* o *Sin costo* | Falta registrar la tarifa por minuto de la etapa, o la compra del material no trajo costo unitario. El cálculo se marca como parcial. |
 | Al facturar dice «Falta el precio de venta de: …» | La referencia no tiene fila en *Ventas y Despachos → Precios*. El Gerente registra el costo de fábrica y los precios (o corre `seed_demo_ventas` en desarrollo). |
+| «Consultar estado» responde que el servicio de rastreo no está disponible (503) | El rastreo está apagado (`TRACK123_ENABLED=false`), falta `TRACK123_API_KEY`, la clave no es válida o Track123 no respondió. La guía conserva su estado: cámbialo a mano si hace falta. |
+| «Consultar estado» dice que la guía se consultó hace poco (429) | Enfriamiento de 10 minutos por guía, para no gastar consultas. Espera el tiempo indicado. |
+| «Consultar estado» dice que la cuota de registros está en la reserva | Quedan 10 registros o menos en el plan de Track123: no se inscriben guías nuevas. Las ya registradas se siguen consultando. |
+| «Consultar estado» dice que solo está disponible para Interrapidísimo | El rastreo no existe para Envía ni Otra: sus estados se cambian a mano. |
+| Una factura aparece en *Por despachar / sin guía* con urgencia | Le falta anotar la guía: atención desde 4 h y vencida desde 24 h. Se anota desde esa pantalla (permiso `envios.anotar`). |
 | El servidor no arranca con `ModuleNotFoundError: reportlab` | Falta la dependencia del PDF de la factura (HU 7.1): `pip install -r requirements.txt`. |
 | Se creó una orden de producción y dice que falta material | El stock cambió entre la simulación y la creación; la orden no se guarda. Revisa la disponibilidad y vuelve a intentar. |

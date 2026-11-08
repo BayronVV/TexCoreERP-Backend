@@ -9,12 +9,12 @@ tiene `<módulo>.ver`.
 | Código | Nombre | Para qué sirve |
 |---|---|---|
 | `ADMIN` | Administrador | Gestiona usuarios, roles y la configuración. Tiene **todos** los permisos de forma implícita y no se puede restringir. |
-| `GERENTE` | Gerente | Consulta toda la operación, genera reportes y **aprueba las órdenes de compra**. |
+| `GERENTE` | Gerente | Consulta toda la operación (incluidos los envíos), genera reportes, **aprueba las órdenes de compra** y registra la devolución física de los paquetes. |
 | `PRODUCCION` | Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo, órdenes de compra y criterios de calidad. |
-| `ALMACENISTA` | Almacenista | Proveedores, materias primas, movimientos y **recepción de mercancía**. |
+| `ALMACENISTA` | Almacenista | Proveedores, materias primas, movimientos y **recepción de mercancía**. En envíos arma las relaciones de despacho, cambia los estados de las guías y registra la devolución física. |
 | `TERMINACION` | Personal de Terminación | Control de calidad: define los defectos e inspecciona los lotes que vuelven de lavandería. |
-| `SECRETARIA` | Secretaria | Producto terminado: ingresa al inventario final las prendas aptas de cada inspección, ajusta el inventario contra el conteo físico y consulta existencias y movimientos. |
-| `VENDEDOR` | Vendedor | Consulta el producto terminado disponible, registra clientes y emite las facturas POS internas de venta (descuenta el inventario). Despachos y cobro llegan con las HU 7.2 y 7.3. |
+| `SECRETARIA` | Secretaria | Producto terminado: ingresa al inventario final las prendas aptas de cada inspección, ajusta el inventario contra el conteo físico y consulta existencias y movimientos. En envíos anota guías, arma relaciones de despacho y cambia los estados. |
+| `VENDEDOR` | Vendedor | Consulta el producto terminado disponible, registra clientes y emite las facturas POS internas de venta (descuenta el inventario). Anota la guía de la transportadora al facturar y consulta los envíos. |
 | `PENDING` | Pendiente de aprobación | Cuenta recién registrada: **sin permisos** hasta que un administrador le asigne un rol. |
 
 Los roles base no se eliminan. Un administrador puede crear roles propios desde **Seguridad y Usuarios → Roles y
@@ -36,11 +36,12 @@ Cada módulo tiene `ver` (consultar) y `gestionar` (registrar y modificar). Marc
 | Control de Calidad | `calidad.ver`, `calidad.gestionar` | Activo (Inspecciones y Defectos) |
 | Producto Terminado | `producto_terminado.ver`, `producto_terminado.gestionar`, `producto_terminado.ajustar` | Activo (Ingreso, Existencias, Ajuste manual y Movimientos) |
 | Ventas y Despachos | `ventas.ver`, `ventas.gestionar`, `ventas.precios`, `ventas.anular` | Activo (Panel de ventas, Nueva venta, Facturas, Clientes y Precios; despachos y cobro, previstos) |
+| Envíos | `envios.ver`, `envios.anotar`, `envios.gestionar`, `envios.devolucion` | Activo (Guías, Por despachar / sin guía, Relaciones de despacho y Resumen) |
 | Reportes | `reportes.ver`, `reportes.gestionar` | Previsto |
 
 ## Matriz inicial rol → permiso
 
-Es la que dejan las migraciones (`0003`, `0007`, `0008`, `0010`, `0011` y `0012` de `apps/users`). Después se ajusta desde la pantalla de
+Es la que dejan las migraciones (`0003`, `0007`, `0008`, `0010`, `0011`, `0012` y `0013` de `apps/users`). Después se ajusta desde la pantalla de
 roles, así que la matriz real de un despliegue puede diferir. `ADMIN` no aparece porque lo tiene todo.
 
 | Permiso | GERENTE | PRODUCCION | ALMACENISTA | TERMINACION | SECRETARIA | VENDEDOR |
@@ -67,6 +68,10 @@ roles, así que la matriz real de un despliegue puede diferir. `ADMIN` no aparec
 | `ventas.gestionar` | | | | | | ✔ |
 | `ventas.precios` | ✔ | | | | | |
 | `ventas.anular` | ✔ | | | | | |
+| `envios.ver` | ✔ | | ✔ | | ✔ | ✔ |
+| `envios.anotar` | | | ✔ | | ✔ | ✔ |
+| `envios.gestionar` | | | ✔ | | ✔ | |
+| `envios.devolucion` | ✔ | | ✔ | | | |
 | `reportes.ver`, `reportes.gestionar` | ✔ | | | | | |
 
 `seguridad.*` solo lo tiene `ADMIN` por defecto.
@@ -102,6 +107,10 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 | Registrar y modificar clientes; **emitir una factura** (descuenta el inventario) | `ventas.gestionar` |
 | Registrar o actualizar el costo de fábrica y los precios de una referencia | `ventas.precios` |
 | Anular una factura | `ventas.anular` |
+| Consultar guías, su detalle e historial, las facturas sin guía, las relaciones de despacho (y su PDF), el resumen y los metadatos de envíos | `envios.ver` |
+| Anotar o reemplazar el número de guía de una factura ya emitida (`/api/envios/facturas/<id>/guia/`) | `envios.anotar` |
+| Armar una relación de despacho, cambiar el estado de una guía, registrar el flete, **consultar el estado en Track123** (gasta cuota de registros) y leer la cuota | `envios.gestionar` |
+| Registrar en cartera la devolución física de un paquete (reingresa las prendas al inventario) | `envios.devolucion` |
 
 ### Reglas que no dependen del permiso
 
@@ -121,6 +130,11 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 - **Una factura no se edita ni se borra:** una factura de venta emitida no se modifica ni se elimina, ni siquiera con `ventas.gestionar` o
   siendo administrador; la ruta no existe. Solo se **anula** (con `ventas.anular` y un motivo), y entonces las unidades vuelven al inventario
   por el libro y el número no se reutiliza. Los movimientos de venta (`SALIDA_VENTA` y `DEVOLUCION_VENTA`) solo los escribe la factura, no la API directamente.
+- **La guía solo se anota con la factura emitida:** al facturar, la guía que viene en la venta se crea con el permiso de facturar (`ventas.gestionar`); anotarla o reemplazarla después es de `envios.anotar`. La guía vigente de una factura no se puede reemplazar cuando ya fue despachada.
+- **El historial de una guía no se edita:** los cambios de estado quedan en un historial de solo inserción (quién, cuándo, desde dónde: a mano, Track123 o sistema); ni siquiera un administrador lo modifica. Una guía reemplazada pasa a *Anulada*, no se borra.
+- **Los estados finales no se mueven:** una guía entregada, devuelta o anulada ya no cambia de estado, ni a mano ni por el rastreo.
+- **El rastreo es de quien gestiona:** consultar el estado en Track123 gasta cuota de la cuenta, así que exige `envios.gestionar`; el Vendedor y el Gerente ven el último estado guardado pero no lo consultan.
+- **La devolución física la registra bodega o gerencia:** `envios.devolucion` (Almacenista y Gerente). El flete de una devolución se registra a nombre del vendedor y solo se reporta.
 - **Factura interna, no electrónica:** la factura POS es un comprobante propio de TexCore y no sustituye la factura electrónica ante la DIAN.
 - **Quién decide los precios:** el Vendedor factura con los precios que fija el Gerente (`ventas.precios`); el descuento que da está limitado
   por el tipo de cliente y nunca baja del costo de fábrica, sin importar el permiso.

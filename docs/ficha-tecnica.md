@@ -70,11 +70,11 @@ Terminación (`TERMINACION`), Secretaria (`SECRETARIA`), Vendedor (`VENDEDOR`) y
 
 | Aspecto | Valor |
 |---|---|
-| Pruebas automatizadas del backend | 830 (usuarios, inventario, referencias, producción, compras, calidad, producto terminado y salud), todas aprobadas |
-| Pruebas automatizadas del frontend | 179 (lógica de las pantallas), todas aprobadas |
-| Rutas de la API | 83 (sin contar la documentación): 8 públicas, 75 internas con sesión y 74 de ellas con permiso por rol |
-| Documentación de la API | 121 operaciones descritas; el esquema se valida sin errores (4 advertencias de nombres de enumeraciones repetidas) |
-| Modelo de datos | 43 tablas en 7 apps (usuarios, inventario, referencias, producción, compras, calidad y producto terminado), con diagrama entidad-relación generado desde los modelos |
+| Pruebas automatizadas del backend | 922 (usuarios, inventario, referencias, producción, compras, calidad, producto terminado, ventas, reportes, envíos y salud), todas aprobadas |
+| Pruebas automatizadas del frontend | 221 (lógica de las pantallas), todas aprobadas |
+| Rutas de la API | 114 (sin contar la documentación): 6 públicas y 108 internas con sesión |
+| Documentación de la API | 157 operaciones descritas; el esquema se genera y la validación reporta 14 advertencias y 8 vistas sin serializador heredadas de módulos anteriores (ninguna de envíos) |
+| Modelo de datos | 54 tablas en 9 apps (usuarios, inventario, referencias, producción, compras, calidad, producto terminado, ventas y envíos), con diagrama entidad-relación generado desde los modelos |
 | Tiempo de respuesta medido | Consulta a la base en producción (`/api/health/db/`): mediana 0,41 s, n = 15 (7 oct 2026) |
 
 ## Requerimientos

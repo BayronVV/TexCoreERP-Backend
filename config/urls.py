@@ -15,6 +15,7 @@ urlpatterns = [
     path("api/", include("apps.finished.urls")),
     path("api/", include("apps.sales.urls")),
     path("api/", include("apps.reports.urls")),
+    path("api/", include("apps.shipping.urls")),
 ]
 
 if settings.API_DOCS_ENABLED:

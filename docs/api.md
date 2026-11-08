@@ -37,12 +37,13 @@ Cada ruta exige un permiso por rol (RNF01), por ejemplo `inventario.ver` para co
 | 401 | Sin sesión, token vencido o credenciales inválidas |
 | 403 | El rol no tiene el permiso que la ruta exige |
 | 404 | No existe |
-| 409 | Conflicto con el estado actual; por ejemplo, el lote ya fue inspeccionado o la inspección ya fue ingresada al inventario final |
-| 429 | Demasiados intentos (límite de frecuencia) |
+| 409 | Conflicto con el estado actual; por ejemplo, el lote ya fue inspeccionado, la inspección ya fue ingresada al inventario final o la relación de despacho ya se creó con ese `token` |
+| 429 | Demasiados intentos (límite de frecuencia) o, en el rastreo de una guía, consulta demasiado seguida (enfriamiento de 10 min por guía; el cuerpo trae `segundos`) |
+| 503 | El servicio de rastreo (Track123) está apagado, sin clave o no respondió. La guía conserva su último estado y nada más se bloquea |
 
 ## Módulos
 
-La API tiene **95 rutas** y **137 operaciones**, todas descritas en Swagger con su etiqueta. Aquí solo el mapa; los detalles
+La API tiene **114 rutas** y **157 operaciones**, todas descritas en Swagger con su etiqueta. Aquí solo el mapa; los detalles
 de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permiso que exige cada operación está en
 [roles y permisos](roles-y-permisos.md), y las reglas de negocio de cada módulo en [módulos y reglas](modulos.md).
 
@@ -75,6 +76,12 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | `ventas` | `/api/ventas/precios/` (referencias activas con su costo de fábrica y precios; filtro `q`) y `/api/ventas/precios/<referencia>/` (`PUT`: registrar o actualizar). Modificar exige `ventas.precios` | TE-62 |
 | `ventas` | `/api/ventas/facturas/` (listar con filtros `cliente`, `estado`, `desde`, `hasta`, `q` y `limit`, y emitir la factura POS interna descontando el inventario) y `/api/ventas/facturas/<id>/` (consultar con sus líneas). No hay `PUT` ni `DELETE`: una factura no se edita | TE-62 |
 | `ventas` | `/api/ventas/facturas/<id>/pdf/` (descarga el PDF), `/api/ventas/facturas/<id>/anular/` (anula con motivo y reingresa las unidades; exige `ventas.anular`) y `/api/ventas/metadatos/` (tipos de cliente con su lista de precios y descuento máximo, transportadoras, IVA y la leyenda «Factura POS interna. No es factura electrónica.») | TE-62 |
+| `ventas` | Las facturas (`/api/ventas/facturas/` y `…/<id>/`) traen el campo `guia`: la guía vigente de la factura (`id`, `estado`, `estado_nombre`, `color` del semáforo, `rastreo_estado`, `consultada_en` y `novedad`) o `null` si todavía no tiene. `transportadora` y `numero_guia` de la factura son el espejo de esa guía y solo los escribe el servicio de guías | TE-63 |
+| `envios` | `/api/envios/metadatos/` (estados con su color de semáforo, transiciones permitidas, transportadoras y cuál se rastrea, plazos para anotar la guía y si el rastreo está habilitado), `/api/envios/resumen/` (conteos por estado, facturas sin guía, novedades abiertas y devoluciones por vendedor con su flete) y `/api/envios/pendientes/` (facturas emitidas sin guía, con `horas_sin_guia` y `urgencia`: `normal`, `atencion` desde 4 h o `vencida` desde 24 h) | TE-63 |
+| `envios` | `/api/envios/guias/` (listar con filtros `estado`, `transportadora`, `factura`, `desde`, `hasta`, `q`, `todas` y `limit`) y `/api/envios/guias/<id>/` (detalle con el historial propio y la línea de tiempo guardada de la transportadora, sin llamar a la API). Una guía no se borra ni se crea suelta: nace al anotarla en una factura | TE-63 |
+| `envios` | `/api/envios/facturas/<id>/guia/` (`POST`: anotar o reemplazar la guía de una factura emitida), `/api/envios/guias/<id>/estado/` (`POST`: cambiar el estado a mano), `/api/envios/guias/<id>/flete/` (`PATCH`: registrar el flete) y `/api/envios/guias/<id>/devolucion/` (`POST`: registrar en cartera la devolución física; reingresa las prendas una sola vez) | TE-63 |
+| `envios` | `/api/envios/guias/<id>/rastrear/` (`POST`: consultar el estado real en Track123 y aplicarlo) y `/api/envios/rastreo/estado/` (`GET`: si el rastreo está habilitado y cuánta cuota de registros queda; leerla no gasta) | TE-63 |
+| `envios` | `/api/envios/relaciones/` (`GET` con filtro `transportadora`; `POST` crea la relación de despacho `RD-0001` y pasa sus guías a en tránsito), `/api/envios/relaciones/<id>/` y `/api/envios/relaciones/<id>/pdf/` (descarga `RD-0001.pdf`) | TE-63 |
 | `compras` | `/api/compras/ordenes/` y `/api/compras/ordenes/<id>/` (órdenes de compra de materiales: crear, listar con filtros `estado`, `proveedor` y `q`, y editar mientras son borrador), `/api/compras/ordenes/<id>/aprobar/`, `cancelar/` y `cerrar/` (aprobación del Gerente, cancelación y cierre con motivo) | — |
 | `compras` | `/api/compras/recepciones/` (recibir mercancía con varios productos a la vez, contra una orden aprobada o suelta; cada fila entra al almacén con la misma regla del ingreso: stock, costo promedio y kardex) y `/api/compras/metadatos/` (estados y tolerancia de exceso) | — |
 | `salud` | `/api/health/`, `/api/health/db/` | — |
@@ -193,6 +200,56 @@ Para anular se envía `POST /api/ventas/facturas/<id>/anular/` con `{"motivo": "
 caracteres). Responde `200` con la factura en estado `ANULADA` y deja un movimiento `DEVOLUCION_VENTA` por línea. Errores: `400` si el motivo
 es muy corto, `409` si la factura ya estaba anulada (`{"detail": ["La factura FV-0001 ya está anulada."]}`) y `403` si el rol no tiene
 `ventas.anular`.
+
+## Ejemplo: anotar la guía, despachar y consultar el estado
+
+La guía **se genera en el portal de la transportadora antes de facturar** y se anota en la venta: `POST /api/ventas/facturas/` acepta
+`transportadora` y `numero_guia` (opcionales; con número, la transportadora es obligatoria) y la guía nace en la misma transacción que la factura,
+en estado `POR_DESPACHAR`. Si no se anotó, la factura aparece en `GET /api/envios/pendientes/` y se anota después:
+
+```bash
+curl -X POST http://localhost:8000/api/envios/facturas/1/guia/   -H "Authorization: Bearer <access>" -H "Content-Type: application/json"   -d '{"transportadora": "INTERRAPIDISIMO", "numero_guia": "700187211301"}'
+```
+
+Responde `201` con la guía. Los espacios del número se quitan; un número de Interrapidísimo que no tenga 12 dígitos se acepta, pero la guía trae
+`aviso_formato`. Si la factura ya tenía una guía **por despachar**, esa se anula y la nueva la reemplaza; si ya salió, no se puede reemplazar.
+Errores: `400` si el número ya está asignado a otra factura de esa transportadora, la factura está anulada o ya se gestionó como devolución;
+`403` si el rol no tiene `envios.anotar`.
+
+Para despachar se arma la **relación de despacho** con las guías `POR_DESPACHAR` de **una misma transportadora** (hasta 100). `token` es un UUID que
+genera el formulario y evita crear la relación dos veces:
+
+```bash
+curl -X POST http://localhost:8000/api/envios/relaciones/   -H "Authorization: Bearer <access>" -H "Content-Type: application/json"   -d '{"transportadora": "INTERRAPIDISIMO", "guias": [1, 2, 3], "responsable": "Bodega", "token": "9d2f4b6e-1c3a-4e58-b7d0-6a8c2e41f357"}'
+```
+
+Responde `201` con la relación (`RD-0001`) y sus guías, ya `EN_TRANSITO`; el PDF para firmar está en `GET /api/envios/relaciones/<id>/pdf/`. Es
+atómica: si **una** guía no sirve (no existe, no está por despachar, es de otra transportadora o su factura está anulada) responde `400` con todos
+los problemas y no cambia ninguna ni gasta el consecutivo. `409` si ese `token` ya generó una relación
+(`{"detail": ["Esta relación ya se creó como RD-0001."], "relacion": 1, "codigo": "RD-0001"}`). Exige `envios.gestionar`.
+
+El estado se cambia a mano con `POST /api/envios/guias/<id>/estado/` (`{"estado": "EN_NOVEDAD", "nota": "Dirección errada"}`). Las transiciones son
+`POR_DESPACHAR → EN_TRANSITO | ANULADA`, `EN_TRANSITO → ENTREGADA | EN_NOVEDAD | DEVUELTA` y `EN_NOVEDAD → EN_TRANSITO | ENTREGADA | DEVUELTA`; las
+guías entregadas, devueltas y anuladas ya no se mueven. **Novedad y devolución exigen una `nota` de al menos 5 caracteres.** Un salto no permitido o
+una nota corta responden `400`.
+
+Con `POST /api/envios/guias/<id>/rastrear/` (cuerpo opcional `{"forzar": true}`) el sistema le pregunta a Track123 por el estado real y lo aplica por
+las mismas transiciones. **Nunca se llama solo**, y solo para Interrapidísimo. La respuesta es el detalle de la guía más `aviso` (qué se ignoró
+o por qué no hubo cambio; vacío si todo fue bien). Errores:
+
+- `429` si la guía se consultó hace menos de 10 minutos (`{"detail": ["Esta guía se consultó hace poco: intenta de nuevo en 7 min."], "segundos": 420}`).
+- `503` si el rastreo está apagado o sin clave, si Track123 no respondió o si rechazó la clave: la guía no cambia.
+- `400` si la guía es de otra transportadora, está anulada o reemplazada, ya terminó (entregada o devuelta, con su respuesta guardada), la cuota de
+  registros está en la reserva o Track123 rechazó la guía.
+- `403` si el rol no tiene `envios.gestionar`.
+
+Cuando la guía llega devuelta, `POST /api/envios/guias/<id>/devolucion/` (`envios.devolucion`) registra la devolución en cartera con la misma regla
+de la HU 7.3: las prendas vuelven al inventario **una sola vez** y la factura queda en `DEVOLUCION`. `400` si la guía no está devuelta o la
+factura ya se gestionó. El flete (`PATCH /api/envios/guias/<id>/flete/` con `{"valor_flete": 12000}`, un entero de 0 a 10.000.000) se guarda en la
+guía; si la guía está devuelta, es además el `flete_vendedor`: se registra y se reporta en el resumen, pero no se descuenta de nada.
+
+Anular una factura (`POST /api/ventas/facturas/<id>/anular/`) con la guía ya despachada se rechaza con `400`; con la guía por despachar, se anula
+también la guía.
 
 ## Mantener la documentación al día
 

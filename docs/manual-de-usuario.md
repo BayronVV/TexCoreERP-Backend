@@ -6,12 +6,12 @@ Lo que ves en el menú depende de tu rol: solo aparecen los módulos que tienes 
 | Rol | Qué suele hacer en el sistema | Sección |
 |---|---|---|
 | Administrador | Aprobar solicitudes de cuenta, asignar roles y ajustar permisos; tiene acceso a todo | [4](#4-administrador-usuarios-y-roles) |
-| Almacenista | Inventario, proveedores, ingresos, salidas a lavandería y recepción de mercancía | [5](#5-almacenista-inventario) |
+| Almacenista | Inventario, proveedores, ingresos, salidas a lavandería y recepción de mercancía; en envíos, relaciones de despacho, estados de las guías y devoluciones | [5](#5-almacenista-inventario) y [11](#11-envios-guias-y-despachos-vendedor-almacenista-secretaria-y-gerente) |
 | Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo, órdenes de compra y defectos de calidad | [6](#6-jefe-de-produccion-referencias-fichas-tecnicas-y-produccion) |
 | Personal de Terminación | Definir los defectos e inspeccionar los lotes que vuelven de lavandería (aptas y marras) | [7](#7-personal-de-terminacion-control-de-calidad) |
-| Secretaria | Ingresar al inventario final las prendas aptas de cada inspección, y consultar existencias y movimientos | [8](#8-secretaria-y-vendedor-producto-terminado) |
-| Vendedor | Consultar el producto terminado disponible (existencias, movimientos e ingresos); registrar clientes y hacer ventas con factura POS interna | [8](#8-secretaria-y-vendedor-producto-terminado) y [10](#10-vendedor-ventas-y-facturacion) |
-| Gerente | Consultar toda la operación (producción, inventario, costos, calidad, producto terminado, ventas), aprobar órdenes de compra, fijar precios y anular facturas | [9](#9-gerente-consulta-y-aprobacion) y [10](#10-vendedor-ventas-y-facturacion) |
+| Secretaria | Ingresar al inventario final las prendas aptas de cada inspección, y consultar existencias y movimientos; en envíos, anotar guías y armar relaciones de despacho | [8](#8-secretaria-y-vendedor-producto-terminado) y [11](#11-envios-guias-y-despachos-vendedor-almacenista-secretaria-y-gerente) |
+| Vendedor | Consultar el producto terminado disponible (existencias, movimientos e ingresos); registrar clientes y hacer ventas con factura POS interna; anotar la guía de la transportadora | [8](#8-secretaria-y-vendedor-producto-terminado), [10](#10-vendedor-ventas-y-facturacion) y [11](#11-envios-guias-y-despachos-vendedor-almacenista-secretaria-y-gerente) |
+| Gerente | Consultar toda la operación (producción, inventario, costos, calidad, producto terminado, ventas), aprobar órdenes de compra, fijar precios, anular facturas y registrar la devolución de paquetes | [9](#9-gerente-consulta-y-aprobacion), [10](#10-vendedor-ventas-y-facturacion) y [11](#11-envios-guias-y-despachos-vendedor-almacenista-secretaria-y-gerente) |
 
 Las tablas completas de permisos están en el [apartado técnico de roles y permisos](roles-y-permisos.md).
 
@@ -456,7 +456,8 @@ Menú **Ventas y Despachos → Nueva venta**.
 3. **Detalle de la factura.** Cada fila muestra el precio, y puedes escribir un **descuento (%)** por línea. El descuento lo decides tú, pero con tope según el tipo de cliente:
    **Detal 5 %, Mayorista 15 % y Distribuidor 20 %**, y el precio con descuento **nunca puede quedar por debajo del costo de fábrica**. Abajo ves los **totales en vivo**:
    subtotal, descuento, base gravable, **IVA del 19 %** y **total a pagar**. Los precios y el descuento son *antes de IVA*; el IVA se suma al final. Todo en pesos enteros.
-4. **Despacho.** Elige la **transportadora** (*Interrapidísimo*, *Envía* u *Otra*, o déjala *Por definir*) y, si ya la tienes, el **número de guía**; si no, se asigna después.
+4. **Despacho.** La guía se genera **antes** en el portal de la transportadora. Elige la **transportadora** (*Interrapidísimo*, *Envía* u *Otra*, o déjala *Por definir*) y escribe el **número de guía**:
+   la factura y la guía nacen juntas. Es opcional, pero conviene anotarla lo antes posible; si falta, la factura queda en **Envíos → Por despachar / sin guía** (sección 11).
    Puedes añadir observaciones.
 5. **Facturar.** Pulsa **Facturar $total**. El sistema valida que haya stock de cada talla y color, descuenta el inventario y genera la factura (`FV-0001`). Si pulsas dos veces
    por error, la segunda no factura otra vez.
@@ -500,11 +501,120 @@ Cambiar un precio no modifica las facturas ya emitidas. Los demás roles solo co
 !!! warning "Qué todavía no hace"
     - **Factura electrónica:** el comprobante es interno; no se envía a la DIAN ni hace contabilidad.
     - **Formas de pago:** solo contraentrega. No hay venta de contado, a crédito ni abonos; el cobro se registrará con una historia posterior.
-    - **Despacho:** la transportadora y la guía se guardan en la factura, pero su seguimiento llega con otra historia.
+    - **Despacho:** el seguimiento de la guía (semáforo, relaciones de despacho, devoluciones) está en el módulo **Envíos** (sección 11).
     - **Pedidos y reservas:** se vende lo que hay en ese momento; no se reserva producto.
-    - **Devoluciones parciales y flete:** solo se anula la factura completa. En una devolución el flete se descuenta al vendedor, según la política de la empresa; eso se aplicará con el despacho y el cobro.
+    - **Devoluciones parciales:** solo se anula la factura completa. En una devolución el flete se descuenta al vendedor, según la política de la empresa; el módulo Envíos lo registra y lo reporta, pero no lo descuenta.
     - **Precios y costo de fábrica:** los registra el Gerente a mano.
     - **Filtros avanzados e impresión directa:** la lista filtra por texto, estado y fechas, y la factura se entrega solo en PDF.
+
+## 11. Envíos: guías y despachos (Vendedor, Almacenista, Secretaria y Gerente)
+
+Menú **Envíos**. Aquí se sigue cada paquete desde que se factura hasta que llega (o regresa). Cada guía tiene un estado con su **color**, como un semáforo:
+
+| Estado | Color | Qué quiere decir |
+|---|---|---|
+| Por despachar | Gris | Ya tiene guía, pero el paquete sigue en la bodega. |
+| En tránsito | Azul | Ya salió con la transportadora. |
+| Con novedad | Amarillo | Hay un problema con la entrega (por ejemplo, una dirección errada). |
+| Entregada | Verde | El cliente ya recibió el paquete. |
+| Devuelta | Rojo | El paquete regresa a la empresa. |
+
+Quién hace qué:
+
+| Rol | Qué puede hacer en Envíos |
+|---|---|
+| Vendedor | Anotar la guía al vender o después, y consultar guías y relaciones. |
+| Secretaria | Anotar guías, armar relaciones de despacho, cambiar estados, registrar el flete y consultar el estado. |
+| Almacenista | Todo lo de la Secretaria y, además, registrar la devolución física de un paquete. |
+| Gerente | Consultar todo y registrar la devolución física de un paquete. |
+
+### Anotar la guía al facturar
+
+La guía **se genera primero en el portal de la transportadora** (por ejemplo, la de Interrapidísimo) y después se escribe en TexCore. En **Ventas y Despachos → Nueva venta**,
+en el paso **Despacho**, elige la **transportadora** y escribe el **número de guía** antes de pulsar **Facturar**: la factura y la guía nacen juntas y la guía queda *Por despachar*.
+Los espacios del número se quitan solos. Si una guía de Interrapidísimo no tiene 12 dígitos, el sistema te **avisa** (revisa el número) pero te deja seguir.
+
+Anotar la guía es opcional, pero **hay que hacerlo lo antes posible**. No puedes repetir un número: si ya está en otra factura, el sistema te dice en cuál.
+
+### Por despachar / sin guía
+
+Menú **Envíos → Por despachar / sin guía**. Lista las facturas emitidas que todavía no tienen guía, de la más antigua a la más reciente, con las horas que llevan esperando:
+
+- Desde **4 horas** sin guía, la factura pide **atención**.
+- Desde **24 horas** sin guía, está **vencida**.
+
+En esa pantalla escribe la transportadora y el número para anotar la guía. Si te equivocas de número y el paquete **todavía no salió**, anota el correcto: la guía anterior queda anulada y la nueva
+la reemplaza. Si el paquete **ya salió**, la guía no se puede reemplazar.
+
+### Armar una relación de despacho
+
+Cuando la transportadora recoge los paquetes, se arma la **relación de despacho** (`RD-0001`): la lista de lo que se entrega ese día. Menú **Envíos → Relaciones de despacho**.
+
+1. Elige la **transportadora**. Solo sirven las guías *Por despachar* de esa transportadora.
+2. Marca las guías que se entregan (hasta 100) y escribe el responsable y las observaciones si las hay.
+3. Despacha. **Todas** las guías pasan a *En tránsito* a la vez; si una no sirve (por ejemplo, su factura se anuló), no cambia ninguna y el sistema te dice cuál es el problema.
+4. Descarga el **PDF** de la relación, imprímelo y haz que la transportadora lo firme al recibir los paquetes.
+
+Si envías el formulario dos veces por error, la segunda no crea otra relación.
+
+### Consultar el estado de una guía
+
+En **Envíos → Guías** verás todas las guías con su color de semáforo y puedes filtrar por estado, transportadora y fechas, o buscar por número de guía, factura o cliente. El detalle de una guía muestra
+el historial de cambios (quién, cuándo y de dónde vino: a mano, de la transportadora o del sistema) y, si la hay, la línea de tiempo que reportó la transportadora.
+
+Para las guías de **Interrapidísimo** hay un botón **Consultar estado**, que le pregunta a la transportadora cómo va el paquete y actualiza la guía. Tenlo en cuenta:
+
+- **Nunca es automático:** solo se consulta cuando pulsas el botón, y lo ven quienes gestionan los envíos (Secretaria y Almacenista).
+- **Cuida una cuota limitada:** registrar una guía nueva en el servicio de rastreo gasta una de pocas disponibles; por eso conviene consultar cuando de verdad haga falta.
+- **Hay que esperar entre consultas:** la misma guía no se puede consultar otra vez antes de 10 minutos; el sistema indica cuánto falta.
+- **Se muestra la última respuesta:** lo que ya se consultó queda guardado y se ve sin volver a preguntar.
+- **Si el servicio no responde**, no pasa nada grave: la guía queda como estaba y puedes seguir vendiendo y despachando; cambia el estado a mano si lo necesitas.
+- Para **Envía** y **Otra** no hay consulta: sus estados se cambian a mano.
+
+### Cambiar el estado a mano: novedad y devolución
+
+En el detalle de la guía solo se ofrecen los estados a los que se puede pasar desde el actual:
+
+- *En tránsito* → *Entregada*, *Con novedad* o *Devuelta*.
+- *Con novedad* → *En tránsito*, *Entregada* o *Devuelta*.
+- *Entregada*, *Devuelta* y *Anulada* son finales: ya no se mueven.
+
+Marcar una **novedad** o una **devolución** exige escribir **qué pasó** (mínimo 5 caracteres), por ejemplo «Dirección errada» o «El cliente rechazó el paquete». Esa nota queda en el historial.
+
+### Devolución en cartera y flete
+
+Cuando un paquete *Devuelto* **ya llegó a la bodega**, el Almacenista o el Gerente registra la devolución en cartera desde el detalle de la guía. Las prendas **vuelven al inventario una sola vez** y la factura
+queda como devolución en la cartera (ver **Ventas y Despachos → Gestión de cartera**). Si la factura ya se cobró o ya se gestionó, el sistema no lo permite.
+
+El **flete** (el costo del envío) se registra en la guía, en pesos enteros. Cuando el paquete es una **devolución**, ese flete se le **descuenta al vendedor** según la política de la empresa:
+TexCore lo **anota a nombre del vendedor y lo muestra en el Resumen**, pero **no lo descuenta de ningún pago** (no hay nómina en el sistema).
+
+### Resumen
+
+Menú **Envíos → Resumen**: cuántas guías hay en cada color, cuántas facturas están sin guía (y cuántas piden atención o están vencidas), las últimas novedades abiertas y las devoluciones por vendedor con el flete que suman.
+
+### Anular una factura con guía
+
+- Si la guía **todavía está por despachar**, al anular la factura la guía se anula sola.
+- Si la guía **ya salió** (en tránsito, con novedad, entregada o devuelta), el sistema **no deja anular** la factura.
+
+### Mensajes que puedes ver
+
+- *La guía … de … ya está asignada a la factura ….* El número ya se usó en otra factura.
+- *Las guías de Interrapidísimo suelen tener 12 dígitos: revisa el número.* Es un aviso, no un error.
+- *La guía vigente ya fue despachada … y no se puede reemplazar.*
+- *Explica qué pasó (mínimo 5 caracteres).* Falta la nota de la novedad o la devolución.
+- *Una guía «…» no puede pasar a «…».* La transición no está permitida desde el estado actual.
+- *Esta relación ya se creó como RD-….* Enviaste el formulario dos veces; la primera ya quedó.
+- *La guía … no está por despachar …* o *… es de …, no de ….* La relación solo admite guías por despachar de una misma transportadora.
+- *Esta guía se consultó hace poco: intenta de nuevo en N min.* Espera el enfriamiento.
+- *El servicio de rastreo no está disponible. La guía conserva su último estado.* No se pudo consultar; la guía no cambió.
+- *No se puede anular la factura: su guía ya fue despachada ….*
+
+!!! warning "Qué todavía no hace"
+    - **Rastreo solo de Interrapidísimo y solo con el botón:** no hay consulta automática ni avisos; Envía y Otra se manejan a mano.
+    - **El flete de una devolución no se descuenta:** se registra y se reporta por vendedor; no hay nómina.
+    - **Devolución completa:** se devuelve la factura entera, no una parte.
 
 ## Preguntas frecuentes
 
@@ -535,6 +645,14 @@ Cambiar un precio no modifica las facturas ya emitidas. Los demás roles solo co
 **Veo ceros resaltados en Existencias.** Es normal: son las tallas y colores de la referencia que todavía no tienen prendas disponibles.
 
 **No puedo facturar una referencia.** Puede no tener precio (pídeselo al Gerente en *Ventas y Despachos → Precios*) o no tener existencias de esa talla y color. La factura es un comprobante interno, no una factura electrónica.
+
+**No sé en qué va un paquete.** Mira el color de su guía en *Envíos → Guías*. Si es de Interrapidísimo y tienes permiso de gestionar los envíos, pulsa **Consultar estado** (la misma guía no se consulta otra vez antes de 10 minutos). Para Envía y Otra el estado lo cambia a mano quien despacha.
+
+**Una factura aparece en «Por despachar / sin guía».** Todavía no tiene el número de guía: genéralo en el portal de la transportadora y anótalo ahí. Desde 4 horas pide atención y desde 24 horas está vencida.
+
+**Me equivoqué en el número de la guía.** Si el paquete aún no salió (*Por despachar*), anota el número correcto y reemplaza al anterior. Si ya salió, no se puede reemplazar.
+
+**No me deja anular una factura.** Si su guía ya fue despachada (en tránsito, con novedad, entregada o devuelta), la factura no se anula. Con la guía todavía por despachar sí se puede y la guía se anula sola.
 
 **Me equivoqué en una factura.** No se edita ni se borra. El Gerente la anula en *Ventas y Despachos → Facturas* con un motivo; las prendas vuelven al inventario y se emite una factura nueva (sección 10).
 

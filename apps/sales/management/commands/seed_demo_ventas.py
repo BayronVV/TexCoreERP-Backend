@@ -15,6 +15,7 @@ from django.db import transaction
 
 from apps.finished.models import StockTerminado
 from apps.inventory.services import next_code
+from apps.references import catalog as reference_catalog
 from apps.references.models import Referencia
 
 from ... import catalog, invoicing
@@ -60,6 +61,16 @@ class Command(BaseCommand):
             if reference is None or PrecioReferencia.objects.filter(referencia=reference).exists():
                 continue
             PrecioReferencia.objects.create(referencia=reference, costo_fabrica=cost, precio_mayorista=wholesale, precio_detal=retail)
+            priced += 1
+        # Cualquier otra referencia activa sin precio (los códigos de arriba son los de la base de desarrollo) recibe un costo de fábrica
+        # decente y los mismos márgenes: mayorista ≈ costo × 1,45 y detal ≈ costo × 1,90, redondeados a los 100 pesos.
+        extra = Referencia.objects.filter(estado=reference_catalog.ACTIVE, precios__isnull=True).order_by("codigo")
+        for index, reference in enumerate(extra):
+            cost = 47_000 + 3_000 * (index % 3)
+            round100 = lambda value: int(round(value / 100) * 100)  # noqa: E731
+            PrecioReferencia.objects.create(
+                referencia=reference, costo_fabrica=cost, precio_mayorista=round100(cost * 1.45), precio_detal=round100(cost * 1.9),
+            )
             priced += 1
 
         invoices_count = 0

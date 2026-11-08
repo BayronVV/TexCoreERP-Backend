@@ -147,7 +147,7 @@ def _issue(*, user, cliente_id, lineas, transportadora, numero_guia, observacion
     invoice = FacturaVenta.objects.create(
         numero=next_code(catalog.INVOICE_PREFIX), cliente=client, cliente_nombre=client.nombre, cliente_documento=document_label(client),
         cliente_tipo=client.tipo, cliente_ciudad=client.ciudad, cliente_direccion=client.direccion, cliente_telefono=client.telefono,
-        vendedor=user, fecha=fecha or timezone.localdate(), transportadora=transportadora or "", numero_guia=str(numero_guia or "").strip()[:40],
+        vendedor=user, fecha=fecha or timezone.localdate(), transportadora=transportadora or "", numero_guia="",
         observaciones=str(observaciones or "").strip()[:500], subtotal=totals["subtotal"], descuento_total=totals["descuento"],
         base_gravable=totals["base"], iva_tarifa=catalog.IVA_RATE, iva_total=totals["iva"], total=totals["total"],
         valor_a_recaudar=totals["total"], token=token,
@@ -166,6 +166,14 @@ def _issue(*, user, cliente_id, lineas, transportadora, numero_guia, observacion
             variante=variant, tipo=finished_catalog.SALE_EXIT, cantidad=-quantity, saldo_antes=before, saldo_despues=stock.cantidad,
             factura=invoice, usuario=user, motivo=f"Venta {invoice.numero} a {client.nombre}",
         )
+    # La guía se genera en la transportadora antes de facturar y se anota aquí (HU 7.2): nace junto con la factura, en la misma transacción.
+    guide_number = "".join(str(numero_guia or "").split())
+    if guide_number:
+        if not transportadora:
+            fail("Elige la transportadora de la guía.", "transportadora")
+        from apps.shipping import services as shipping_services  # import local: shipping depende de sales
+
+        shipping_services.assign_guide_to(invoice, transportadora, guide_number, user)
     return invoice
 
 
@@ -204,6 +212,9 @@ def cancel_invoice(*, user, factura_id, motivo):
         fail("No se puede anular una factura que ya fue recaudada.", "estado_cobro")
     if invoice.estado_cobro == catalog.COLLECT_RETURNED:
         fail("La factura ya fue gestionada como devolución.", "estado_cobro")
+    from apps.shipping import services as shipping_services  # import local: shipping depende de sales
+
+    shipping_services.release_guide_for_cancellation(invoice, user)  # con guía despachada se rechaza; por despachar, se anula la guía
     lines = list(invoice.lineas.order_by("variante_id"))
     stocks = lock_stock([line.variante_id for line in lines])
     for line in lines:

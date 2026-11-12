@@ -40,6 +40,7 @@ nav:
       - API REST: api.md
       - Modelo de datos: modelo-de-datos.md
       - Convenciones de base de datos: convenciones-base-de-datos.md
+      - Procesos de negocio (BPMN): procesos-bpmn.md
   - Manual del sistema:
       - Instalación y operación: manual-del-sistema.md
       - Despliegue en Render: despliegue-render.md

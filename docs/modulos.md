@@ -18,11 +18,15 @@ cuerpos y respuestas) están en Swagger (`/api/docs/`); cómo se usa cada pantal
 | HU 4.4 (TE-54) | Asignación de recursos | `production` | Recursos y Seguimiento |
 | HU 4.5 (TE-55) | Monitor de estado | `production` | Monitor de estado |
 | HU 4.6 (TE-56) | Costeo y liquidación de órdenes | `production`, `inventory` | Liquidación de Órdenes |
+| HU 5.1 (TE-57) | Remisión de salida a lavandería | `production` | Lavandería → Remisión a Lavado |
+| HU 5.2 (TE-58) | Recepción de lavandería con cotejo y pérdidas | `production` | Lavandería → Recepción de Lavandería |
 | HU 6.1 (TE-59) | Registro de marras y calidad | `quality` | Control de Calidad → Inspecciones y Defectos |
 | HU 6.2 (TE-60) | Ingreso a inventario final (producto terminado) | `finished` | Producto Terminado → Ingreso, Existencias y Movimientos |
 | HU 6.3 (TE-61) | Ajuste manual de inventario de producto terminado | `finished` | Producto Terminado → Ajuste manual |
 | HU 7.1 (TE-62) | Facturación y descuento de inventario (factura POS interna) | `sales` | Ventas y Despachos → Panel de ventas, Nueva venta, Facturas, Clientes y Precios |
 | HU 7.2 (TE-63) | Gestión de guías de envío | `shipping` | Envíos → Guías, Por despachar / sin guía, Relaciones de despacho y Resumen |
+| HU 7.3 (TE-64) | Cartera y pagos contraentrega | `sales` | Ventas y Despachos → Gestión de cartera |
+| HU 7.4 (TE-65) | Reportes gerenciales | `reports` | Reportes → Tablero gerencial |
 
 Cómo se conectan entre sí:
 
@@ -37,7 +41,9 @@ flowchart LR
     TIEMPOS --> MON["Monitor de estado"]
     TIEMPOS -- "minutos netos × tarifa" --> COSTEO["Liquidación y costo por prenda"]
     INV -- "costo unitario del material" --> COSTEO
-    TIEMPOS -. "el lote sale a lavandería<br/>y vuelve recibido" .-> CAL["Control de calidad<br/>inspección del lote"]
+    TIEMPOS -- "lote en PLANTA" --> REMI["Lavandería: remisión de salida<br/>REM-LAV · lote EN_TRANSITO (HU 5.1)"]
+    REMI --> RECE["Recepción con cotejo<br/>REC-LAV · pérdidas por terceros (HU 5.2)"]
+    RECE -- "conformes: el lote vuelve a PLANTA" --> CAL["Control de calidad<br/>inspección del lote"]
     CAL -- "aptas · marras por defecto" --> RES["Resultado de la inspección<br/>(solo se agrega)"]
     RES -- "solo las aptas, repartidas<br/>por talla y color" --> TER[("Producto terminado<br/>stock por variante · libro de movimientos")]
     CONTEO["Conteo físico de la bodega"] -- "ajuste manual (HU 6.3)<br/>movimientos AJUSTE" --> TER
@@ -46,8 +52,14 @@ flowchart LR
     VEN -- "guía anotada al facturar<br/>(o después, si falta)" --> ENV["Envíos: guía y semáforo<br/>relación de despacho (HU 7.2)"]
     ENV -. "estado real de Interrapidísimo<br/>solo con el botón Consultar estado" .-> T123["Track123"]
     ENV -- "paquete devuelto: reingreso<br/>de las prendas, una sola vez" --> TER
-    VEN -. "por cobrar (HU 7.3)" .-> COBRO["Cobro: cartera"]
-    ENV -. "entregada: ya se puede cobrar" .-> COBRO
+    VEN -- "factura POR_COBRAR" --> COBRO["Cartera (HU 7.3)<br/>conciliar: PAGADO o DEVOLUCION"]
+    ENV -. "entregada: ya se puede cobrar<br/>(aún solo avisa)" .-> COBRO
+    COBRO -- "PAGADO: suma al saldo financiero" --> CAJA[("Saldo financiero<br/>movimientos de cartera")]
+    COBRO -- "DEVOLUCION: reingreso<br/>(DEVOLUCION_VENTA)" --> TER
+    ORD -- "órdenes, lotes y marras" --> REP["Reportes gerenciales (HU 7.4)<br/>vistas materializadas"]
+    CAL -- "aptas y marras" --> REP
+    VEN -- "ventas por referencia" --> REP
+    CAJA -- "saldo de la empresa" --> REP
 ```
 
 ## Seguridad y usuarios (HU 1.x)
@@ -193,6 +205,146 @@ arrastrando su tarjeta, lo que aplica la acción de la etapa en curso si es vál
 - Se redondea a centavos solo al final (mitad hacia arriba). La respuesta incluye totales, **costo por prenda**, distribución
   porcentual y `completo: false` con `advertencias` si falta una tarifa o el costo de un material (*Sin tarifa*, *Sin costo*).
 - Una orden anulada devuelve todos los costos en cero, porque el material regresó al almacén.
+
+## Lavandería: remisión de salida y recepción con cotejo (HU 5.1 y 5.2, TE-57 y TE-58)
+
+Procesos externos del lote ensamblado: se **remite** a una lavandería (HU 5.1, TE-57) y se **recibe** con cotejo de lo devuelto (HU 5.2, TE-58). No hay
+una app propia: el código vive en `apps/production/`. La salida está en `remisiones_services.py` y `remisiones_views.py`; la recepción, en
+`recepcion_services.py` y `recepcion_views.py`; las constantes (permisos, estados, motivos), en `catalog.py`; las rutas, en `urls.py` bajo `/api/lavanderia/`.
+Todas las respuestas de error usan el formato `{campo: [mensaje]}` con `400`.
+
+!!! info "No es la «Salida a lavandería» de Inventario"
+    Esta es la remisión de **lotes ensamblados** de producción. Es distinta de la orden de salida provisional `LV-0001` del módulo de Inventario
+    (ver [Inventario](#inventario-hu-21-a-24)), que se retirará con la HU 5.3 (TE-171).
+
+### Modelos
+
+Tablas del módulo de producción (borrado lógico como el resto; el detalle de campos está en [modelo de datos](modelo-de-datos.md)):
+
+| Tabla | Qué guarda |
+|---|---|
+| `produccion_receta_lavado` | Catálogo de recetas de lavado: `codigo` (único entre los activos), nombre, categoría, descripción, temperatura del proceso, duración en horas y `tarifa_sugerida` por prenda. |
+| `produccion_remision_lavanderia` | La remisión de salida: código `REM-LAV-AAAA-NNNN` (único), fechas de emisión y de entrega estimada, la lavandería (un `Proveedor`), transportador, placa, tulas o bultos, peso en kg, `costo_estimado`, `estado`, observaciones, responsable y quién la creó. |
+| `produccion_remision_lote` | Una línea por lote remitido: la remisión, el lote, la `cantidad` enviada (mínimo 1), la receta (opcional), el nombre de la receta y las instrucciones especiales. Un lote no se repite dentro de la misma remisión. |
+| `produccion_recepcion_lavanderia` | El acta de recepción: código `REC-LAV-AAAA-NNNN` (único), la remisión, el número de factura o remisión física de la lavandería (`factura_remision_externa`), la fecha, los totales (enviado, conforme, merma, dañadas), `costo_total_perdida`, `costo_servicio_lavado`, `estado`, observaciones y responsable. |
+| `produccion_recepcion_lote` | El cotejo de cada lote: la línea de remisión, el lote, cantidades enviada, conforme, merma y dañada, `motivo_merma`, `tipo_dano`, `costo_unitario_prenda` y `costo_perdida`. |
+
+Además `Lote` ganó el campo `estado_inventario`, que dice dónde está el lote.
+
+| Estado | Dónde se usa | Significa |
+|---|---|---|
+| Lote `PLANTA` | `Lote.estado_inventario` (valor por defecto) | El lote está en la planta interna; es el único estado que se puede remitir a lavandería. |
+| Lote `EN_TRANSITO` | `Lote.estado_inventario` | El lote salió con una remisión y está fuera de la planta; no aparece en los lotes disponibles. |
+| Lote `RETORNADO` | Definido en `catalog.py` | Existe como opción, pero **ningún servicio lo asigna**: al recibir, el lote vuelve a `PLANTA`. |
+| Remisión `EN_TRANSITO` | `RemisionLavanderia.estado` | Estado con el que se crea la remisión; espera su recepción. |
+| Remisión `EN_LAVANDERIA` | `RemisionLavanderia.estado` | Se acepta como «pendiente de recibir», pero ningún flujo actual la asigna. |
+| Remisión `RETORNADA` | `RemisionLavanderia.estado` | La recepción ya se asentó; no admite otra. |
+| Remisión `ANULADA` | `RemisionLavanderia.estado` | Existe en el catálogo y la recepción la rechaza, pero no hay ruta para anular una remisión. |
+| Recepción `COMPLETADA` | `RecepcionLavanderia.estado` | Valor con el que se guarda toda recepción. `PARCIAL` existe en el catálogo, pero no se asigna. |
+
+```mermaid
+flowchart LR
+    LP["Lote en PLANTA"] --> REM["Remisión REM-LAV-AAAA-NNNN<br/>(lote → EN_TRANSITO)"]
+    REM --> ENV["Remisión EN_TRANSITO<br/>pendiente de recepción"]
+    ENV --> COT{"Cotejo por lote:<br/>conformes + merma + dañadas = enviadas"}
+    COT -- "no cuadra o falta motivo" --> E400["400: no se guarda nada"]
+    COT -- "cuadra" --> ACTA["Acta REC-LAV-AAAA-NNNN<br/>remisión → RETORNADA"]
+    ACTA --> LB["Lote de nuevo en PLANTA<br/>cantidad = conformes"]
+    ACTA --> PER["Pérdida = (merma + dañadas) × costo por prenda<br/>servicio = conformes × tarifa de la receta"]
+    LB --> CAL["Control de calidad<br/>lotes por inspeccionar"]
+```
+
+### Salida: remisión a lavandería (HU 5.1, TE-57)
+
+`create_laundry_remission` es una sola transacción: si algo falla, no queda nada, ni siquiera el consecutivo. Reglas en el orden en que se aplican:
+
+| Regla | Detalle |
+|---|---|
+| Al menos un lote | Sin lotes responde `400` («Debes seleccionar al menos un lote para generar la remisión.»). El cuerpo también exige `lavanderia_id` y `fecha_emision`. |
+| Lavandería válida | El proveedor debe existir y no estar eliminado. El servicio **no exige** que su categoría sea lavandería. |
+| Sin lotes repetidos | Un lote no puede ir dos veces en la misma remisión. |
+| Lotes bloqueados | Se bloquean por fila en orden de id, así que dos remisiones simultáneas del mismo lote no pasan las dos: la segunda ve el lote `EN_TRANSITO` y se rechaza. Un id inexistente se rechaza. |
+| Lote en planta | Solo se remite un lote con `estado_inventario = PLANTA`; si no, `400` indicando el estado actual. |
+| Cantidad | Entera, mayor que cero y **no mayor que las unidades del lote** (`lote.cantidad`). |
+| Consecutivo | `REM-LAV-AAAA-NNNN`: el año es el de hoy y el número sale del contador `REM-LAV` (`Consecutivo`), que **no se reinicia cada año**. |
+| Costo estimado | Suma de `cantidad × tarifa_sugerida` de la receta elegida; si no hay receta, usa **3.500** por prenda. |
+| Descuento de la planta | Cada lote remitido pasa a `EN_TRANSITO` y la remisión nace `EN_TRANSITO`, con el usuario como responsable y creador. |
+| Respuesta | `201` con la remisión lista para el ticket de impresión: código, lavandería, lotes con su receta, `total_prendas`, costo estimado, transportador, placa, tulas, peso y estado. |
+
+Campos opcionales del cuerpo: `fecha_entrega_estimada`, `transportador_nombre` (150 caracteres), `vehiculo_placa` (30), `tulas_bultos` (entero ≥ 1, por defecto 1),
+`peso_kg` (por defecto 0), `observaciones` (1000), y por lote `receta_id` (el código de la receta), `receta_nombre` e `instrucciones_especiales` (500).
+Un `receta_id` que no existe no da error: la línea se guarda sin receta.
+
+`GET /api/lavanderia/lotes-disponibles/` lista los lotes en `PLANTA` de órdenes vigentes (código del lote, orden, referencia, tallas, unidades y receta sugerida);
+`GET /api/lavanderia/proveedores/` lista las lavanderías (proveedores de categoría lavandería, o todos los activos si todavía no hay ninguna);
+`GET /api/lavanderia/recetas/` lista las recetas.
+
+### Entrada: recepción con cotejo (HU 5.2, TE-58)
+
+`create_laundry_reception` también es una sola transacción. Bloquea la remisión, sus líneas y sus lotes, y aplica:
+
+| Regla | Detalle |
+|---|---|
+| Remisión pendiente | Debe existir; una remisión `RETORNADA` responde «ya fue retornada y recibida previamente» y una `ANULADA`, «está anulada y no puede recibir prendas». |
+| Todos los lotes, una vez | El cotejo debe traer **todos** los lotes de la remisión, cada uno una sola vez (por `remision_lote_id` o por `lote_id`); uno ajeno o repetido, o uno que falte, responde `400`. |
+| Cotejo exacto | Por lote, `conformes + merma + dañadas` debe ser **igual a lo enviado** en la remisión (no a las unidades actuales del lote). El mensaje dice cuánto suma y cuánto debería sumar. Ninguna cantidad puede ser negativa. |
+| Justificar las pérdidas | Si `cantidad_merma > 0`, `motivo_merma` es obligatorio; si `cantidad_danada > 0`, `tipo_dano` lo es. Son texto libre de hasta 200 caracteres; `catalog.py` trae listas sugeridas de motivos de merma y tipos de daño, pero el servicio no obliga a escoger de ellas. |
+| Liquidación de pérdidas por terceros | `costo_perdida = (merma + dañadas) × costo_unitario_prenda`, por lote y sumado en `costo_total_perdida`. El costo unitario viene en el cuerpo y, si falta, vale **35.000** (`DEFAULT_GARMENT_COST`). |
+| Costo del servicio | `costo_servicio_lavado` suma `conformes × tarifa_sugerida` de la receta de cada línea (3.500 si no tiene receta): solo se cobra lo procesado conforme. |
+| Consecutivo | `REC-LAV-AAAA-NNNN`, con el contador `REC-LAV` (tampoco se reinicia por año). |
+| Reingreso a planta | Cada lote vuelve a `PLANTA` y su `cantidad` pasa a ser **solo las prendas conformes**. La merma y las dañadas salen de la cantidad del lote; quedan escritas únicamente en el acta. |
+| Cierre | La remisión queda `RETORNADA` y el acta, `COMPLETADA`. No hay recepción parcial: o se cotejan todos los lotes o no se guarda nada. |
+
+`GET /api/lavanderia/remisiones-pendientes/` entrega las remisiones `EN_TRANSITO` o `EN_LAVANDERIA` con sus lotes, días en proceso y, por lote, la tarifa y el costo
+unitario estimado (35.000) que la pantalla propone en el cotejo.
+
+**Qué alimenta a Control de calidad:** la inspección de [Control de calidad](#control-de-calidad-marras-y-defectos-hu-61-te-59) toma como base
+`RecepcionLote.cantidad_recibida_conforme` de la recepción **más reciente** del lote. Un lote es «por inspeccionar» si está en `PLANTA`, tiene recepción con conformes
+mayores que cero, no tiene inspección y su orden no está anulada; la merma y los daños de lavandería ya quedaron liquidados aquí y no se vuelven a clasificar.
+
+### Rutas y permisos
+
+Referencia exacta en Swagger, etiqueta `lavanderia`:
+
+| Ruta | Operaciones | Permiso |
+|---|---|---|
+| `/api/lavanderia/lotes-disponibles/` | `GET`: lotes en planta disponibles para remitir | `lavanderia.ver` |
+| `/api/lavanderia/proveedores/` | `GET`: lavanderías | `lavanderia.ver` |
+| `/api/lavanderia/recetas/` | `GET`: recetas de lavado | `lavanderia.ver` |
+| `/api/lavanderia/remisiones/` | `GET` (historial, de la más reciente a la más antigua) / `POST` (crea y despacha) | `lavanderia.ver` / `lavanderia.gestionar` |
+| `/api/lavanderia/remisiones-pendientes/` | `GET`: remisiones por recibir, con sus lotes | `lavanderia.ver` |
+| `/api/lavanderia/recepciones/` | `GET` (historial) / `POST` (asienta el cotejo) | `lavanderia.ver` / `lavanderia.gestionar` |
+| `/api/lavanderia/recepciones/<id>/` | `GET`: acta completa | `lavanderia.ver` |
+
+**Permisos:** `lavanderia.ver` y `lavanderia.gestionar` los crea la migración `users/0003_roles_y_permisos`. El **Jefe de Producción** tiene los dos; el **Gerente**,
+solo `lavanderia.ver`; el Administrador los tiene de forma implícita. Ninguna migración posterior los cambia. Ver [roles y permisos](roles-y-permisos.md).
+
+**Errores `400` más comunes:** sin lotes, lote repetido, lote que ya no está en la planta, cantidad mayor que las unidades del lote, cotejo que no suma lo enviado,
+falta de `motivo_merma` o `tipo_dano`, lotes de la recepción que no son de la remisión o que faltan, y remisión ya retornada o anulada. Un id de remisión
+inexistente responde `400` en el campo `remision_id`; el acta inexistente (`GET …/recepciones/<id>/`) responde `400` en el campo `id`.
+
+**Pantallas** (menú *Lavandería*): *Remisión a Lavado* (`/lavanderia/remisiones`) y *Recepción de Lavandería* (`/lavanderia/recepcion`), ambas con `lavanderia.ver`;
+generan el ticket de remisión y el comprobante de recepción para imprimir. Los componentes están en `frontend/src/components/Laundry/`.
+
+**Datos de demostración:** `python manage.py seed_demo_lavanderia` (idempotente) deja proveedores de lavandería y cuatro recetas de lavado con tarifas de
+2.800 a 4.500, y cuenta los lotes que están en planta; no crea remisiones. `seed_demo_calidad` sí deja dos lotes ya devueltos de lavandería con su remisión y su recepción.
+
+**Pruebas:** `apps/production/test_remisiones.py` cubre los lotes disponibles, los proveedores, las recetas, que la remisión genere el consecutivo `REM-LAV-AAAA-`,
+pase el lote a `EN_TRANSITO` y lo saque de la lista, y que un lote que ya no está en planta no se pueda remitir otra vez.
+`apps/production/test_recepcion_lavanderia.py` cubre las remisiones pendientes, una recepción completa (60 enviadas = 55 conformes + 3 de merma + 2 dañadas: pérdida,
+servicio, remisión `RETORNADA`, lote de vuelta en planta con 55 unidades, historial y detalle), el cotejo que no cuadra, la merma sin motivo, los daños sin tipo y la
+remisión ya retornada. Para correrlas: `python manage.py test apps.production.test_remisiones apps.production.test_recepcion_lavanderia --noinput`.
+
+!!! warning "Alcance y límites actuales"
+    La auditoría de deuda técnica del Sprint 4 (`Deuda-Tecnica-Sprint-4.md`) agrupó lo siguiente en la **HU 5.4 «Lavandería confiable» (TE-172)**:
+
+    - **Remisión parcial que pierde prendas:** se valida `cantidad ≤ lote.cantidad`, pero el lote **entero** pasa a `EN_TRANSITO`; al recibir, la cantidad del lote se sobrescribe con los conformes. Hoy solo es seguro remitir el lote completo (TE-172).
+    - **Recepción sin prendas conformes:** un lote con `0` conformes (todo merma o daño) no está bien resuelto: sobrescribe `Lote.cantidad` y puede fallar con un error `500`. Además, la cantidad original del lote no se conserva y alimenta mal la columna `prendas_en_lotes` de [reportes](#reportes-gerenciales-vistas-materializadas-y-exportacion-hu-74-te-65) (TE-172).
+    - **Valores por defecto de costo:** el costo por prenda (35.000) y la tarifa (3.500) cuando falta la receta están escritos en el código, y el servicio de proveedores devuelve datos de relleno (tarifa 3.500, calificación, tiempo promedio). No salen de la liquidación de la orden de producción (TE-172; el costo real de fábrica llega con la HU 4.7, TE-174).
+    - **Datos de relleno en el frontend:** las dos pantallas pueden mostrar datos simulados si la API falla y proponen valores inventados (un número de factura aleatorio, la receta `REC-SW-01`, el costo 35.000) que se envían al servidor (TE-172).
+    - **Estados sin flujo:** no se puede anular una remisión; `EN_LAVANDERIA`, `ANULADA`, `PARCIAL` y `RETORNADO` existen en el catálogo pero ningún servicio los asigna.
+    - **Pérdidas solo en el acta:** la liquidación de las pérdidas se guarda en la recepción, pero aún no se carga al costo de la orden ni a Control de calidad; la valoración de marras es la HU 6.4 (TE-169).
+    - **Botones y remaches, y reglas de la lavandería:** si los insumos van antes o después del lavado y si la lavandería responde por las marras son decisiones pendientes del PM; el backend no las endurece.
 
 ## Control de calidad: marras y defectos (HU 6.1, TE-59)
 
@@ -436,7 +588,7 @@ Rutas y permisos (la referencia exacta está en Swagger, etiqueta `ventas`):
 | `/api/ventas/facturas/<id>/` | `GET` con sus líneas | `ventas.ver` |
 | `/api/ventas/facturas/<id>/pdf/` | `GET`: descarga `FV-0001.pdf` | `ventas.ver` |
 | `/api/ventas/facturas/<id>/anular/` | `POST` con `motivo` | `ventas.anular` |
-| `/api/ventas/facturas/<id>/conciliar/` | `POST` con `estado_cobro` (`PAGADO` o `DEVOLUCION`), `motivo` u `observaciones` (HU 7.3) | `ventas.gestionar` |
+| `/api/ventas/facturas/<id>/conciliar/` | `POST` con `estado_cobro` (`PAGADO` o `DEVOLUCION`), `motivo` u `observaciones` (HU 7.3; ver [Cartera](#cartera-y-pagos-contraentrega-hu-73-te-64)) | `ventas.gestionar` |
 | `/api/ventas/cartera/resumen/` | `GET`: totales de cartera y saldo financiero de la empresa (HU 7.3) | `ventas.ver` |
 
 Validaciones de clientes y precios: el documento son de 5 a 15 dígitos, sin puntos ni guiones, y no puede repetirse entre clientes activos
@@ -486,9 +638,99 @@ migración se prueban en `apps/users/tests.py`.
     - **Precios y costo a mano:** el Gerente fija el costo de fábrica y los precios; a futuro el costo saldrá de la liquidación de la orden
       (deuda técnica, ítem 19).
     - **Despacho y cobro:** la transportadora y la guía de la factura son el espejo de la guía vigente que administra el módulo de envíos
-      (HU 7.2, más abajo); el cobro es de la cartera (HU 7.3).
+      (HU 7.2, más abajo); el cobro es de la cartera (HU 7.3, ver [Cartera y pagos contraentrega](#cartera-y-pagos-contraentrega-hu-73-te-64)).
     - **Filtros avanzados e impresión directa:** quedan fuera; la lista tiene búsqueda, estado y fechas (Sprint 4) y el comprobante se entrega solo en PDF.
     - **Un solo IVA:** tarifa general del 19 %, sin productos exentos ni retenciones.
+
+## Cartera y pagos contraentrega (HU 7.3, TE-64)
+
+Cierra el ciclo de la venta contraentrega de la [factura POS interna](#ventas-factura-pos-interna-y-descuento-de-inventario-hu-71-te-62): la transportadora recauda el
+dinero y la empresa **concilia** cada factura como cobrada o devuelta. Vive en `apps/sales/` (no hay una app aparte): la lógica está en `invoicing.py`
+(`reconcile_collection` y `get_cartera_summary`), los modelos en `models.py`, los permisos y estados en `catalog.py`, y las rutas se declaran junto a las de ventas.
+Cubre la parte de cobro de RF25.
+
+Tablas nuevas (migración `sales/0002_cartera_conciliacion`, que además añade campos a `ventas_factura`):
+
+| Tabla o campos | Qué guarda |
+|---|---|
+| `ventas_saldo_financiero` (`SaldoFinanciero`) | El saldo financiero de la empresa: `nombre` (por defecto «Caja General») y `saldo_actual` en pesos enteros. Solo crece con los recaudos confirmados. El servicio usa la fila de nombre «Caja General» y la crea si no existe. |
+| `ventas_movimiento_cartera` (`MovimientoCartera`) | El libro de cartera: la factura, el `tipo` (`RECAUDO` o `DEVOLUCION`), el `monto`, el saldo antes y después, el usuario y una observación de hasta 255 caracteres. Se escribe una fila por conciliación. |
+| `ventas_factura`: `fecha_cobro`, `cobrado_por`, `motivo_devolucion` | Cuándo y quién confirmó el recaudo o la devolución, y el motivo de la devolución. `estado_cobro` pasa a admitir `PAGADO` y `DEVOLUCION`, además de `POR_COBRAR`. |
+
+### Estados de cobro
+
+| `estado_cobro` | Nombre | Significa |
+|---|---|---|
+| `POR_COBRAR` | Por cobrar | Estado inicial de toda factura emitida: la transportadora todavía no ha girado el dinero. |
+| `PAGADO` | Pagado | Se confirmó el recaudo: el `valor_a_recaudar` entró al saldo financiero. |
+| `DEVOLUCION` | Devolución | El pedido no se entregó: las prendas volvieron al inventario de producto terminado y no entró dinero. |
+
+```mermaid
+stateDiagram-v2
+    [*] --> POR_COBRAR: factura emitida
+    POR_COBRAR --> PAGADO: conciliar PAGADO, saldo + valor a recaudar, movimiento RECAUDO
+    POR_COBRAR --> DEVOLUCION: conciliar DEVOLUCION con motivo, reingreso de stock, movimiento DEVOLUCION
+    PAGADO --> [*]
+    DEVOLUCION --> [*]
+```
+
+`PAGADO` y `DEVOLUCION` son finales: no hay ruta para revertirlos. Una factura anulada tampoco se concilia, y una factura ya cobrada o devuelta no se puede anular
+(ver [Ventas](#ventas-factura-pos-interna-y-descuento-de-inventario-hu-71-te-62)).
+
+### Reglas de la conciliación
+
+`POST /api/ventas/facturas/<id>/conciliar/` ejecuta `reconcile_collection` en una sola transacción, con la factura y la caja bloqueadas por fila:
+
+| Regla | Detalle |
+|---|---|
+| Solo `PAGADO` o `DEVOLUCION` | El cuerpo lleva `estado_cobro` con uno de esos dos valores; cualquier otro responde `400`. |
+| Solo facturas emitidas y por cobrar | Una factura anulada responde `400` («No se puede conciliar una factura anulada.»), y una ya conciliada, «La factura ya fue gestionada como Pagado» (o «Devolución»). Una factura inexistente responde `404`. |
+| Recaudo (`PAGADO`) | Suma el `valor_a_recaudar` al saldo financiero, marca la factura `PAGADO` con `fecha_cobro` y `cobrado_por`, y escribe un movimiento `RECAUDO` con el saldo antes y después. Las `observaciones` (hasta 500) son opcionales; si no vienen, el movimiento dice «Recaudo de FV-0001 confirmado». |
+| Devolución (`DEVOLUCION`) | Exige `motivo` de **5 a 255 caracteres** (sin contar espacios de los extremos). Reingresa **todas las líneas** de la factura con un movimiento `DEVOLUCION_VENTA` en el libro de [producto terminado](#producto-terminado-ajuste-manual-hu-63-te-61) (motivo «Devolución contraentrega de FV-0001: …»), marca la factura `DEVOLUCION` y guarda el motivo. El saldo financiero no cambia: el movimiento de cartera `DEVOLUCION` queda con monto cero. |
+| Devolución completa | Se devuelve la factura entera; no hay devoluciones parciales. |
+| Sin doble efecto | Como la factura sale de `POR_COBRAR` una sola vez, un segundo envío (doble clic, reintento) responde `400` y no suma dos veces ni reingresa dos veces el stock. |
+| Otro camino a la devolución | `POST /api/envios/guias/<id>/devolucion/` (módulo de [Envíos](#envios-guias-de-envio-y-relaciones-de-despacho-hu-72-te-63)) llama a la misma función con el motivo de la guía devuelta, y exige que la factura siga por cobrar. |
+
+`GET /api/ventas/cartera/resumen/` calcula, **solo sobre facturas emitidas**: `saldo_financiero` (el de la caja), `total_por_cobrar` y `conteo_por_cobrar`,
+`total_recaudado` y `conteo_pagadas`, y `total_devoluciones` y `conteo_devoluciones` (suma del valor de la mercancía devuelta, no dinero). El listado de facturas
+(`GET /api/ventas/facturas/`) acepta el filtro `estado_cobro` (`POR_COBRAR`, `PAGADO` o `DEVOLUCION`) y la factura trae `estado_cobro_nombre`, `fecha_cobro`,
+`cobrado_por_nombre` y `motivo_devolucion`.
+
+### Rutas y permisos
+
+| Ruta | Operaciones | Permiso |
+|---|---|---|
+| `/api/ventas/facturas/<id>/conciliar/` | `POST` con `estado_cobro`, `motivo` (devolución) y `observaciones` (recaudo): responde la factura actualizada | `ventas.gestionar` |
+| `/api/ventas/cartera/resumen/` | `GET`: totales de cartera y saldo financiero | `ventas.ver` |
+| `/api/ventas/facturas/` | `GET` con el filtro `estado_cobro` | `ventas.ver` |
+
+**Permisos:** no hay un permiso propio de cartera. Conciliar usa `ventas.gestionar`, que tienen el **Vendedor** y el Administrador; el resumen usa `ventas.ver` (Vendedor,
+Gerente y Administrador). Una cuenta sin `ventas.gestionar` (la Secretaria, por ejemplo) recibe `403`. Ver [roles y permisos](roles-y-permisos.md).
+
+**Errores `400` más comunes:** `estado_cobro` distinto de `PAGADO` o `DEVOLUCION`, factura anulada, factura ya gestionada, devolución sin motivo o con un motivo de
+menos de 5 caracteres, y `motivo` de más de 255 u `observaciones` de más de 500 caracteres.
+
+**Pantalla** (*Ventas y Despachos → Gestión de cartera*, `/ventas/cartera`, con `ventas.ver`): tarjetas con el saldo financiero, lo pendiente de recaudo, lo recaudado y las
+devoluciones; pestañas *Pendientes de recaudo* (la de entrada), *Todas las facturas*, *Pagadas* y *Devoluciones*; búsqueda y filtro de transportadora; y, con `ventas.gestionar`, las acciones
+**Confirmar recaudo** y **Registrar devolución** (con su motivo). Muestra el estado de la guía de cada factura, pero solo como información.
+
+**Pruebas:** `apps/sales/test_ventas.py`, clase de cartera, cubre que el recaudo actualice el saldo y escriba el movimiento con el saldo antes y después, que la devolución
+reingrese el stock sin tocar el saldo, que no se pueda conciliar dos veces ni una factura anulada, que una factura recaudada no se pueda anular, el resumen con el filtro `estado_cobro`
+y los permisos (la Secretaria recibe `403` y el Administrador puede). Para correrlas: `python manage.py test apps.sales.test_ventas --noinput`.
+
+!!! warning "Alcance y límites actuales"
+    La auditoría de deuda técnica del Sprint 4 (`Deuda-Tecnica-Sprint-4.md`) los agrupa en la **HU 7.5 «Coherencia entre cartera y guías de envío» (TE-173)**
+    y en la tarea de seguridad **TE-179** (subtarea de TE-184):
+
+    - **La conciliación no mira la guía de envío:** se puede cobrar con la guía devuelta, o reingresar el stock con la guía en tránsito. Solo la ruta de Envíos (`…/guias/<id>/devolucion/`) lo protege. Una guía `ENTREGADA` solo avisa en el resumen de Envíos; no obliga a recaudar (TE-173).
+    - **Permiso del Vendedor:** quien factura puede dar por pagadas sus propias facturas, porque `conciliar` usa `ventas.gestionar`. Se prevé un permiso propio `ventas.conciliar` (TE-173).
+    - **Nota del cobro dentro de la factura:** el recaudo concatena las observaciones en `observaciones` de la factura, que debería ser inalterable, y el resultado puede superar los 500 caracteres en PostgreSQL. Se propone guardarla solo en el movimiento de cartera (TE-173).
+    - **Caja sin restricción de unicidad:** `SaldoFinanciero.nombre` no es único, así que una carrera podría duplicar la «Caja General» (TE-173).
+    - **Resumen visible para el Vendedor:** el saldo de la empresa lo ve cualquiera con `ventas.ver`; decidir quién debe verlo es parte de TE-179.
+    - **Indicadores del Panel de ventas:** se calculan en el cliente con las últimas 200 facturas, y la pantalla de cartera también pide 200; con más facturas, «Por cobrar» y «Vendido hoy» pueden salir mal. Se pasarán al servidor, como ya hace `cartera/resumen` (TE-173).
+    - **Sin contado, crédito ni abonos:** toda la venta es contraentrega y el cobro es de una sola vez. Es una decisión del PM y no está en el Sprint 4.
+    - **Sin comisión ni plazo de la transportadora:** el recaudo entra completo, sin descontar la comisión ni modelar cuándo gira la transportadora; el flete de una devolución se reporta en Envíos, no se descuenta aquí.
+    - **Sin contabilidad:** el «saldo financiero» es un acumulado de recaudos, no una caja contable; el alcance del proyecto excluye la contabilidad.
 
 ## Envíos: guías de envío y relaciones de despacho (HU 7.2, TE-63)
 
@@ -625,7 +867,100 @@ Necesita antes `seed_demo_ventas` y stock de producto terminado. Orden: ver [man
     - **Una guía despachada no se reemplaza:** el servicio lo rechaza.
     - **Datos simulados:** las facturas, clientes y guías del sistema son de demostración; las tres guías reales de Interrapidísimo sirven de referencia.
 
+## Reportes gerenciales: vistas materializadas y exportación (HU 7.4, TE-65)
+
+App nueva `apps/reports`, rutas bajo `/api/reportes/`. Es un tablero **de solo lectura** para el Gerente que cruza producción, calidad, ventas y cartera sin consultar
+las tablas transaccionales con cruces pesados. La app no tiene tablas propias: sus dos modelos (`models.py`) son `managed = False` y leen vistas SQL creadas por la
+migración `reports/0001_vistas_materializadas`. La consulta y el cálculo de indicadores están en `services.py`, los permisos y nombres de las vistas en `catalog.py`,
+y los endpoints en `views.py`. Los campos están en [modelo de datos](modelo-de-datos.md).
+
+### Vistas materializadas
+
+En **PostgreSQL** se crean como `MATERIALIZED VIEW` con índice único (necesario para el refresco concurrente) e índices de filtro; en **SQLite** (pruebas y desarrollo sin servidor)
+son `VIEW` comunes con el mismo esquema, que siempre están al día. La migración depende de las migraciones de inventario, referencias, producción, calidad y ventas
+(`sales/0002`), y excluye las filas con borrado lógico.
+
+| Vista | Una fila por | Columnas |
+|---|---|---|
+| `reportes_mv_produccion_ordenes` (`VistaProduccionOrden`) | Orden de producción | `orden_id`, `codigo`, `fecha_salida`, `estado_orden`, `responsable` (de la orden de salida de inventario); `referencia_id`, `referencia_codigo`, `referencia_nombre`, `tipo_jean` (el ajuste de la referencia); `prendas_planificadas`; y, sumados de sus lotes e inspecciones, `total_lotes`, `prendas_en_lotes`, `prendas_aptas` y `prendas_marras`. |
+| `reportes_mv_ventas_referencias` (`VistaVentasReferencia`) | Línea de factura | `linea_id`, `factura_id`, `numero_factura`, `fecha`, `estado_factura`, `estado_cobro`, `cliente_tipo`, `cliente_nombre`, `transportadora`; `referencia_id`, `referencia_codigo`, `referencia_nombre`, `tipo_jean`, `talla`, `color`; `unidades`, `subtotal`, `descuento`, `base_gravable`, `iva`, `total` y `costo_estimado` (el costo de fábrica copiado en la línea × la cantidad). |
+
+**Refresco:** `refresh_materialized_views()` ejecuta `REFRESH MATERIALIZED VIEW CONCURRENTLY` sobre las dos vistas, solo si el motor es PostgreSQL; en SQLite no hace
+nada y devuelve `false`. Se dispara de dos formas: **cada vez que se consulta** `GET /api/reportes/gerencial/` en PostgreSQL (así el tablero nunca muestra datos viejos) y
+con el botón **Actualizar datos**, que llama a `POST /api/reportes/refrescar/`.
+
+!!! info "Aviso para quien cambie el modelo de datos"
+    El SQL de las vistas está **congelado dentro de la migración**. Si una migración futura cambia una columna que usan, hay que volver a crear las vistas en esa migración;
+    en PostgreSQL el `DROP … CASCADE` y el refresco fallarían, mientras que SQLite no lo muestra.
+
+### Qué calcula el tablero
+
+`GET /api/reportes/gerencial/` filtra las dos vistas con los mismos criterios, pero cada filtro solo aplica a la vista que lo tiene:
+
+| Filtro | Aplica a | Detalle |
+|---|---|---|
+| `desde`, `hasta` (AAAA-MM-DD) | Producción y ventas | A la fecha de salida de la orden y a la fecha de la factura. |
+| `tipo_jean` | Producción y ventas | Código del ajuste de la referencia (`SKINNY`, `SLIM`, `RECTO`, `BOOTCUT`, `MOM`, `WIDE_LEG`, `JOGGER`, `OTRO`). |
+| `referencia` | Producción y ventas | Id de la referencia; si no es un número, se ignora. |
+| `estado_orden` | Solo producción | `EN_PROCESO`, `COMPLETADA` o `ANULADA`. |
+| `estado_cobro` | Solo ventas | `POR_COBRAR`, `PAGADO` o `DEVOLUCION` (ver [Cartera](#cartera-y-pagos-contraentrega-hu-73-te-64)). |
+| `tipo_cliente` | Solo ventas | `DETAL`, `MAYORISTA` o `DISTRIBUIDOR`. |
+
+Las ventas incluyen **solo facturas emitidas** (las anuladas quedan fuera). La respuesta trae:
+
+| Bloque | Contenido |
+|---|---|
+| `filtros_aplicados` | Los filtros tal como se interpretaron. |
+| `kpis` | `total_ordenes`, `prendas_planificadas`, `prendas_aptas`, `prendas_marras`, `tasa_calidad_pct`, `facturas_emitidas`, `unidades_vendidas`, `ingresos_totales`, `utilidad_bruta`, `recaudado_periodo`, `pendiente_recaudo_periodo` y `saldo_financiero_empresa` (la caja de cartera, que no depende de los filtros). |
+| `consolidado_tipo_jean` | Por tipo de jean: órdenes, prendas planificadas, aptas y marras, unidades vendidas, ingresos y utilidad bruta. |
+| `ordenes_produccion` | Una fila por orden, con `tasa_calidad_pct` (aptas ÷ inspeccionadas; 100 si aún no hay inspecciones) y `avance_lotes_pct` (prendas en lotes ÷ planificadas). |
+| `ventas_por_referencia` | Por referencia: facturas, unidades, subtotal, descuento, base gravable, IVA, ingresos, costo estimado, `utilidad_bruta` (base gravable − costo) y `margen_pct`. |
+| `ventas_detalle` | Las **250 líneas** de factura más recientes que cumplen los filtros. |
+
+`GET /api/reportes/metadatos/` devuelve los catálogos de los filtros: tipos de jean, estados de orden, estados de cobro, tipos de cliente y las referencias (id, código, nombre,
+ajuste y estado).
+
+### Rutas y permisos
+
+| Ruta | Operaciones | Permiso |
+|---|---|---|
+| `/api/reportes/metadatos/` | `GET`: opciones de los filtros | `reportes.ver` |
+| `/api/reportes/gerencial/` | `GET` con los filtros anteriores | `reportes.ver` |
+| `/api/reportes/refrescar/` | `POST`: refresca las vistas; responde `{"refreshed": true\|false, "detail": …}` (`false` en SQLite) | `reportes.ver` |
+
+**Permisos:** `reportes.ver` y `reportes.gestionar` los crea la migración `users/0003_roles_y_permisos` y los otorga al **Gerente**; el Administrador los tiene de forma implícita.
+Hoy las tres rutas piden solo `reportes.ver`; `reportes.gestionar` no se usa. Un Vendedor, por ejemplo, recibe `403`. Ver [roles y permisos](roles-y-permisos.md).
+
+### Pantalla y exportación
+
+*Reportes → Tablero gerencial* (`/reportes`, exige `reportes.ver`; código en `frontend/src/components/Reports/`):
+
+- **Filtros avanzados:** fechas desde y hasta con atajos (*Últimos 7 días*, *Últimos 30 días*, *Este mes* y un botón para quitar las fechas), tipo de jean, referencia (la lista se acota al tipo de jean elegido),
+  estado de la orden, estado de cobro y tipo de cliente. El tablero se vuelve a consultar al cambiar cualquier filtro, y una insignia cuenta los filtros activos.
+- **Indicadores:** cuatro tarjetas (ingresos por ventas, utilidad bruta estimada con el saldo de la caja, estado de cartera del periodo y producción y calidad).
+- **Pestañas:** *Consolidado por Tipo de Jean*, *Órdenes de Producción*, *Ventas por Referencia* y *Detalle de Ventas*, cada una con su número de filas.
+- **Actualizar datos:** llama a `POST /api/reportes/refrescar/` y vuelve a cargar el tablero.
+- **Exportar:** `reports.js` arma las matrices con la biblioteca `xlsx` (SheetJS), en el navegador. *Exportar Excel (.xlsx)* genera **un libro con las cuatro hojas** (la de la pestaña activa
+  primero), y *Exportar CSV (.csv)* genera un archivo solo con la pestaña activa, con BOM UTF-8 para que Excel muestre bien las tildes. Los archivos se llaman, por ejemplo,
+  `reporte_consolidado_jean_AAAA-MM-DD.xlsx`; lo que se exporta es lo que devolvió el servidor con los filtros aplicados.
+
+**Pruebas:** `apps/reports/test_reportes.py` comprueba que las vistas contengan producción y ventas, los metadatos, los indicadores consolidados, los filtros por tipo de jean, estado de orden y
+rango de fechas, el filtro de estado de cobro tras una conciliación y los permisos (el Vendedor recibe `403`, el Gerente puede refrescar). El frontend prueba las funciones puras de
+`reports.js` (filtros, matrices y CSV) en `reports.test.js`. Para el backend: `python manage.py test apps.reports --noinput`.
+
+!!! warning "Alcance y límites actuales"
+    Lo siguiente sale del código y de la auditoría de deuda técnica del Sprint 4 (`Deuda-Tecnica-Sprint-4.md`):
+
+    - **Filtros avanzados e impresión:** el tablero ya filtra por fecha, tipo de jean, referencia, estados y tipo de cliente, pero los filtros avanzados de otras pantallas (facturas, guías, producción, inventario, calidad) y la **paginación** son la HU 7.7 (TE-177). El flete de las devoluciones al vendedor tampoco está en el tablero todavía (TE-177).
+    - **Fechas inválidas:** una fecha mal escrita (`?desde=abc`) llega sin validar a la consulta y la auditoría la reporta como error `500` en vez de `400`; la robustez de la API está en TE-181 (subtarea de TE-184).
+    - **Refresco en cada consulta y sin manejo de fallos:** en PostgreSQL cada carga del tablero refresca las dos vistas y no atrapa un error del refresco; cualquier usuario con `reportes.ver` puede dispararlo. Quién puede refrescar se revisa en TE-179; sacar el refresco de la lectura está en la deuda del Sprint 4 y todavía no tiene historia propia.
+    - **Estado de los modelos:** `makemigrations --check` quiere crear una migración inicial para los modelos no gestionados de `reports`; se corregirá junto a la integración continua (TE-180).
+    - **Pruebas solo en SQLite:** como allí son vistas comunes, ninguna prueba ejercita `REFRESH MATERIALIZED VIEW` ni el comportamiento propio de PostgreSQL (TE-180).
+    - **Cifras que dependen de otros módulos:** `prendas_en_lotes` suma `Lote.cantidad`, que la recepción de lavandería sobrescribe con los conformes (ver [Lavandería](#lavanderia-remision-de-salida-y-recepcion-con-cotejo-hu-51-y-52-te-57-y-te-58), TE-172); `costo_estimado` usa el costo de fábrica que el Gerente digita a mano en Precios, hasta que la HU 4.7 lo calcule desde la producción (TE-174).
+    - **Ingresos y devoluciones:** los ingresos incluyen las facturas emitidas que terminaron en `DEVOLUCION` a menos que se filtre por estado de cobro; `ingresos_totales` suma el total con IVA, mientras que la utilidad usa la base gravable.
+    - **Exportación en el navegador:** el Excel y el CSV se arman en el cliente con la última respuesta (el detalle de ventas llega limitado a 250 líneas). La biblioteca `xlsx` tiene avisos de seguridad sin versión corregida en npm y va dentro del paquete principal (riesgo bajo porque solo exporta); su reemplazo y la carga diferida están en la deuda del Sprint 4 sin historia propia todavía.
+
 ## Datos de demostración
 
 Comandos solo para desarrollo (exigen `DJANGO_DEBUG=true`), idempotentes y que pasan por las mismas reglas que la aplicación.
-`seed_demo_calidad` crea 8 defectos típicos de denim y dos lotes devueltos de lavandería (uno inspeccionado y otro por inspeccionar); necesita antes `seed_demo_inventario` y `seed_demo_produccion`. `seed_demo_terminado` ingresa al inventario final las aptas de la inspección de demostración; necesita antes `seed_demo_calidad`. `seed_demo_ventas` crea 4 clientes y los precios de demostración; necesita antes `seed_demo_referencias` (o `seed_demo_inventario`). `seed_demo_envios` deja las guías de demostración (las tres reales de Interrapidísimo entregadas y otras sintéticas para ver el semáforo) sin llamar a Track123; necesita antes `seed_demo_ventas` y stock de producto terminado. Orden recomendado: ver [manual del sistema](manual-del-sistema.md#datos-de-demostracion).
+`seed_demo_calidad` crea 8 defectos típicos de denim y dos lotes devueltos de lavandería (uno inspeccionado y otro por inspeccionar); necesita antes `seed_demo_inventario` y `seed_demo_produccion`. `seed_demo_terminado` ingresa al inventario final las aptas de la inspección de demostración; necesita antes `seed_demo_calidad`. `seed_demo_lavanderia` deja proveedores de lavandería y recetas de lavado (ver [Lavandería](#lavanderia-remision-de-salida-y-recepcion-con-cotejo-hu-51-y-52-te-57-y-te-58)). `seed_demo_ventas` crea 4 clientes y los precios de demostración; necesita antes `seed_demo_referencias` (o `seed_demo_inventario`). `seed_demo_envios` deja las guías de demostración (las tres reales de Interrapidísimo entregadas y otras sintéticas para ver el semáforo) sin llamar a Track123; necesita antes `seed_demo_ventas` y stock de producto terminado. Orden recomendado: ver [manual del sistema](manual-del-sistema.md#datos-de-demostracion).

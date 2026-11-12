@@ -7,11 +7,11 @@ Lo que ves en el menú depende de tu rol: solo aparecen los módulos que tienes 
 |---|---|---|
 | Administrador | Aprobar solicitudes de cuenta, asignar roles y ajustar permisos; tiene acceso a todo | [4](#4-administrador-usuarios-y-roles) |
 | Almacenista | Inventario, proveedores, ingresos, salidas a lavandería y recepción de mercancía; en envíos, relaciones de despacho, estados de las guías y devoluciones | [5](#5-almacenista-inventario) y [11](#11-envios-guias-y-despachos-vendedor-almacenista-secretaria-y-gerente) |
-| Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo, órdenes de compra y defectos de calidad | [6](#6-jefe-de-produccion-referencias-fichas-tecnicas-y-produccion) |
+| Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo, **remisión y recepción de lavandería**, órdenes de compra y defectos de calidad | [6](#6-jefe-de-produccion-referencias-fichas-tecnicas-y-produccion) y [lavandería](#lavanderia-remision-y-recepcion) |
 | Personal de Terminación | Definir los defectos e inspeccionar los lotes que vuelven de lavandería (aptas y marras) | [7](#7-personal-de-terminacion-control-de-calidad) |
 | Secretaria | Ingresar al inventario final las prendas aptas de cada inspección, y consultar existencias y movimientos; en envíos, anotar guías y armar relaciones de despacho | [8](#8-secretaria-y-vendedor-producto-terminado) y [11](#11-envios-guias-y-despachos-vendedor-almacenista-secretaria-y-gerente) |
-| Vendedor | Consultar el producto terminado disponible (existencias, movimientos e ingresos); registrar clientes y hacer ventas con factura POS interna; anotar la guía de la transportadora | [8](#8-secretaria-y-vendedor-producto-terminado), [10](#10-vendedor-ventas-y-facturacion) y [11](#11-envios-guias-y-despachos-vendedor-almacenista-secretaria-y-gerente) |
-| Gerente | Consultar toda la operación (producción, inventario, costos, calidad, producto terminado, ventas), aprobar órdenes de compra, fijar precios, anular facturas y registrar la devolución de paquetes | [9](#9-gerente-consulta-y-aprobacion), [10](#10-vendedor-ventas-y-facturacion) y [11](#11-envios-guias-y-despachos-vendedor-almacenista-secretaria-y-gerente) |
+| Vendedor | Consultar el producto terminado disponible (existencias, movimientos e ingresos); registrar clientes y hacer ventas con factura POS interna; anotar la guía de la transportadora; **confirmar el pago o registrar la devolución en la gestión de cartera** | [8](#8-secretaria-y-vendedor-producto-terminado), [10](#10-vendedor-ventas-y-facturacion) (con la [gestión de cartera](#gestion-de-cartera-cobro-y-devoluciones)) y [11](#11-envios-guias-y-despachos-vendedor-almacenista-secretaria-y-gerente) |
+| Gerente | Consultar toda la operación (producción, lavandería, inventario, costos, calidad, producto terminado, ventas y cartera), **ver el tablero gerencial y exportarlo a Excel o CSV**, aprobar órdenes de compra, fijar precios, anular facturas y registrar la devolución de paquetes | [9](#9-gerente-consulta-y-aprobacion) (con el [tablero gerencial](#tablero-gerencial-reportes)), [10](#10-vendedor-ventas-y-facturacion) y [11](#11-envios-guias-y-despachos-vendedor-almacenista-secretaria-y-gerente) |
 
 Las tablas completas de permisos están en el [apartado técnico de roles y permisos](roles-y-permisos.md).
 
@@ -68,8 +68,7 @@ Menú **Seguridad y Usuarios**.
 Define qué módulos puede ver y operar cada rol. Por cada módulo marca **Ver** y/o **Registrar y modificar**
 (al marcar *Registrar y modificar* se marca también *Ver*). El Administrador tiene todos los permisos y no se puede restringir.
 Con **Crear rol** puedes crear un rol propio; su código no se puede cambiar después.
-La lista incluye todos los módulos del sistema, también los que todavía no tienen pantalla (lavandería y reportes) y
-**Fichas Técnicas**, que no aparece en el menú porque la ficha se abre desde el Catálogo de jeans. Los permisos extra aparecen en la columna **Otros**: *Administrar roles y permisos* (Seguridad) y *Aprobar órdenes de compra* (Compras),
+La lista incluye todos los módulos del sistema, también **Fichas Técnicas**, que no aparece en el menú porque la ficha se abre desde el Catálogo de jeans. Los permisos extra aparecen en la columna **Otros**: *Administrar roles y permisos* (Seguridad) y *Aprobar órdenes de compra* (Compras),
 que es el del Gerente. Los permisos que trae cada rol al empezar están en [roles y permisos](roles-y-permisos.md).
 
 ## 5. Almacenista: inventario
@@ -216,8 +215,8 @@ Quien solo tiene permiso de consulta ve la lista de órdenes y la disponibilidad
 
 En **Órdenes de producción → Órdenes recientes**, el botón **Seguimiento** de una orden abre sus lotes (**Ocultar seguimiento** los cierra). Cada lote recorre tres etapas, siempre en
 este orden: **Corte, Confección y Terminación**. Una etapa solo empieza cuando la anterior terminó, y cuando termina la última el lote queda
-*Terminado*. La lavandería no es una etapa de este seguimiento: es un proceso externo (subcontratado) y se controla aparte, con sus propias órdenes
-de salida y entrada. El control de calidad y el empaque también tienen sus propios módulos.
+*Terminado*. La lavandería no es una etapa de este seguimiento: es un proceso externo (subcontratado) y se controla aparte, con
+sus propias remisiones de salida y recepciones (ver [Lavandería: remisión y recepción](#lavanderia-remision-y-recepcion)). El control de calidad y el empaque también tienen sus propios módulos.
 
 - **▶ Iniciar** arranca la siguiente etapa y empieza a contar el tiempo. Queda registrado quién lo hizo y a qué hora.
 - **⏸ Pausar** detiene el reloj; **▶ Reanudar** lo vuelve a poner en marcha. El tiempo en pausa **no cuenta**: el tiempo neto es solo el que la etapa estuvo corriendo.
@@ -296,6 +295,97 @@ calculando el costo de materiales y el costo de mano de obra invertido. Tiene cu
    (% Materiales vs % Mano de Obra) en una gráfica, la mano de obra por etapa y el costo de cada lote.
     - Si faltan tarifas o costos de materiales, el sistema advierte que el cálculo es *parcial*.
     - Si la orden fue anulada, los costos se muestran en cero, porque el material volvió al almacén.
+
+### Lavandería: remisión y recepción
+
+Menú **Procesos Externos (Lavandería)**, con dos pantallas: **Remisión a Lavado** y **Recepción de Lavandería**. Aquí se controla el lavado que hace un tercero:
+primero se **envía** el lote con una remisión (la hoja que acompaña el paquete) y cuando vuelve se **recibe** contando prenda por prenda. El Jefe de Producción
+opera las dos pantallas; el Gerente solo las consulta. El camino de cada lote es:
+
+**lote en planta → Remisión a Lavado (queda «En Tránsito / Externo») → Recepción de Lavandería con cotejo (vuelve a planta) → Control de Calidad → Inspecciones**
+
+#### Enviar lotes a lavar (Remisión a Lavado)
+
+Menú **Procesos Externos (Lavandería) → Remisión a Lavado**. La pantalla se llama *Remisión de Lotes Ensamblados a Lavado* y tiene dos pestañas: **Nueva Remisión** (con
+el número de lotes listos) e **Historial de Remisiones**.
+
+1. En **1. Seleccionar Lotes Ensamblados a Lavar** aparecen los lotes que están en la planta interna. Marca los que vas a enviar. Al marcar un lote puedes cambiar
+   **Prendas a Enviar** (no puede pasar de las que tiene), elegir el **Proceso de Lavado** (cada opción muestra su tarifa por prenda) y escribir **instrucciones especiales**
+   para la lavandería (opcional). Cada tarjeta muestra la curva de tallas del lote.
+2. En **2. Destino de Lavandería y Datos Logísticos** elige el **Proveedor de Lavandería** (verás su dirección, teléfono y contacto), la **Fecha de Salida / Despacho**
+   y la **Fecha Estimada de Retorno**. También puedes anotar el **Conductor / Transportador Responsable**, la **Placa del Vehículo**, los **Bultos / Tulas de Envío**, el
+   **Peso Total Aprox. (Kg)** y las **Observaciones Generales de la Remisión**.
+3. A la derecha, el **Resumen de Despacho** muestra los lotes escogidos, la lavandería, el tiempo estimado, la tarifa base por prenda, el **Total Prendas a Remitir** y el
+   costo estimado del servicio. **Limpiar Selección** desmarca todo.
+4. Pulsa **Generar Remisión de Lavado**. El sistema crea la remisión (código `REM-LAV-AAAA-0001`), saca los lotes de la planta (pasan a *En Tránsito / Externo* y dejan de
+   salir en la lista) y abre la **guía de la remisión**, lista para **imprimir**. Verás *«Remisión … generada con éxito (N prendas despachadas a …).»*
+5. La guía impresa trae la lavandería, el transporte, el detalle de lotes con su proceso de lavado y el total de prendas, con tres firmas: **Entrega Planta (TexCore)**,
+   **Transportador** y **Recibe Lavandería**. Hazla firmar al entregar los paquetes.
+
+El **Historial de Remisiones** lista cada remisión con su fecha de salida, retorno estimado, lavandería, lotes, prendas, proceso, transporte y estado
+(*En Tránsito / Externo*, *En Lavandería* o *Retornada a Planta*). **Ver Guía** vuelve a abrir la hoja para reimprimirla.
+
+!!! warning "Revisa los datos que vienen escritos de antemano"
+    Al abrir la pantalla, el conductor, la placa, las tulas, el peso, las observaciones y las instrucciones del primer lote **vienen con un texto de ejemplo**. Cámbialos por
+    los datos reales antes de generar la remisión, porque se imprimen en la guía.
+
+**Mensajes que puedes ver:**
+
+- *Debes seleccionar al menos un lote ensamblado con cantidad mayor a 0.* No marcaste ningún lote o dejaste la cantidad en cero.
+- *El lote … ya no está en la planta interna (estado actual: …).* Otra persona lo remitió primero; recarga la pantalla.
+- *La cantidad solicitada (N) supera las unidades del lote … (M).* No puedes enviar más prendas de las que tiene el lote.
+- *El proveedor de lavandería seleccionado no existe o está inactivo.*
+
+#### Recibir lo que vuelve de lavandería (Recepción de Lavandería)
+
+Menú **Procesos Externos (Lavandería) → Recepción de Lavandería**. La pantalla se llama *Recepción y Cotejo de Lavandería*. Tiene los botones **Ir a Remisiones de Salida** y
+**Actualizar**, y dos pestañas: **Nueva Recepción & Cotejo** (con el número de remisiones pendientes) e **Historial de Reingresos**.
+
+1. En **1. Selecciona la Remisión de Salida a Cotejar** pulsa la remisión que acaba de llegar (cada tarjeta indica los días que lleva en lavado, la lavandería, la fecha de
+   despacho y las prendas). Debajo se ven la lavandería, el vehículo y la fecha estimada de retorno. Si no hay ninguna, la pantalla dice *«No hay remisiones pendientes por
+   recibir»* y ofrece **+ Crear Nueva Remisión de Salida**.
+2. En **2. Cotejo de Cantidades: Enviadas vs Devueltas**, por cada lote, cuenta las prendas físicas y escribe:
+    - **Conformes (1ª)**: las que volvieron en buen estado.
+    - **Merma (Extravío)**: las que no volvieron.
+    - **Dañadas (Segundas)**: las que volvieron con un defecto de lavado.
+
+    El campo **Balance Cotejo** te dice si cuadra (*Cuadrado*), cuántas *Faltan* o cuántas *Sobran*. **Conformes + merma + dañadas deben sumar exactamente lo enviado.** Al abrir
+    la remisión todo viene como conforme; solo cambia lo que de verdad no coincida.
+3. Si hay **merma**, aparece el campo obligatorio **Motivo de la Merma**: elige uno de la lista (por ejemplo *Extravío en tinas o centrifugado industrial* o *Faltante en transporte
+   / bultos entregados*) o escribe el detalle. Si hay **dañadas**, es obligatorio el **Tipo de Daño / Defecto** (por ejemplo *Decoloración irregular o veteado químico* o
+   *Quemado térmico en tambor de secado*), también de la lista o escrito a mano.
+4. En **Datos del Documento de Reingreso** escribe la **Factura / Remisión Externa del Proveedor** (el número del papel que entregó la lavandería), la **Fecha de Recepción en
+   Planta** y las **Observaciones de Recepción**.
+5. En **Liquidación Financiera por Terceros** ves cuántas prendas son *Conformes* y cuántas *Afectadas*, la **Pérdida Financiera Liquidada** (prendas perdidas o dañadas por el
+   costo de cada prenda) y el **Servicio de lavado a liquidar** (prendas conformes por la tarifa del proceso).
+6. Pulsa **Asentar Reingreso a Planta & Liquidar**. Hasta que todos los lotes cuadren y los motivos estén escritos, el botón queda desactivado y un recuadro explica qué falta
+   (*No se puede asentar aún*). Al asentar verás *«Recepción … asentada. Se devolvieron N prendas a planta y se asentaron $ … en pérdidas.»* y se abre el **acta de recepción**,
+   lista para imprimir, con tres firmas: **Recibe en Planta (TexCore)**, **Entrega Lavandería / Conductor** y **V°B° Gerencia de Producción**.
+
+**Qué pasa al asentar.** La recepción (código `REC-LAV-AAAA-0001`) es definitiva: no se edita ni se borra. La remisión pasa a *Retornada a Planta*; cada lote **vuelve a la planta con
+solo las prendas conformes** como cantidad, y queda listo para la inspección de calidad: aparecerá en **Control de Calidad → Inspecciones → Lotes por inspeccionar** (sección 7).
+Las prendas con merma o daño **ya quedaron descontadas aquí**, por eso calidad solo clasifica las que sí llegaron.
+
+El **Historial de Reingresos** muestra cuatro indicadores (**Actas Asentadas**, **Prendas Retornadas (Conformes)**, **Mermas & Daños Acumulados** y **Pérdidas Totales Liquidadas**) y la tabla de
+actas con su remisión, lavandería, fecha, conformes, mermas, daños y pérdida. Busca por código, remisión o lavandería, y **Ver Acta Oficial** abre el acta para reimprimirla.
+
+**Mensajes que puedes ver:**
+
+- *Lote …: faltan N prendas por conciliar (deben sumar M).* o *…: sobran N prendas…* El cotejo no cuadra con lo enviado.
+- *Lote …: el motivo de merma es obligatorio…* y *Lote …: el tipo de daño es obligatorio…* Falta explicar la merma o el daño.
+- *La remisión … ya fue retornada y recibida previamente.* Otra persona la recibió primero.
+- *La remisión … está anulada y no puede recibir prendas.*
+- *Faltan lotes de la remisión por cotejar: …* Hay que cotejar todos los lotes de la remisión en una sola recepción.
+
+!!! warning "Límites actuales"
+    - **Costo por prenda fijo:** la pérdida por merma o daño se calcula con un costo de **$ 35.000 por prenda** que el sistema usa por defecto; todavía no sale del costeo real de la
+      orden. Tómalo como una cifra de referencia, no como el valor contable definitivo. Algo parecido pasa con la tarifa del lavado: si el proceso no trae una, se usan **$ 3.500 por prenda**.
+    - **Número de la factura externa:** al abrir una remisión la pantalla propone un número automático (`FAC-LAV-…`). Sustitúyelo por el del comprobante real que entregó la lavandería.
+    - **Envío parcial de un lote:** aunque puedes escribir menos prendas que las del lote, el lote completo sale de la planta. Para evitar prendas «perdidas», envía los lotes completos.
+    - **Lote sin prendas conformes:** si ninguna prenda del lote vuelve conforme, la recepción puede fallar; consúltalo con quien administre el sistema.
+    - **Datos de ejemplo:** si la pantalla no logra consultar el servidor, puede mostrar remisiones y lotes de muestra que no son reales. Si ves datos que no reconoces, recarga la
+      página y verifica con el administrador antes de registrar nada.
+    - **Sin corrección ni anulación:** una remisión generada o una recepción asentada no se editan desde la pantalla.
 
 ## 7. Personal de Terminación: control de calidad
 
@@ -427,17 +517,47 @@ los últimos 7 días; pulsa **Ver existencias →** para abrir la matriz.
 ## 9. Gerente: consulta y aprobación
 
 El Gerente ve toda la operación en modo consulta: existencias y kardex, referencias y fichas, órdenes de producción, **Monitor de estado**, **Recursos**,
-tiempos, **Liquidación de Órdenes**, **Control de Calidad** (defectos e inspecciones) y **Producto Terminado** (ingresos, existencias, ajustes y movimientos). No crea ni modifica nada de producción, pero sí tiene tareas propias:
+tiempos, **Liquidación de Órdenes**, **Procesos Externos (Lavandería)** (remisiones y recepciones), **Control de Calidad** (defectos e inspecciones), **Producto Terminado** (ingresos, existencias, ajustes y movimientos),
+**Ventas y Despachos** (incluida la **Gestión de cartera**) y **Envíos**. No crea ni modifica nada de producción, pero sí tiene tareas propias:
 
 - **Aprobar órdenes de compra:** en **Compras → Órdenes de compra**, las órdenes en *Borrador* muestran el botón **Aprobar**. Antes de aprobar, el sistema
   pide confirmación, porque después la orden ya no se edita y el almacén puede recibir contra ella.
 - **Fijar los precios y anular facturas:** en **Ventas y Despachos → Precios** registra el costo de fábrica y los precios de cada referencia, y en
   **Ventas y Despachos → Facturas** anula una factura con motivo (sección 10). El Gerente consulta las ventas, pero no emite facturas.
+- **Seguir la operación en el tablero gerencial:** en **Reportes → Tablero gerencial** (ver abajo).
+
+### Tablero gerencial (Reportes)
+
+Menú **Reportes → Tablero gerencial** (la pantalla se titula *Tablero de Reportes Gerenciales*). Reúne en una sola página el desempeño de producción, calidad, ventas y cartera, con
+filtros, y permite llevarse los datos a Excel o CSV. Lo ve el Gerente y el Administrador, que tienen el permiso de **Reportes**; los demás roles no ven el menú.
+
+1. **Filtra el periodo.** En **Filtros avanzados** usa los botones rápidos **Últimos 7 días**, **Últimos 30 días**, **Este mes** o **Todo el historial**, o escribe las fechas **Desde** y **Hasta**.
+   Además puedes filtrar por **Tipo de jean (Silueta)**, **Referencia de jean** (si eliges un tipo, solo salen las referencias de ese tipo), **Estado de orden (Producción)**,
+   **Estado de cobro (Ventas)** y **Tipo de cliente**. Una insignia indica cuántos filtros están activos y **Limpiar filtros** los quita todos.
+2. **Lee los indicadores.** Cuatro tarjetas resumen el periodo: **Ingresos por ventas** (con el número de facturas y de prendas vendidas), **Utilidad bruta estimada** (con el *Saldo en caja
+   empresa*), **Estado de cartera del periodo** (lo recaudado y lo que sigue por cobrar) y **Producción y calidad** (prendas aptas, órdenes, marras y el porcentaje de calidad).
+3. **Cambia de vista con las pestañas**, cada una con su número de registros:
+    - **Consolidado por Tipo de Jean**: por silueta, órdenes, prendas planificadas, aptas, marras, unidades vendidas, ingresos y utilidad bruta.
+    - **Órdenes de Producción**: cada orden con su estado, referencia, responsable, lotes, aptas, marras y calidad.
+    - **Ventas por Referencia**: facturas, unidades, subtotal, descuentos, base gravable, IVA, total, utilidad bruta y margen.
+    - **Detalle de Ventas**: cada línea vendida con su factura, cliente, estado de cobro, referencia, talla y color.
+4. **Actualiza los datos.** **Actualizar datos** vuelve a calcular los indicadores a partir de lo último registrado (útil si acabas de facturar o de inspeccionar y no lo ves). Al terminar
+   verás *«Indicadores y vistas analíticas actualizados.»*
+5. **Exporta.**
+    - **Exportar Excel (.xlsx)** descarga un libro con **las cuatro vistas** (una hoja por cada pestaña, empezando por la que tienes abierta) respetando los filtros. Verás *«Archivo Excel (.xlsx) generado y descargado.»*
+    - **Exportar CSV (.csv)** descarga solo la **pestaña que estás viendo**. Verás *«Archivo CSV (.csv) de la vista actual descargado.»* Está desactivado si la vista no tiene registros.
+
+Si ningún registro cumple los filtros, la tabla dice *«No se encontraron registros para los filtros seleccionados»*: amplía el rango de fechas o quita algún filtro. El tablero es de
+**solo consulta**: no cambia nada de la operación.
+
+!!! note "Permisos del tablero"
+    El módulo **Reportes** tiene dos permisos, **Ver** y **Registrar y modificar** (*reportes.ver* y *reportes.gestionar*), y el Gerente trae ambos. Hoy basta con **Ver** para consultar, filtrar,
+    actualizar y exportar. Si un rol personalizado necesita el tablero, márcale **Ver** en *Roles y permisos*.
 
 ## 10. Vendedor: ventas y facturación
 
-Menú **Ventas y Despachos**, con cinco pantallas: **Panel de ventas**, **Nueva venta**, **Facturas**, **Clientes** y **Precios**. El Vendedor (y el Administrador)
-registran clientes y facturan; el Gerente consulta, fija los precios y anula facturas.
+Menú **Ventas y Despachos**, con seis pantallas: **Panel de ventas**, **Nueva venta**, **Gestión de cartera**, **Facturas**, **Clientes** y **Precios**. El Vendedor (y el Administrador)
+registran clientes, facturan y gestionan la cartera; el Gerente consulta, fija los precios y anula facturas.
 
 !!! warning "No es una factura electrónica"
     La factura que genera TexCore es una **factura POS interna**: un comprobante propio de la empresa, **no una factura electrónica ante la DIAN**.
@@ -457,7 +577,7 @@ Menú **Ventas y Despachos → Nueva venta**.
    **Detal 5 %, Mayorista 15 % y Distribuidor 20 %**, y el precio con descuento **nunca puede quedar por debajo del costo de fábrica**. Abajo ves los **totales en vivo**:
    subtotal, descuento, base gravable, **IVA del 19 %** y **total a pagar**. Los precios y el descuento son *antes de IVA*; el IVA se suma al final. Todo en pesos enteros.
 4. **Despacho.** La guía se genera **antes** en el portal de la transportadora. Elige la **transportadora** (*Interrapidísimo*, *Envía* u *Otra*, o déjala *Por definir*) y escribe el **número de guía**:
-   la factura y la guía nacen juntas. Es opcional, pero conviene anotarla lo antes posible; si falta, la factura queda en **Envíos → Por despachar / sin guía** (sección 11).
+   la factura y la guía nacen juntas. Es opcional, pero conviene anotarla lo antes posible; si falta, la factura queda en **Envíos → Por despachar** (sección 11).
    Puedes añadir observaciones.
 5. **Facturar.** Pulsa **Facturar $total**. El sistema valida que haya stock de cada talla y color, descuenta el inventario y genera la factura (`FV-0001`). Si pulsas dos veces
    por error, la segunda no factura otra vez.
@@ -474,6 +594,54 @@ Menú **Ventas y Despachos → Facturas**. Lista con el número, cliente, fecha,
 Si una factura tiene un error o la venta se cae, el Gerente (o el Administrador) abre **Facturas → Ver → Anular**, escribe el **motivo** (mínimo 10 caracteres) y confirma. Al anular,
 las prendas **vuelven al inventario** (aparecen en *Producto Terminado → Movimientos* como *Reingreso por anulación de venta*), la factura queda como *Anulada* con su motivo y quién la anuló,
 y **su número no se reutiliza**: la nueva venta lleva el siguiente. Una factura anulada no se puede anular otra vez. Solo se anula la factura completa.
+
+### Gestión de cartera: cobro y devoluciones
+
+Menú **Ventas y Despachos → Gestión de cartera**. Como toda venta es contraentrega, cada factura nace **pendiente de recaudo**: la transportadora cobra al cliente y gira el dinero después.
+Esta pantalla sirve para seguir ese cobro y, cuando el dinero llega o el paquete regresa, dejarlo registrado. La pantalla repite el aviso de que la factura es un comprobante interno.
+
+**Indicadores (arriba):**
+
+- **Saldo Financiero de la Empresa**: el dinero recaudado y consolidado en caja.
+- **Pendiente de Recaudo**: el valor de los pedidos por cobrar y cuántos son.
+- **Total Recaudado**: lo cobrado y el número de facturas pagadas.
+- **Devoluciones**: cuántas facturas se devolvieron y el valor de la mercancía que retornó.
+
+**Pestañas y filtros:**
+
+- Pestañas: **Pendientes de recaudo** (la que se abre primero), **Todas las facturas**, **Pagadas** y **Devoluciones**, cada una con su número entre paréntesis.
+- Un cuadro de búsqueda (*Buscar por factura, cliente, documento o guía…*), el selector **Todas las transportadoras** (*Interrapidísimo*, *Envía* u *Otra*) y las fechas **Desde** y **Hasta**.
+- La tabla muestra la factura, la fecha, el cliente, la transportadora y la guía, el **Valor a recaudar**, el **Estado de recaudo** (*Pendiente*, *Pagado* o *Devolución*) y una columna
+  de **Conciliación**: para lo pendiente, el estado de la guía (si la guía ya figura *Entregada* dice *«Guía entregada: ya puedes confirmar el pago»*; si no hay guía, *«Esperando reporte de transportadora»*);
+  para lo pagado, quién y cuándo lo confirmó; para lo devuelto, el motivo. **Ver** abre el detalle de la factura con el botón **Descargar PDF**.
+
+**Confirmar un pago (botón Pagado).** En una factura pendiente:
+
+1. Pulsa **Pagado**. Se abre *Confirmar recaudo · FV-…* con el cliente, la ciudad, la transportadora, la guía y el **total a ingresar**.
+2. Si quieres, escribe la **referencia del giro** (por ejemplo, el número del giro o la consignación).
+3. Pulsa **Confirmar recaudo**. Verás *«Recaudo de FV-… confirmado. Se sumaron $ … al saldo financiero.»*
+
+**Registrar una devolución (botón Devolución).** Cuando el cliente rechazó o no recibió el paquete:
+
+1. Pulsa **Devolución**. Se abre *Registrar devolución · FV-…*.
+2. Escribe el **motivo** (obligatorio, mínimo 5 caracteres). Si lo dejas corto verás *«Escribe el motivo de la devolución (mínimo 5 caracteres).»*
+3. Pulsa **Registrar devolución**. Verás *«Devolución de FV-… registrada. Las prendas retornaron al inventario de producto terminado.»*
+
+**Qué pasa con el saldo y con el stock:**
+
+- **Pagado:** el valor a recaudar se **suma al saldo financiero** de la empresa y la factura queda *Pagado*, con quién y cuándo.
+- **Devolución:** las prendas **vuelven al inventario de producto terminado** (aparecen en *Producto Terminado → Movimientos*) y **no se suma dinero** al saldo. La factura queda en *Devolución* con su motivo.
+- Una factura se gestiona **una sola vez**: ya no se puede pasar de *Pagado* a *Devolución* ni al revés. Si te equivocas, avisa a quien administre el sistema. Una factura anulada no se puede conciliar.
+- Los botones **Pagado** y **Devolución** solo los ven quienes pueden gestionar ventas (el Vendedor y el Administrador) y solo en facturas emitidas y pendientes. El Gerente consulta la pantalla sin los botones.
+
+**Mensajes que puedes ver:** *La factura ya fue gestionada como …* (ya se había pagado o devuelto) y *No se puede conciliar una factura anulada.*
+
+!!! warning "Límites actuales"
+    - **El sistema no espera a la guía:** puedes marcar *Pagado* o *Devolución* aunque la guía siga en tránsito. Antes de hacerlo, revisa en **Envíos → Guías** que el paquete ya esté *Entregada* (para cobrar)
+      o *Devuelta* y de regreso en la bodega (para devolver).
+    - **Los indicadores usan las últimas 200 facturas** del periodo que filtres; con más facturas, acota las fechas para que las sumas sean confiables.
+    - **Solo se cobra o se devuelve la factura completa:** no hay pagos parciales, abonos ni devoluciones de una parte.
+    - **El flete de una devolución** se registra en **Envíos**, no aquí.
 
 ### Clientes
 
@@ -500,7 +668,7 @@ Cambiar un precio no modifica las facturas ya emitidas. Los demás roles solo co
 
 !!! warning "Qué todavía no hace"
     - **Factura electrónica:** el comprobante es interno; no se envía a la DIAN ni hace contabilidad.
-    - **Formas de pago:** solo contraentrega. No hay venta de contado, a crédito ni abonos; el cobro se registrará con una historia posterior.
+    - **Formas de pago:** solo contraentrega. No hay venta de contado, a crédito ni abonos; el cobro de cada factura se confirma en la **Gestión de cartera**.
     - **Despacho:** el seguimiento de la guía (semáforo, relaciones de despacho, devoluciones) está en el módulo **Envíos** (sección 11).
     - **Pedidos y reservas:** se vende lo que hay en ese momento; no se reserva producto.
     - **Devoluciones parciales:** solo se anula la factura completa. En una devolución el flete se descuenta al vendedor, según la política de la empresa; el módulo Envíos lo registra y lo reporta, pero no lo descuenta.
@@ -536,9 +704,9 @@ Los espacios del número se quitan solos. Si una guía de Interrapidísimo no ti
 
 Anotar la guía es opcional, pero **hay que hacerlo lo antes posible**. No puedes repetir un número: si ya está en otra factura, el sistema te dice en cuál.
 
-### Por despachar / sin guía
+### Por despachar
 
-Menú **Envíos → Por despachar / sin guía**. Lista las facturas emitidas que todavía no tienen guía, de la más antigua a la más reciente, con las horas que llevan esperando:
+Menú **Envíos → Por despachar**. Lista las facturas emitidas que todavía no tienen guía, de la más antigua a la más reciente, con las horas que llevan esperando:
 
 - Desde **4 horas** sin guía, la factura pide **atención**.
 - Desde **24 horas** sin guía, está **vencida**.
@@ -587,11 +755,11 @@ Cuando un paquete *Devuelto* **ya llegó a la bodega**, el Almacenista o el Gere
 queda como devolución en la cartera (ver **Ventas y Despachos → Gestión de cartera**). Si la factura ya se cobró o ya se gestionó, el sistema no lo permite.
 
 El **flete** (el costo del envío) se registra en la guía, en pesos enteros. Cuando el paquete es una **devolución**, ese flete se le **descuenta al vendedor** según la política de la empresa:
-TexCore lo **anota a nombre del vendedor y lo muestra en el Resumen**, pero **no lo descuenta de ningún pago** (no hay nómina en el sistema).
+TexCore lo **anota a nombre del vendedor y lo muestra en el Panel de envíos**, pero **no lo descuenta de ningún pago** (no hay nómina en el sistema).
 
-### Resumen
+### Panel de envíos
 
-Menú **Envíos → Resumen**: cuántas guías hay en cada color, cuántas facturas están sin guía (y cuántas piden atención o están vencidas), las últimas novedades abiertas y las devoluciones por vendedor con el flete que suman.
+Menú **Envíos → Panel de envíos**: cuántas guías hay en cada color, cuántas facturas están sin guía (y cuántas piden atención o están vencidas), las últimas novedades abiertas y las devoluciones por vendedor con el flete que suman.
 
 ### Anular una factura con guía
 
@@ -648,13 +816,32 @@ Menú **Envíos → Resumen**: cuántas guías hay en cada color, cuántas factu
 
 **No sé en qué va un paquete.** Mira el color de su guía en *Envíos → Guías*. Si es de Interrapidísimo y tienes permiso de gestionar los envíos, pulsa **Consultar estado** (la misma guía no se consulta otra vez antes de 10 minutos). Para Envía y Otra el estado lo cambia a mano quien despacha.
 
-**Una factura aparece en «Por despachar / sin guía».** Todavía no tiene el número de guía: genéralo en el portal de la transportadora y anótalo ahí. Desde 4 horas pide atención y desde 24 horas está vencida.
+**Una factura aparece en «Por despachar».** Todavía no tiene el número de guía: genéralo en el portal de la transportadora y anótalo ahí. Desde 4 horas pide atención y desde 24 horas está vencida.
 
 **Me equivoqué en el número de la guía.** Si el paquete aún no salió (*Por despachar*), anota el número correcto y reemplaza al anterior. Si ya salió, no se puede reemplazar.
 
 **No me deja anular una factura.** Si su guía ya fue despachada (en tránsito, con novedad, entregada o devuelta), la factura no se anula. Con la guía todavía por despachar sí se puede y la guía se anula sola.
 
 **Me equivoqué en una factura.** No se edita ni se borra. El Gerente la anula en *Ventas y Despachos → Facturas* con un motivo; las prendas vuelven al inventario y se emite una factura nueva (sección 10).
+
+**Generé una remisión a lavandería y el lote ya no aparece para enviar.** Es lo normal: al generar la remisión el lote sale de la planta y queda *En Tránsito / Externo*. Vuelve a la
+planta cuando se asienta su recepción en *Procesos Externos (Lavandería) → Recepción de Lavandería*.
+
+**El botón «Asentar Reingreso a Planta & Liquidar» está desactivado.** Algún lote no cuadra (conformes + merma + dañadas deben sumar exactamente lo enviado), falta el motivo de la merma o el tipo de
+daño. El recuadro *No se puede asentar aún* dice cuál es el problema. Si el botón está activo pero el navegador te marca un campo, falta el número de la **Factura / Remisión Externa del Proveedor**.
+
+**Un lote ya volvió de lavandería pero no lo veo en Inspecciones.** Primero debe asentarse su recepción y haber vuelto al menos una prenda conforme. Después aparece en *Control de Calidad → Inspecciones → Lotes por inspeccionar*
+(salvo que su orden esté anulada o ya tenga inspección).
+
+**Un cliente rechazó el paquete: ¿cómo lo registro en cartera?** En *Ventas y Despachos → Gestión de cartera*, busca la factura en *Pendientes de recaudo* y pulsa **Devolución** con el motivo. Las prendas vuelven al inventario
+de producto terminado y no se suma dinero al saldo. Si no ves los botones **Pagado** y **Devolución**, tu rol solo consulta (por ejemplo, el Gerente) o la factura ya fue gestionada o está anulada.
+
+**Me equivoqué al marcar una factura como Pagada o Devuelta.** La cartera de una factura se gestiona una sola vez y no se puede deshacer desde la pantalla. Avisa a quien administre el sistema antes de seguir.
+
+**No veo el menú «Reportes».** El tablero gerencial es del Gerente y del Administrador. Un rol personalizado necesita el permiso **Ver** del módulo Reportes en *Roles y permisos*.
+
+**El tablero gerencial no muestra mis últimas ventas o inspecciones.** Pulsa **Actualizar datos**, que recalcula los indicadores, y revisa que el rango de fechas y los filtros no los estén dejando fuera
+(**Limpiar filtros** o **Todo el historial**).
 
 **La liquidación dice «Sin tarifa» o «Sin costo».** Falta registrar la tarifa por minuto de esa etapa (pestaña *Tarifas por Minuto*) o la compra del
 material se registró sin costo unitario. El cálculo se muestra como parcial hasta completarlo.

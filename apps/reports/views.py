@@ -1,5 +1,6 @@
 """Endpoints analíticos del tablero de reportes gerenciales."""
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -51,8 +52,24 @@ class ReporteRefrescarVistasView(APIView):
     """Fuerza la actualización de las vistas SQL materializadas en PostgreSQL (`REFRESH MATERIALIZED VIEW CONCURRENTLY`)."""
     required_permissions = REFRESH_PERMISSIONS
 
-    @extend_schema(summary="Refrescar las vistas SQL materializadas de reportes")
+    @extend_schema(
+        summary="Refrescar las vistas SQL materializadas de reportes",
+        description="En PostgreSQL refresca las vistas materializadas del tablero; en SQLite no hace nada "
+                    "(`refreshed` es falso) porque allí son vistas normales.",
+        request=None,
+        responses={
+            200: inline_serializer(
+                "ReporteRefrescoRespuesta",
+                {
+                    "refreshed": serializers.BooleanField(help_text="Verdadero si se refrescaron vistas materializadas"),
+                    "detail": serializers.CharField(),
+                },
+            ),
+            403: OpenApiResponse(description="El rol no tiene permiso para ver reportes"),
+        },
+    )
     def post(self, request):
+        """Refresca las vistas materializadas y devuelve si hubo refresco."""
         refreshed = services.refresh_materialized_views()
         return Response({"refreshed": refreshed, "detail": "Vistas analíticas actualizadas correctamente."})
 

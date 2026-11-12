@@ -1,6 +1,8 @@
 """Serializers de ventas: clientes, precios, facturas POS internas y los datos que la pantalla necesita."""
 import re
 
+from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.shipping import catalog as shipping_catalog
@@ -145,7 +147,41 @@ class FacturaSerializer(serializers.ModelSerializer):
     def get_estado_cobro_nombre(self, obj) -> str:
         return catalog.COLLECT_STATE_NAMES.get(obj.estado_cobro, obj.estado_cobro)
 
+    @extend_schema_field(
+        {
+            "type": "object",
+            "nullable": True,
+            "description": "Guía vigente de la factura; nula si aún no tiene guía.",
+            "properties": {
+                "id": {"type": "integer"},
+                "estado": {"type": "string"},
+                "estado_nombre": {"type": "string"},
+                "color": {"type": "string", "description": "Semáforo: verde, amarillo, rojo o gris"},
+                "rastreo_estado": {"type": "string"},
+                "consultada_en": {"type": "string", "format": "date-time", "nullable": True},
+                "novedad": {"type": "string"},
+            },
+        }
+    )
+    @extend_schema_field(
+        {
+            "type": "object",
+            "nullable": True,
+            "description": "Guía vigente de la factura; nula si aún no tiene guía.",
+            "properties": {
+                "id": {"type": "integer"},
+                "estado": {"type": "string"},
+                "estado_nombre": {"type": "string"},
+                "color": {"type": "string", "description": "Semáforo de la guía"},
+                "rastreo_estado": {"type": "string"},
+                "consultada_en": {"type": "string", "format": "date-time", "nullable": True},
+                "novedad": {"type": "string"},
+            },
+        }
+    )
     def get_guia(self, obj):
+        """Resumen de la guía vigente de la factura (estado, semáforo y rastreo), o nulo si no tiene."""
+        """Resumen de la guía vigente de la factura (estado, semáforo y rastreo), o nulo si no tiene."""
         guides = getattr(obj, "guia_vigente", None)
         if guides is None:  # fuera de `invoice_queryset` (sin precarga)
             guides = list(obj.guias.filter(vigente=True))

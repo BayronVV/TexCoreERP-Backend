@@ -48,12 +48,13 @@ despliegan la rama `main` y se redespliegan solos con cada merge.
 
 Cada arranque ejecuta `migrate --noinput`, así que un despliegue con migraciones nuevas las aplica solo. Eso incluye los
 **permisos y roles** de los módulos nuevos (`referencias.*`, `compras.*`, y los de calidad para el Jefe de Producción), que cargan las migraciones `0007`, `0008` y `0010` de `apps/users` (los de producto terminado ya venían en la matriz inicial: la app `finished` solo agrega sus cuatro tablas `terminado_*`). Ventas (HU 7.1) suma la app `sales` con sus cuatro tablas `ventas_*`, la migración `users/0012` con los permisos `ventas.precios` y `ventas.anular` del Gerente, y la dependencia `reportlab` (se instala sola con `requirements.txt`),
-Envíos (HU 7.2) suma la app `shipping` con sus tablas `envios_guia`, `envios_evento` y `envios_relacion`, la migración de datos `shipping/0002` (convierte en registros de guía las guías que las facturas ya traían como texto; es idempotente) y la migración `users/0013` con los cuatro permisos `envios.*` y su matriz inicial. Todo se aplica solo al arrancar.
+Envíos (HU 7.2) suma la app `shipping` con sus tablas `envios_guia`, `envios_evento` y `envios_relacion`, la migración de datos `shipping/0002` (convierte en registros de guía las guías que las facturas ya traían como texto; es idempotente) y la migración `users/0013` con los cuatro permisos `envios.*` y su matriz inicial. Lavandería (HU 5.1 y 5.2) suma en `production` las migraciones `0005` (recetas de lavado, remisiones y el estado de inventario del lote) y `0007` (recepciones). La cartera contraentrega (HU 7.3) suma `sales/0002`: el saldo financiero, el libro de movimientos de cartera y los campos de cobro de la factura. Los reportes (HU 7.4) suman `reports/0001`, que crea las dos vistas SQL de los reportes: **materializadas en PostgreSQL** (con sus índices) y vistas normales en SQLite. Ninguna de estas migraciones agrega permisos nuevos: los de lavandería y reportes ya venían en la matriz inicial. Todo se aplica solo al arrancar.
 Además corre el endurecimiento de la base (RLS) al final de cada `migrate`.
 
 - No hace falta (ni conviene) correr nada más para tener la matriz de permisos inicial; después se ajusta desde **Roles y permisos**.
 - La primera cuenta administradora se crea una sola vez con `python manage.py seed_admin` desde una terminal con `DATABASE_URL` de producción, pasando
   `--email` y `--password` propios (ver el [manual del sistema](manual-del-sistema.md)). Nunca se deja la contraseña de ejemplo.
+- **Los datos de los servidores de Render son simulados.** Con `SEED_DEMO_ON_DEPLOY=true` el arranque deja datos de demostración en todos los módulos (clientes, facturas, guías, lotes, existencias...) y la base compartida del equipo se usa para mostrar el sistema: se pueden modificar, borrar o completar sin temor, pero no se debe guardar información real en ella. La siembra nunca toca usuarios, roles ni permisos.
 - Los comandos `seed_demo_*` sueltos **no funcionan en Render**: exigen `DJANGO_DEBUG=true`, que en producción es `false`. La excepción es `seed_demo_completo --permitir-produccion` (o `SEED_DEMO_ON_DEPLOY=true`), pensada para sembrar los datos simulados de la demostración; los demás se mantienen cerrados. Es a propósito (incluidos `seed_demo_calidad`, con la que en producción los defectos se crean desde **Control de Calidad → Defectos**, y `seed_demo_terminado`, con la que el producto terminado se ingresa desde **Producto Terminado → Ingreso**).
 - `seed_demo_envios` (guías de demostración de la HU 7.2) tampoco corre en Render, por la misma razón. En producción las guías se anotan al facturar o desde **Por despachar / sin guía**.
 - Una migración que cambia el esquema se aplica a la base compartida: la versión anterior del código, si sigue desplegada, debe
@@ -148,6 +149,7 @@ roto, el sitio anterior sigue publicado.
 
 1. `GET https://texcore-api.onrender.com/api/health/` debe responder `ok`.
 2. Abrir el frontend, iniciar sesión y revisar que no haya errores de CORS en la consola.
-   Entrar a **Roles y permisos** y confirmar que aparecen los módulos Referencias, Fichas Técnicas y Compras.
+   Entrar a **Roles y permisos** y confirmar que aparecen los módulos Referencias, Fichas Técnicas, Compras, Lavandería, Envíos y Reportes.
+   Con la sesión de un Gerente o un Administrador, abrir el tablero de reportes: si carga sin error, las vistas materializadas se crearon bien.
 3. Cambiar la contraseña de las cuentas de prueba: la base es compartida y los
    repositorios son públicos.

@@ -9,12 +9,12 @@ tiene `<módulo>.ver`.
 | Código | Nombre | Para qué sirve |
 |---|---|---|
 | `ADMIN` | Administrador | Gestiona usuarios, roles y la configuración. Tiene **todos** los permisos de forma implícita y no se puede restringir. |
-| `GERENTE` | Gerente | Consulta toda la operación (incluidos los envíos), genera reportes, **aprueba las órdenes de compra** y registra la devolución física de los paquetes. |
-| `PRODUCCION` | Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo, órdenes de compra y criterios de calidad. |
+| `GERENTE` | Gerente | Consulta toda la operación (incluidos la lavandería y los envíos), consulta el **tablero de reportes gerenciales**, **aprueba las órdenes de compra**, fija los precios, anula facturas y registra la devolución física de los paquetes. |
+| `PRODUCCION` | Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo, órdenes de compra, criterios de calidad y **lavandería** (remisión de salida y recepción). |
 | `ALMACENISTA` | Almacenista | Proveedores, materias primas, movimientos y **recepción de mercancía**. En envíos arma las relaciones de despacho, cambia los estados de las guías y registra la devolución física. |
 | `TERMINACION` | Personal de Terminación | Control de calidad: define los defectos e inspecciona los lotes que vuelven de lavandería. |
 | `SECRETARIA` | Secretaria | Producto terminado: ingresa al inventario final las prendas aptas de cada inspección, ajusta el inventario contra el conteo físico y consulta existencias y movimientos. En envíos anota guías, arma relaciones de despacho y cambia los estados. |
-| `VENDEDOR` | Vendedor | Consulta el producto terminado disponible, registra clientes y emite las facturas POS internas de venta (descuenta el inventario). Anota la guía de la transportadora al facturar y consulta los envíos. |
+| `VENDEDOR` | Vendedor | Consulta el producto terminado disponible, registra clientes y emite las facturas POS internas de venta (descuenta el inventario) y **concilia el cobro contraentrega** de cada una (pagada o devolución). Anota la guía de la transportadora al facturar y consulta los envíos. |
 | `PENDING` | Pendiente de aprobación | Cuenta recién registrada: **sin permisos** hasta que un administrador le asigne un rol. |
 
 Los roles base no se eliminan. Un administrador puede crear roles propios desde **Seguridad y Usuarios → Roles y
@@ -32,16 +32,16 @@ Cada módulo tiene `ver` (consultar) y `gestionar` (registrar y modificar). Marc
 | Referencias de Jean | `referencias.ver`, `referencias.gestionar` | Activo |
 | Fichas Técnicas | `fichas_tecnicas.ver`, `fichas_tecnicas.gestionar` | Activo. Se edita **dentro del Catálogo de jeans**, por eso no tiene entrada propia en el menú; sus permisos sí aparecen en *Roles y permisos* |
 | Producción y Trazabilidad | `produccion.ver`, `produccion.gestionar` | Activo |
-| Procesos Externos (Lavandería) | `lavanderia.ver`, `lavanderia.gestionar` | Previsto (la salida a lavandería se opera hoy desde Inventario) |
+| Procesos Externos (Lavandería) | `lavanderia.ver`, `lavanderia.gestionar` | Activo (Remisión de salida y Recepción de lavandería) |
 | Control de Calidad | `calidad.ver`, `calidad.gestionar` | Activo (Inspecciones y Defectos) |
 | Producto Terminado | `producto_terminado.ver`, `producto_terminado.gestionar`, `producto_terminado.ajustar` | Activo (Ingreso, Existencias, Ajuste manual y Movimientos) |
-| Ventas y Despachos | `ventas.ver`, `ventas.gestionar`, `ventas.precios`, `ventas.anular` | Activo (Panel de ventas, Nueva venta, Facturas, Clientes y Precios; despachos y cobro, previstos) |
+| Ventas y Despachos | `ventas.ver`, `ventas.gestionar`, `ventas.precios`, `ventas.anular` | Activo (Panel de ventas, Nueva venta, Facturas, Clientes, Precios y Cartera) |
 | Envíos | `envios.ver`, `envios.anotar`, `envios.gestionar`, `envios.devolucion` | Activo (Guías, Por despachar / sin guía, Relaciones de despacho y Resumen) |
-| Reportes | `reportes.ver`, `reportes.gestionar` | Previsto |
+| Reportes | `reportes.ver`, `reportes.gestionar` | Activo (Tablero gerencial). Las rutas hoy solo exigen `reportes.ver`; `reportes.gestionar` existe en el catálogo pero ninguna ruta lo pide |
 
 ## Matriz inicial rol → permiso
 
-Es la que dejan las migraciones (`0003`, `0007`, `0008`, `0010`, `0011`, `0012` y `0013` de `apps/users`). Después se ajusta desde la pantalla de
+Es la que dejan las migraciones (`0003`, `0007`, `0008`, `0010`, `0011`, `0012` y `0013` de `apps/users`; las demás no tocan permisos). En total son 31 permisos en 12 módulos. El Sprint 3 no agregó permisos: la lavandería, la cartera y los reportes usan los que ya existían. Después se ajusta desde la pantalla de
 roles, así que la matriz real de un despliegue puede diferir. `ADMIN` no aparece porque lo tiene todo.
 
 | Permiso | GERENTE | PRODUCCION | ALMACENISTA | TERMINACION | SECRETARIA | VENDEDOR |
@@ -72,9 +72,10 @@ roles, así que la matriz real de un despliegue puede diferir. `ADMIN` no aparec
 | `envios.anotar` | | | ✔ | | ✔ | ✔ |
 | `envios.gestionar` | | | ✔ | | ✔ | |
 | `envios.devolucion` | ✔ | | ✔ | | | |
-| `reportes.ver`, `reportes.gestionar` | ✔ | | | | | |
+| `reportes.ver` | ✔ | | | | | |
+| `reportes.gestionar` | ✔ | | | | | |
 
-`seguridad.*` solo lo tiene `ADMIN` por defecto.
+`seguridad.*` solo lo tiene `ADMIN` por defecto. `PENDING` no tiene ninguno.
 
 ## Qué exige cada operación
 
@@ -103,10 +104,13 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 | Ingresar al inventario final las aptas de una inspección | `producto_terminado.gestionar` |
 | Consultar los ajustes manuales y sus motivos | `producto_terminado.ver` |
 | Ajustar el inventario de producto terminado contra el conteo físico | `producto_terminado.ajustar` |
-| Consultar clientes, precios, facturas (con su detalle y PDF) y los metadatos de ventas | `ventas.ver` |
-| Registrar y modificar clientes; **emitir una factura** (descuenta el inventario) | `ventas.gestionar` |
+| Consultar clientes, precios, facturas (con su detalle y PDF), los metadatos de ventas y el resumen de cartera (`/api/ventas/cartera/resumen/`) | `ventas.ver` |
+| Registrar y modificar clientes; **emitir una factura** (descuenta el inventario); **conciliar el cobro contraentrega** de una factura (pagada o devolución) | `ventas.gestionar` |
 | Registrar o actualizar el costo de fábrica y los precios de una referencia | `ventas.precios` |
 | Anular una factura | `ventas.anular` |
+| Consultar los lotes disponibles, las lavanderías, las recetas, el historial de remisiones, las remisiones pendientes y las actas de recepción de lavandería | `lavanderia.ver` |
+| Despachar una remisión de salida a lavandería y asentar la recepción de lavandería | `lavanderia.gestionar` |
+| Consultar el tablero gerencial y sus filtros, y forzar el refresco de sus vistas (`/api/reportes/…`) | `reportes.ver` |
 | Consultar guías, su detalle e historial, las facturas sin guía, las relaciones de despacho (y su PDF), el resumen y los metadatos de envíos | `envios.ver` |
 | Anotar o reemplazar el número de guía de una factura ya emitida (`/api/envios/facturas/<id>/guia/`) | `envios.anotar` |
 | Armar una relación de despacho, cambiar el estado de una guía, registrar el flete, **consultar el estado en Track123** (gasta cuota de registros) y leer la cuota | `envios.gestionar` |
@@ -135,6 +139,9 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 - **Los estados finales no se mueven:** una guía entregada, devuelta o anulada ya no cambia de estado, ni a mano ni por el rastreo.
 - **El rastreo es de quien gestiona:** consultar el estado en Track123 gasta cuota de la cuenta, así que exige `envios.gestionar`; el Vendedor y el Gerente ven el último estado guardado pero no lo consultan.
 - **La devolución física la registra bodega o gerencia:** `envios.devolucion` (Almacenista y Gerente). El flete de una devolución se registra a nombre del vendedor y solo se reporta.
+- **La lavandería no se corrige:** una remisión o una recepción de lavandería registrada no se edita ni se borra, ni siquiera con `lavanderia.gestionar` o siendo administrador; la ruta no existe. Una remisión ya retornada o anulada no admite otra recepción, y la recepción exige cotejar todos los lotes de la remisión.
+- **La cartera se concilia una vez:** una factura emitida pasa de `POR_COBRAR` a `PAGADO` o a `DEVOLUCION` una sola vez; después no se mueve, ni siquiera siendo administrador. Una factura anulada no se concilia. La devolución física que registra Envíos (`envios.devolucion`) usa esta misma conciliación.
+- **Los reportes son de solo lectura:** el tablero gerencial no modifica nada; refrescar sus vistas tampoco cambia los datos de negocio, pero con `reportes.ver` basta para pedirlo.
 - **Factura interna, no electrónica:** la factura POS es un comprobante propio de TexCore y no sustituye la factura electrónica ante la DIAN.
 - **Quién decide los precios:** el Vendedor factura con los precios que fija el Gerente (`ventas.precios`); el descuento que da está limitado
   por el tipo de cliente y nunca baja del costo de fábrica, sin importar el permiso.

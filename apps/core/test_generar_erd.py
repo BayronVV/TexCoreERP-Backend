@@ -20,7 +20,7 @@ class GenerarErdTests(SimpleTestCase):
         self.assertEqual(self.text, Command().render(project_models()))
 
     def test_tres_niveles_de_lectura(self):
-        for heading in ("## Mapa general", "## Diagramas por módulo", "## Diagrama entidad-relación completo", "## Tablas"):
+        for heading in ("## Mapa general", "## Esquema físico por módulo", "## Esquema físico completo", "## Tablas"):
             self.assertIn(heading, self.text)
         for _key, title, _labels in MODULES:
             self.assertIn(f"### {title}", self.text)

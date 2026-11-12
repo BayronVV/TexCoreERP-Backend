@@ -4,11 +4,11 @@ Genera la documentación del modelo de datos a partir de los modelos de Django.
     python manage.py generar_erd                    # imprime el Markdown
     python manage.py generar_erd --salida docs/modelo-de-datos.md
 
-El diagrama entidad-relación sale en Mermaid (GitHub y MkDocs lo dibujan solos),
+Los diagramas del esquema físico (pata de gallo) salen en Mermaid (GitHub y MkDocs lo dibujan solos),
 así que no hace falta instalar Graphviz. Ejecútalo de nuevo cuando cambie un modelo.
 
-Tres niveles de lectura: mapa general (entidades por módulo), diagrama de cada módulo
-(con columnas) y tablas de detalle por modelo; más las vistas materializadas de reportes.
+Cuatro niveles de lectura: MER en notación de Chen (lo genera `generar_mer`), mapa general,
+diagrama físico de cada módulo (con columnas) y tablas de detalle por modelo; más las vistas materializadas de reportes.
 Con --mermaid-dir se vuelcan los diagramas como archivos .mmd para convertirlos a imagen
 (SVG/PNG) con mermaid-cli; el Markdown ya referencia esas imágenes en docs/img/.
 """
@@ -294,27 +294,32 @@ class Command(BaseCommand):
             "",
             "## Cómo leer este modelo",
             "",
-            "El modelo se presenta en tres niveles, de lo general a lo particular:",
+            "El modelo se presenta en cuatro niveles, de lo conceptual a lo físico:",
             "",
-            "1. **[Mapa de módulos](#mapa-de-modulos)** y **[mapa general de tablas](#mapa-general-de-tablas)**: "
-            "primero los módulos y sus dependencias; luego solo las entidades y sus relaciones, agrupadas por módulo. "
-            "Sirven para ver cómo se conectan las aplicaciones entre sí.",
-            "2. **[Diagramas por módulo](#diagramas-por-modulo)**: las tablas de cada módulo con sus columnas, "
-            "y las tablas de otros módulos con las que se relacionan (mostradas solo con su clave).",
-            "3. **[Detalle por tabla](#tablas)**: cada campo con su tipo, restricciones y relación.",
+            "1. **[Modelo entidad-relación (notación de Chen)](#modelo-entidad-relacion-notacion-de-chen)**: "
+            "el nivel conceptual, como en los libros de texto: entidades, relaciones con su cardinalidad y "
+            "atributos principales. Es el que se usa para explicar el negocio.",
+            "2. **[Mapa de módulos](#mapa-de-modulos)** y **[mapa general de tablas](#mapa-general-de-tablas)**: "
+            "primero los módulos y sus dependencias; luego solo las tablas y sus claves foráneas, agrupadas por módulo.",
+            "3. **[Esquema físico por módulo y completo](#esquema-fisico-por-modulo-notacion-pata-de-gallo)**: notación «pata de gallo» de las "
+            "tablas de cada módulo con sus columnas, y las tablas de otros módulos con las que se relacionan.",
+            "4. **[Detalle por tabla](#tablas)**: cada campo con su tipo, restricciones y relación.",
             "",
             "Además, la sección [Vistas materializadas de reportes](#vistas-materializadas-de-reportes) describe "
             "las vistas analíticas de la aplicación `reports`, que no son modelos de Django.",
             "",
-            "Cada diagrama se publica como imagen (SVG, ampliable con clic) y también como código Mermaid, "
-            "que el sitio dibuja en el navegador. Para regenerarlo, desde `backend`:",
+            "Cada diagrama se publica como imagen (SVG, ampliable con clic). Los diagramas físicos también "
+            "se incluyen como código Mermaid, que el sitio dibuja en el navegador. Para regenerarlos, desde `backend`:",
             "",
             "```bash",
             "python manage.py generar_erd --salida docs/modelo-de-datos.md --mermaid-dir <carpeta temporal>",
-            "# imagen de cada diagrama (mermaid-cli):",
+            "# imagen de cada diagrama físico (mermaid-cli):",
             "#   mmdc -i <carpeta>/mapa-modulos.mmd -o docs/img/mapa-modulos.svg",
             "```",
             "",
+        ]
+        lines += self.chen_section(models_)
+        lines += [
             "## Mapa de módulos",
             "",
             "Un nodo por módulo y una flecha por cada par de módulos con dependencia por clave foránea; "
@@ -332,15 +337,24 @@ class Command(BaseCommand):
             "están en el detalle por tabla y en el diagrama completo.",
             "",
         ]
-        lines += self.figure("mapa-general", "Mapa general del modelo de datos", general_map(models_))
-        lines += ["## Diagramas por módulo", ""]
+        lines += self.figure("mapa-general", "Mapa general de tablas del modelo de datos", general_map(models_))
+        lines += ["## Esquema físico por módulo (notación pata de gallo)", "",
+                  "Esquema relacional de la base: las tablas de cada módulo con sus columnas y llaves, y las "
+                  "tablas de otros módulos con las que se relacionan (solo su clave).", ""]
         for key, title in titles.items():
             diagram, own, external = module_erd(key, models_)
             lines += [f"### {title}", "", "Tablas: " + ", ".join(f"`{m.__name__}`" for m in own) + ".", ""]
             if external:
                 lines += ["Relaciones con otros módulos (solo clave): "
                           + ", ".join(f"`{m.__name__}` ({titles[module_of(m)]})" for m in external) + ".", ""]
-            lines += self.figure(f"modulo-{key}", f"Diagrama del módulo {title}", diagram)
+            lines += self.figure(f"modulo-{key}", f"Esquema físico del módulo {title} (pata de gallo)", diagram)
+        lines += [
+            "## Esquema físico completo (notación pata de gallo)", "",
+            "Es el **esquema relacional de la base de datos**: todas las tablas con sus columnas y llaves en un solo "
+            "diagrama. Es muy grande y se lee mejor por módulo (sección anterior). El modelo conceptual, con entidades, "
+            "relaciones y cardinalidades, está al inicio de este documento en notación de Chen.", "",
+        ]
+        lines += ["```mermaid"] + full_erd(models_) + ["```", ""]
         lines += ["## Vistas materializadas de reportes", ""]
         lines += [
             "La aplicación `reports` consulta dos vistas SQL creadas por la migración "
@@ -358,8 +372,7 @@ class Command(BaseCommand):
             lines += ["| Columna | Tipo |", "|---|---|"]
             lines += [f"| `{c}` | {t} |" for c, t in view["columns"]]
             lines.append("")
-        lines += ["## Diagrama entidad-relación completo", "", "Todas las tablas con todas sus columnas en un solo diagrama.", ""]
-        lines += ["```mermaid"] + full_erd(models_) + ["```", "", "## Tablas", ""]
+        lines += ["## Tablas", ""]
         for model in models_:
             meta = model._meta
             doc = (model.__doc__ or "").strip().splitlines()[0] if model.__doc__ else ""
@@ -376,6 +389,93 @@ class Command(BaseCommand):
                 lines.append(f"| `{field.name}` | {column_type(field)} | {', '.join(extra)} | {relation} |")
             lines.append("")
         return "\n".join(lines).rstrip() + "\n"
+
+    def chen_section(self, models_):
+        """Sección del MER en notación de Chen (figuras generadas con `generar_mer`)."""
+        from apps.core.management.commands.generar_mer import figures
+
+        figs = figures(models_)
+        lines = [
+            "## Modelo entidad-relación (notación de Chen)",
+            "",
+            "Es el modelo **conceptual** del sistema, dibujado con la notación de Peter Chen. Se parte de las "
+            f"{len(models_)} tablas reales, pero se leen como entidades y relaciones del negocio, no como tablas.",
+            "",
+            "| Símbolo | Significado |",
+            "|---|---|",
+            "| Rectángulo | **Entidad**: algo del negocio sobre lo que se guarda información (cliente, factura, lote). |",
+            "| Rectángulo de doble borde | **Entidad débil**: no existe sin su entidad propietaria (una línea de factura sin la factura). |",
+            "| Rombo | **Relación** entre entidades, nombrada con un verbo (Cliente *compra* Factura). |",
+            "| Rombo de doble borde | **Relación identificadora** entre una entidad débil y su propietaria. |",
+            "| Óvalo | **Atributo**; el identificador (llave primaria) va subrayado. |",
+            "| `1`, `N`, `M`, `P` sobre la línea | **Cardinalidad**: `1` en el lado referenciado y `N` en el lado que guarda la "
+            "clave foránea (1:N); `1` y `1` en una relación uno a uno; `N` y `M` en una relación muchos a muchos. |",
+            "| Óvalos colgando de un rombo | Atributos **de la relación** (por ejemplo, la cantidad enviada de un lote en una remisión). |",
+            "| Rectángulo gris | Entidad de **otro módulo** con la que se relaciona el módulo mostrado (sin atributos). |",
+            "",
+            "Las tablas puramente asociativas se dibujan como rombo muchos a muchos y no como rectángulo: "
+            "`RolePermission` (Role–ModulePermission), `RemisionLote` (RemisionLavanderia–Lote, con la receta de lavado "
+            "como tercera punta), `RecepcionLote` (RecepcionLavanderia–Lote) y `AsignacionEtapa` (EtapaLote–Operario–Maquina, "
+            "relación ternaria N:M:P). Son entidades débiles las líneas y registros de detalle que no existen sin su "
+            "cabecera: `OrdenLinea`, `FichaLinea`, `LoteTalla`, `EventoEtapa`, `LineaCompra`, `RecepcionLinea`, `MarraDetalle`, "
+            "`IngresoLinea`, `AjusteLinea`, `DetalleVenta` y `EventoGuia`.",
+            "",
+            "Criterios de lectura:",
+            "",
+            "- Para que sea legible **no se dibujan las relaciones hacia `CustomUser`** ni hacia las entidades de seguridad "
+            "desde otros módulos (quién creó, aprobó o registró algo): salen de casi todas las tablas y saturarían el dibujo. "
+            "Sí se muestran las relaciones internas del módulo Usuarios y seguridad.",
+            "- Los **atributos** son los principales (máximo 8 por entidad: identificador, códigos, nombre o descripción, "
+            "estado, cantidades, montos y fechas). No incluyen claves foráneas ni columnas de auditoría. El detalle completo "
+            "de cada tabla está en la sección [Tablas](#tablas).",
+            "- Dos relaciones que dependen de un rombo (`RecepcionLote`, `RemisionLote`) no se repiten como línea aparte: "
+            "la recepción ya enlaza la remisión y el lote, y la inspección se enlaza con el lote.",
+            "- Los diagramas de «pata de gallo» de las secciones siguientes son el **esquema físico** de la base de datos "
+            "(tablas, columnas y llaves); este modelo es su lectura conceptual.",
+            "",
+            "Las figuras se generan en dos pasos. Primero el comando emite texto DOT de Graphviz (determinista); luego se "
+            "renderiza fuera del proyecto, porque Graphviz no es dependencia (por ejemplo con `@hpcc-js/wasm-graphviz`, "
+            "Graphviz compilado a WebAssembly, y `@resvg/resvg-js` para el PNG):",
+            "",
+            "```bash",
+            "python manage.py generar_mer --dot-dir <carpeta>      # un .dot por figura (la primera línea indica el motor: neato)",
+            "# render (Node, ver backend/tools/mer/README.md): las figuras por módulo y la general con",
+            "#   node tools/mer/render.mjs <carpeta> docs/img all 8000",
+            "# y la general con atributos (coloca los óvalos alrededor de cada entidad) con",
+            "#   node tools/mer/radial.mjs <carpeta>/mer-general-atributos.dot docs/img 1.8 0.22 8000",
+            "```",
+            "",
+            "### MER general",
+            "",
+            "Todas las entidades y relaciones, sin atributos; el color indica el módulo de cada entidad.",
+            "",
+        ]
+        lines += self.image_figure("mer-general", "Modelo entidad-relación general (Chen)")
+        lines += [
+            "### MER general con atributos principales",
+            "",
+            "Las mismas entidades y relaciones, con su llave (subrayada) y hasta 4 atributos principales por entidad; las claves "
+            "foráneas no se repiten como atributos porque ya son relaciones. Es una figura grande: ábrela en SVG y amplía. "
+            "Los atributos de cada módulo completos están en los MER de abajo.",
+            "",
+        ]
+        lines += self.image_figure("mer-general-atributos", "Modelo entidad-relación general con atributos principales (Chen)")
+        for key, title in module_titles(models_).items():
+            mine = [f for f in figs if f["module"] == key]
+            lines += [f"### MER de {title}", ""]
+            for fig in mine:
+                if len(mine) > 1:
+                    lines += [f"**{fig['title'].split(': ', 1)[1]}**", ""]
+                lines += self.image_figure(fig["name"], f"MER de {fig['title']} (Chen)")
+        return lines
+
+    def image_figure(self, name, alt):
+        return [
+            f"[![{alt}]({IMG_DIR}/{name}.svg)]({IMG_DIR}/{name}.svg){{ target=_blank }}",
+            "",
+            f"[Abrir imagen SVG]({IMG_DIR}/{name}.svg){{ target=_blank }} · [Descargar PNG]({IMG_DIR}/{name}.png)",
+            "",
+        ]
 
     def figure(self, name, alt, diagram):
         """Imagen enlazada (SVG) y, debajo, el mismo diagrama como Mermaid desplegable."""

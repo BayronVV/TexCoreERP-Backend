@@ -7,21 +7,134 @@ El modelo tiene **54 tablas** de negocio en 9 módulos, más dos vistas material
 
 ## Cómo leer este modelo
 
-El modelo se presenta en tres niveles, de lo general a lo particular:
+El modelo se presenta en cuatro niveles, de lo conceptual a lo físico:
 
-1. **[Mapa de módulos](#mapa-de-modulos)** y **[mapa general de tablas](#mapa-general-de-tablas)**: primero los módulos y sus dependencias; luego solo las entidades y sus relaciones, agrupadas por módulo. Sirven para ver cómo se conectan las aplicaciones entre sí.
-2. **[Diagramas por módulo](#diagramas-por-modulo)**: las tablas de cada módulo con sus columnas, y las tablas de otros módulos con las que se relacionan (mostradas solo con su clave).
-3. **[Detalle por tabla](#tablas)**: cada campo con su tipo, restricciones y relación.
+1. **[Modelo entidad-relación (notación de Chen)](#modelo-entidad-relacion-notacion-de-chen)**: el nivel conceptual, como en los libros de texto: entidades, relaciones con su cardinalidad y atributos principales. Es el que se usa para explicar el negocio.
+2. **[Mapa de módulos](#mapa-de-modulos)** y **[mapa general de tablas](#mapa-general-de-tablas)**: primero los módulos y sus dependencias; luego solo las tablas y sus claves foráneas, agrupadas por módulo.
+3. **[Esquema físico por módulo y completo](#esquema-fisico-por-modulo-notacion-pata-de-gallo)**: notación «pata de gallo» de las tablas de cada módulo con sus columnas, y las tablas de otros módulos con las que se relacionan.
+4. **[Detalle por tabla](#tablas)**: cada campo con su tipo, restricciones y relación.
 
 Además, la sección [Vistas materializadas de reportes](#vistas-materializadas-de-reportes) describe las vistas analíticas de la aplicación `reports`, que no son modelos de Django.
 
-Cada diagrama se publica como imagen (SVG, ampliable con clic) y también como código Mermaid, que el sitio dibuja en el navegador. Para regenerarlo, desde `backend`:
+Cada diagrama se publica como imagen (SVG, ampliable con clic). Los diagramas físicos también se incluyen como código Mermaid, que el sitio dibuja en el navegador. Para regenerarlos, desde `backend`:
 
 ```bash
 python manage.py generar_erd --salida docs/modelo-de-datos.md --mermaid-dir <carpeta temporal>
-# imagen de cada diagrama (mermaid-cli):
+# imagen de cada diagrama físico (mermaid-cli):
 #   mmdc -i <carpeta>/mapa-modulos.mmd -o docs/img/mapa-modulos.svg
 ```
+
+## Modelo entidad-relación (notación de Chen)
+
+Es el modelo **conceptual** del sistema, dibujado con la notación de Peter Chen. Se parte de las 54 tablas reales, pero se leen como entidades y relaciones del negocio, no como tablas.
+
+| Símbolo | Significado |
+|---|---|
+| Rectángulo | **Entidad**: algo del negocio sobre lo que se guarda información (cliente, factura, lote). |
+| Rectángulo de doble borde | **Entidad débil**: no existe sin su entidad propietaria (una línea de factura sin la factura). |
+| Rombo | **Relación** entre entidades, nombrada con un verbo (Cliente *compra* Factura). |
+| Rombo de doble borde | **Relación identificadora** entre una entidad débil y su propietaria. |
+| Óvalo | **Atributo**; el identificador (llave primaria) va subrayado. |
+| `1`, `N`, `M`, `P` sobre la línea | **Cardinalidad**: `1` en el lado referenciado y `N` en el lado que guarda la clave foránea (1:N); `1` y `1` en una relación uno a uno; `N` y `M` en una relación muchos a muchos. |
+| Óvalos colgando de un rombo | Atributos **de la relación** (por ejemplo, la cantidad enviada de un lote en una remisión). |
+| Rectángulo gris | Entidad de **otro módulo** con la que se relaciona el módulo mostrado (sin atributos). |
+
+Las tablas puramente asociativas se dibujan como rombo muchos a muchos y no como rectángulo: `RolePermission` (Role–ModulePermission), `RemisionLote` (RemisionLavanderia–Lote, con la receta de lavado como tercera punta), `RecepcionLote` (RecepcionLavanderia–Lote) y `AsignacionEtapa` (EtapaLote–Operario–Maquina, relación ternaria N:M:P). Son entidades débiles las líneas y registros de detalle que no existen sin su cabecera: `OrdenLinea`, `FichaLinea`, `LoteTalla`, `EventoEtapa`, `LineaCompra`, `RecepcionLinea`, `MarraDetalle`, `IngresoLinea`, `AjusteLinea`, `DetalleVenta` y `EventoGuia`.
+
+Criterios de lectura:
+
+- Para que sea legible **no se dibujan las relaciones hacia `CustomUser`** ni hacia las entidades de seguridad desde otros módulos (quién creó, aprobó o registró algo): salen de casi todas las tablas y saturarían el dibujo. Sí se muestran las relaciones internas del módulo Usuarios y seguridad.
+- Los **atributos** son los principales (máximo 8 por entidad: identificador, códigos, nombre o descripción, estado, cantidades, montos y fechas). No incluyen claves foráneas ni columnas de auditoría. El detalle completo de cada tabla está en la sección [Tablas](#tablas).
+- Dos relaciones que dependen de un rombo (`RecepcionLote`, `RemisionLote`) no se repiten como línea aparte: la recepción ya enlaza la remisión y el lote, y la inspección se enlaza con el lote.
+- Los diagramas de «pata de gallo» de las secciones siguientes son el **esquema físico** de la base de datos (tablas, columnas y llaves); este modelo es su lectura conceptual.
+
+Las figuras se generan en dos pasos. Primero el comando emite texto DOT de Graphviz (determinista); luego se renderiza fuera del proyecto, porque Graphviz no es dependencia (por ejemplo con `@hpcc-js/wasm-graphviz`, Graphviz compilado a WebAssembly, y `@resvg/resvg-js` para el PNG):
+
+```bash
+python manage.py generar_mer --dot-dir <carpeta>      # un .dot por figura (la primera línea indica el motor: neato)
+# render (Node, ver backend/tools/mer/README.md): las figuras por módulo y la general con
+#   node tools/mer/render.mjs <carpeta> docs/img all 8000
+# y la general con atributos (coloca los óvalos alrededor de cada entidad) con
+#   node tools/mer/radial.mjs <carpeta>/mer-general-atributos.dot docs/img 1.8 0.22 8000
+```
+
+### MER general
+
+Todas las entidades y relaciones, sin atributos; el color indica el módulo de cada entidad.
+
+[![Modelo entidad-relación general (Chen)](img/mer-general.svg)](img/mer-general.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mer-general.svg){ target=_blank } · [Descargar PNG](img/mer-general.png)
+
+### MER general con atributos principales
+
+Las mismas entidades y relaciones, con su llave (subrayada) y hasta 4 atributos principales por entidad; las claves foráneas no se repiten como atributos porque ya son relaciones. Es una figura grande: ábrela en SVG y amplía. Los atributos de cada módulo completos están en los MER de abajo.
+
+[![Modelo entidad-relación general con atributos principales (Chen)](img/mer-general-atributos.svg)](img/mer-general-atributos.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mer-general-atributos.svg){ target=_blank } · [Descargar PNG](img/mer-general-atributos.png)
+
+### MER de Usuarios y seguridad
+
+[![MER de Usuarios y seguridad (Chen)](img/mer-seguridad.svg)](img/mer-seguridad.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mer-seguridad.svg){ target=_blank } · [Descargar PNG](img/mer-seguridad.png)
+
+### MER de Inventario
+
+[![MER de Inventario (Chen)](img/mer-inventario.svg)](img/mer-inventario.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mer-inventario.svg){ target=_blank } · [Descargar PNG](img/mer-inventario.png)
+
+### MER de Compras
+
+[![MER de Compras (Chen)](img/mer-compras.svg)](img/mer-compras.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mer-compras.svg){ target=_blank } · [Descargar PNG](img/mer-compras.png)
+
+### MER de Referencias
+
+[![MER de Referencias (Chen)](img/mer-referencias.svg)](img/mer-referencias.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mer-referencias.svg){ target=_blank } · [Descargar PNG](img/mer-referencias.png)
+
+### MER de Producción y lavandería
+
+**Fabricación: órdenes, lotes, etapas y recursos**
+
+[![MER de Producción y lavandería: Fabricación: órdenes, lotes, etapas y recursos (Chen)](img/mer-produccion-fabricacion.svg)](img/mer-produccion-fabricacion.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mer-produccion-fabricacion.svg){ target=_blank } · [Descargar PNG](img/mer-produccion-fabricacion.png)
+
+**Lavandería: recetas, remisiones y recepciones**
+
+[![MER de Producción y lavandería: Lavandería: recetas, remisiones y recepciones (Chen)](img/mer-produccion-lavanderia.svg)](img/mer-produccion-lavanderia.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mer-produccion-lavanderia.svg){ target=_blank } · [Descargar PNG](img/mer-produccion-lavanderia.png)
+
+### MER de Calidad
+
+[![MER de Calidad (Chen)](img/mer-calidad.svg)](img/mer-calidad.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mer-calidad.svg){ target=_blank } · [Descargar PNG](img/mer-calidad.png)
+
+### MER de Producto terminado
+
+[![MER de Producto terminado (Chen)](img/mer-terminado.svg)](img/mer-terminado.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mer-terminado.svg){ target=_blank } · [Descargar PNG](img/mer-terminado.png)
+
+### MER de Ventas y cartera
+
+[![MER de Ventas y cartera (Chen)](img/mer-ventas.svg)](img/mer-ventas.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mer-ventas.svg){ target=_blank } · [Descargar PNG](img/mer-ventas.png)
+
+### MER de Envíos
+
+[![MER de Envíos (Chen)](img/mer-envios.svg)](img/mer-envios.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mer-envios.svg){ target=_blank } · [Descargar PNG](img/mer-envios.png)
 
 ## Mapa de módulos
 
@@ -62,7 +175,7 @@ Un nodo por módulo y una flecha por cada par de módulos con dependencia por cl
 
 Cada flecha va de la tabla referenciada a la tabla que guarda la clave foránea. Para que sea legible se omiten las relaciones con `CustomUser` (responsable, creador, etc.) que salen de casi todos los módulos; están en el detalle por tabla y en el diagrama completo.
 
-[![Mapa general del modelo de datos](img/mapa-general.svg)](img/mapa-general.svg){ target=_blank }
+[![Mapa general de tablas del modelo de datos](img/mapa-general.svg)](img/mapa-general.svg){ target=_blank }
 
 [Abrir imagen SVG](img/mapa-general.svg){ target=_blank } · [Descargar PNG](img/mapa-general.png)
 
@@ -215,13 +328,15 @@ Cada flecha va de la tabla referenciada a la tabla que guarda la clave foránea.
         Variante --> StockTerminado
     ```
 
-## Diagramas por módulo
+## Esquema físico por módulo (notación pata de gallo)
+
+Esquema relacional de la base: las tablas de cada módulo con sus columnas y llaves, y las tablas de otros módulos con las que se relacionan (solo su clave).
 
 ### Usuarios y seguridad
 
 Tablas: `ModulePermission`, `Role`, `RolePermission`, `CustomUser`, `AccessLog`, `PasswordResetToken`.
 
-[![Diagrama del módulo Usuarios y seguridad](img/modulo-seguridad.svg)](img/modulo-seguridad.svg){ target=_blank }
+[![Esquema físico del módulo Usuarios y seguridad (pata de gallo)](img/modulo-seguridad.svg)](img/modulo-seguridad.svg){ target=_blank }
 
 [Abrir imagen SVG](img/modulo-seguridad.svg){ target=_blank } · [Descargar PNG](img/modulo-seguridad.png)
 
@@ -299,7 +414,7 @@ Tablas: `Consecutivo`, `Proveedor`, `Producto`, `OrdenSalida`, `OrdenLinea`, `Mo
 
 Relaciones con otros módulos (solo clave): `Referencia` (Referencias), `FichaLinea` (Referencias), `OrdenProduccion` (Producción y lavandería), `RemisionLavanderia` (Producción y lavandería), `OrdenCompra` (Compras), `LineaCompra` (Compras), `Recepcion` (Compras), `RecepcionLinea` (Compras).
 
-[![Diagrama del módulo Inventario](img/modulo-inventario.svg)](img/modulo-inventario.svg){ target=_blank }
+[![Esquema físico del módulo Inventario (pata de gallo)](img/modulo-inventario.svg)](img/modulo-inventario.svg){ target=_blank }
 
 [Abrir imagen SVG](img/modulo-inventario.svg){ target=_blank } · [Descargar PNG](img/modulo-inventario.png)
 
@@ -444,7 +559,7 @@ Tablas: `OrdenCompra`, `LineaCompra`, `Recepcion`, `RecepcionLinea`.
 
 Relaciones con otros módulos (solo clave): `Proveedor` (Inventario), `Producto` (Inventario), `Movimiento` (Inventario).
 
-[![Diagrama del módulo Compras](img/modulo-compras.svg)](img/modulo-compras.svg){ target=_blank }
+[![Esquema físico del módulo Compras (pata de gallo)](img/modulo-compras.svg)](img/modulo-compras.svg){ target=_blank }
 
 [Abrir imagen SVG](img/modulo-compras.svg){ target=_blank } · [Descargar PNG](img/modulo-compras.png)
 
@@ -520,7 +635,7 @@ Tablas: `Referencia`, `Variante`, `ImagenReferencia`, `FichaTecnica`, `FichaLine
 
 Relaciones con otros módulos (solo clave): `OrdenSalida` (Inventario), `Producto` (Inventario), `OrdenProduccion` (Producción y lavandería), `LoteTalla` (Producción y lavandería), `StockTerminado` (Producto terminado), `IngresoLinea` (Producto terminado), `AjusteLinea` (Producto terminado), `MovimientoTerminado` (Producto terminado), `PrecioReferencia` (Ventas y cartera), `DetalleVenta` (Ventas y cartera).
 
-[![Diagrama del módulo Referencias](img/modulo-referencias.svg)](img/modulo-referencias.svg){ target=_blank }
+[![Esquema físico del módulo Referencias (pata de gallo)](img/modulo-referencias.svg)](img/modulo-referencias.svg){ target=_blank }
 
 [Abrir imagen SVG](img/modulo-referencias.svg){ target=_blank } · [Descargar PNG](img/modulo-referencias.png)
 
@@ -622,7 +737,7 @@ Tablas: `OrdenProduccion`, `Lote`, `LoteTalla`, `EtapaLote`, `EventoEtapa`, `Tar
 
 Relaciones con otros módulos (solo clave): `OrdenSalida` (Inventario), `Referencia` (Referencias), `Variante` (Referencias), `Proveedor` (Inventario), `Inspeccion` (Calidad), `IngresoTerminado` (Producto terminado), `MovimientoTerminado` (Producto terminado).
 
-[![Diagrama del módulo Producción y lavandería](img/modulo-produccion.svg)](img/modulo-produccion.svg){ target=_blank }
+[![Esquema físico del módulo Producción y lavandería (pata de gallo)](img/modulo-produccion.svg)](img/modulo-produccion.svg){ target=_blank }
 
 [Abrir imagen SVG](img/modulo-produccion.svg){ target=_blank } · [Descargar PNG](img/modulo-produccion.png)
 
@@ -832,7 +947,7 @@ Tablas: `TipoDefecto`, `Inspeccion`, `MarraDetalle`.
 
 Relaciones con otros módulos (solo clave): `Lote` (Producción y lavandería), `RecepcionLote` (Producción y lavandería), `IngresoTerminado` (Producto terminado).
 
-[![Diagrama del módulo Calidad](img/modulo-calidad.svg)](img/modulo-calidad.svg){ target=_blank }
+[![Esquema físico del módulo Calidad (pata de gallo)](img/modulo-calidad.svg)](img/modulo-calidad.svg){ target=_blank }
 
 [Abrir imagen SVG](img/modulo-calidad.svg){ target=_blank } · [Descargar PNG](img/modulo-calidad.png)
 
@@ -891,7 +1006,7 @@ Tablas: `StockTerminado`, `IngresoTerminado`, `IngresoLinea`, `AjusteTerminado`,
 
 Relaciones con otros módulos (solo clave): `Variante` (Referencias), `Inspeccion` (Calidad), `Lote` (Producción y lavandería), `FacturaVenta` (Ventas y cartera).
 
-[![Diagrama del módulo Producto terminado](img/modulo-terminado.svg)](img/modulo-terminado.svg){ target=_blank }
+[![Esquema físico del módulo Producto terminado (pata de gallo)](img/modulo-terminado.svg)](img/modulo-terminado.svg){ target=_blank }
 
 [Abrir imagen SVG](img/modulo-terminado.svg){ target=_blank } · [Descargar PNG](img/modulo-terminado.png)
 
@@ -991,7 +1106,7 @@ Tablas: `Cliente`, `PrecioReferencia`, `FacturaVenta`, `DetalleVenta`, `SaldoFin
 
 Relaciones con otros módulos (solo clave): `MovimientoTerminado` (Producto terminado), `Referencia` (Referencias), `Variante` (Referencias), `Guia` (Envíos).
 
-[![Diagrama del módulo Ventas y cartera](img/modulo-ventas.svg)](img/modulo-ventas.svg){ target=_blank }
+[![Esquema físico del módulo Ventas y cartera (pata de gallo)](img/modulo-ventas.svg)](img/modulo-ventas.svg){ target=_blank }
 
 [Abrir imagen SVG](img/modulo-ventas.svg){ target=_blank } · [Descargar PNG](img/modulo-ventas.png)
 
@@ -1114,7 +1229,7 @@ Tablas: `RelacionDespacho`, `Guia`, `EventoGuia`.
 
 Relaciones con otros módulos (solo clave): `FacturaVenta` (Ventas y cartera).
 
-[![Diagrama del módulo Envíos](img/modulo-envios.svg)](img/modulo-envios.svg){ target=_blank }
+[![Esquema físico del módulo Envíos (pata de gallo)](img/modulo-envios.svg)](img/modulo-envios.svg){ target=_blank }
 
 [Abrir imagen SVG](img/modulo-envios.svg){ target=_blank } · [Descargar PNG](img/modulo-envios.png)
 
@@ -1171,82 +1286,9 @@ Relaciones con otros módulos (solo clave): `FacturaVenta` (Ventas y cartera).
         RelacionDespacho |o--o{ Guia : "relacion"
     ```
 
-## Vistas materializadas de reportes
+## Esquema físico completo (notación pata de gallo)
 
-La aplicación `reports` consulta dos vistas SQL creadas por la migración `0001_vistas_materializadas` (en PostgreSQL son `MATERIALIZED VIEW`; en SQLite, vistas estándar). Son de solo lectura y no tienen modelo de negocio. Las columnas se leen del SQL de la migración.
-
-```mermaid
-flowchart LR
-    v0[("reportes_mv_produccion_ordenes")]
-    t_produccion_orden["OrdenProduccion"] --> v0
-    t_inventario_orden["OrdenSalida"] --> v0
-    t_referencias_referencia["Referencia"] --> v0
-    t_produccion_lote["Lote"] --> v0
-    t_calidad_inspeccion["Inspeccion"] --> v0
-    v1[("reportes_mv_ventas_referencias")]
-    t_ventas_factura_linea["DetalleVenta"] --> v1
-    t_ventas_factura["FacturaVenta"] --> v1
-    t_referencias_variante["Variante"] --> v1
-    t_referencias_referencia["Referencia"] --> v1
-```
-
-### `reportes_mv_produccion_ordenes`
-
-Fila consolidada de una orden de producción en la vista materializada `reportes_mv_produccion_ordenes`.
-
-Se alimenta de: `produccion_orden` (OrdenProduccion), `inventario_orden` (OrdenSalida), `referencias_referencia` (Referencia), `produccion_lote` (Lote), `calidad_inspeccion` (Inspeccion).
-
-| Columna | Tipo |
-|---|---|
-| `orden_id` | bigint |
-| `codigo` | varchar(20) |
-| `fecha_salida` | date |
-| `estado_orden` | varchar(12) |
-| `responsable` | varchar(120) |
-| `referencia_id` | bigint |
-| `referencia_codigo` | varchar(20) |
-| `referencia_nombre` | varchar(150) |
-| `tipo_jean` | varchar(15) |
-| `prendas_planificadas` | int |
-| `total_lotes` | int |
-| `prendas_en_lotes` | int |
-| `prendas_aptas` | int |
-| `prendas_marras` | int |
-
-### `reportes_mv_ventas_referencias`
-
-Fila pre-agregada de ventas por factura y referencia de jean en la vista materializada `reportes_mv_ventas_referencias`.
-
-Se alimenta de: `ventas_factura_linea` (DetalleVenta), `ventas_factura` (FacturaVenta), `referencias_variante` (Variante), `referencias_referencia` (Referencia).
-
-| Columna | Tipo |
-|---|---|
-| `linea_id` | bigint |
-| `factura_id` | bigint |
-| `numero_factura` | varchar(20) |
-| `fecha` | date |
-| `estado_factura` | varchar(10) |
-| `estado_cobro` | varchar(12) |
-| `cliente_tipo` | varchar(12) |
-| `cliente_nombre` | varchar(150) |
-| `transportadora` | varchar(16) |
-| `referencia_id` | bigint |
-| `referencia_codigo` | varchar(20) |
-| `referencia_nombre` | varchar(150) |
-| `tipo_jean` | varchar(15) |
-| `talla` | varchar(10) |
-| `color` | varchar(60) |
-| `unidades` | int |
-| `subtotal` | bigint |
-| `descuento` | bigint |
-| `base_gravable` | bigint |
-| `iva` | bigint |
-| `total` | bigint |
-| `costo_estimado` | bigint |
-
-## Diagrama entidad-relación completo
-
-Todas las tablas con todas sus columnas en un solo diagrama.
+Es el **esquema relacional de la base de datos**: todas las tablas con sus columnas y llaves en un solo diagrama. Es muy grande y se lee mejor por módulo (sección anterior). El modelo conceptual, con entidades, relaciones y cardinalidades, está al inicio de este documento en notación de Chen.
 
 ```mermaid
 erDiagram
@@ -1948,6 +1990,79 @@ erDiagram
     Variante ||--o{ MovimientoTerminado : "variante"
     Variante ||--o{ StockTerminado : "variante"
 ```
+
+## Vistas materializadas de reportes
+
+La aplicación `reports` consulta dos vistas SQL creadas por la migración `0001_vistas_materializadas` (en PostgreSQL son `MATERIALIZED VIEW`; en SQLite, vistas estándar). Son de solo lectura y no tienen modelo de negocio. Las columnas se leen del SQL de la migración.
+
+```mermaid
+flowchart LR
+    v0[("reportes_mv_produccion_ordenes")]
+    t_produccion_orden["OrdenProduccion"] --> v0
+    t_inventario_orden["OrdenSalida"] --> v0
+    t_referencias_referencia["Referencia"] --> v0
+    t_produccion_lote["Lote"] --> v0
+    t_calidad_inspeccion["Inspeccion"] --> v0
+    v1[("reportes_mv_ventas_referencias")]
+    t_ventas_factura_linea["DetalleVenta"] --> v1
+    t_ventas_factura["FacturaVenta"] --> v1
+    t_referencias_variante["Variante"] --> v1
+    t_referencias_referencia["Referencia"] --> v1
+```
+
+### `reportes_mv_produccion_ordenes`
+
+Fila consolidada de una orden de producción en la vista materializada `reportes_mv_produccion_ordenes`.
+
+Se alimenta de: `produccion_orden` (OrdenProduccion), `inventario_orden` (OrdenSalida), `referencias_referencia` (Referencia), `produccion_lote` (Lote), `calidad_inspeccion` (Inspeccion).
+
+| Columna | Tipo |
+|---|---|
+| `orden_id` | bigint |
+| `codigo` | varchar(20) |
+| `fecha_salida` | date |
+| `estado_orden` | varchar(12) |
+| `responsable` | varchar(120) |
+| `referencia_id` | bigint |
+| `referencia_codigo` | varchar(20) |
+| `referencia_nombre` | varchar(150) |
+| `tipo_jean` | varchar(15) |
+| `prendas_planificadas` | int |
+| `total_lotes` | int |
+| `prendas_en_lotes` | int |
+| `prendas_aptas` | int |
+| `prendas_marras` | int |
+
+### `reportes_mv_ventas_referencias`
+
+Fila pre-agregada de ventas por factura y referencia de jean en la vista materializada `reportes_mv_ventas_referencias`.
+
+Se alimenta de: `ventas_factura_linea` (DetalleVenta), `ventas_factura` (FacturaVenta), `referencias_variante` (Variante), `referencias_referencia` (Referencia).
+
+| Columna | Tipo |
+|---|---|
+| `linea_id` | bigint |
+| `factura_id` | bigint |
+| `numero_factura` | varchar(20) |
+| `fecha` | date |
+| `estado_factura` | varchar(10) |
+| `estado_cobro` | varchar(12) |
+| `cliente_tipo` | varchar(12) |
+| `cliente_nombre` | varchar(150) |
+| `transportadora` | varchar(16) |
+| `referencia_id` | bigint |
+| `referencia_codigo` | varchar(20) |
+| `referencia_nombre` | varchar(150) |
+| `tipo_jean` | varchar(15) |
+| `talla` | varchar(10) |
+| `color` | varchar(60) |
+| `unidades` | int |
+| `subtotal` | bigint |
+| `descuento` | bigint |
+| `base_gravable` | bigint |
+| `iva` | bigint |
+| `total` | bigint |
+| `costo_estimado` | bigint |
 
 ## Tablas
 

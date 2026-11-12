@@ -1,0 +1,10 @@
+{
+  "name": "texcore-mer-render",
+  "private": true,
+  "description": "Renderiza el MER en notación de Chen (DOT de generar_mer) a SVG y PNG. Solo para documentación; no va a producción.",
+  "type": "module",
+  "dependencies": {
+    "@hpcc-js/wasm-graphviz": "^1.30.0",
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

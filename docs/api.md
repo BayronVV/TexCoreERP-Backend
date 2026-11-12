@@ -67,6 +67,9 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | `produccion` | `/api/produccion/ordenes/<id>/costos/` (liquidación financiera: costo real de materiales vs mano de obra por lote y etapa, distribución y costo por prenda) | TE-56, TE-130 |
 | `recursos` | `/api/produccion/operarios/` y `/api/produccion/operarios/<id>/` (catálogo de operarios: crear, editar, activar o desactivar), `/api/produccion/maquinas/` y `/api/produccion/maquinas/<id>/` (catálogo de máquinas con su estado físico). Las listas traen `ocupado_en` / `ocupada_en`, que se calcula con las etapas en curso | TE-54, TE-121 |
 | `recursos` | `/api/produccion/lotes/<id>/asignar/` (asigna, reasigna o quita el operario y la máquina de una etapa), `/api/produccion/lotes/<id>/desvincular/` y `/api/produccion/lotes/<id>/asignaciones/` (historial). Las etapas del lote y las tarjetas del monitor traen la asignación vigente | TE-54, TE-122 |
+| `lavanderia` | `/api/lavanderia/lotes-disponibles/` (lotes en la planta interna, listos para remitir), `/api/lavanderia/proveedores/` (lavanderías del catálogo de proveedores) y `/api/lavanderia/recetas/` (recetas de lavado con su tarifa sugerida). Solo lectura: exigen `lavanderia.ver` | TE-57 |
+| `lavanderia` | `/api/lavanderia/remisiones/` (`GET`: historial, exige `lavanderia.ver`; `POST`: crear y despachar la remisión de salida `REM-LAV-AAAA-0001`, exige `lavanderia.gestionar`). Los lotes remitidos pasan de la planta a «en tránsito» | TE-57 |
+| `lavanderia` | `/api/lavanderia/remisiones-pendientes/` (remisiones en tránsito o en lavandería por recibir, con los días en proceso; `lavanderia.ver`), `/api/lavanderia/recepciones/` (`GET`: historial; `POST`: asentar la recepción `REC-LAV-AAAA-0001`, exige `lavanderia.gestionar`) y `/api/lavanderia/recepciones/<id>/` (acta con el detalle por lote; `lavanderia.ver`). Las recepciones no se editan ni se borran: no hay `PUT`, `PATCH` ni `DELETE` | TE-58 |
 | `calidad` | `/api/calidad/defectos/` y `/api/calidad/defectos/<id>/` (catálogo de defectos corregibles e incorregibles: listar con filtros `activo` y `q`, crear, editar y desactivar), `/api/calidad/pendientes/` (lotes devueltos de lavandería por inspeccionar) | TE-59 |
 | `calidad` | `/api/calidad/inspecciones/` (listar con filtros `lote`, `orden`, `desde`, `hasta` y `q`, y registrar la inspección de un lote) y `/api/calidad/inspecciones/<id>/` (consultar con su desglose de marras). No hay `PUT` ni `DELETE`: una inspección no se edita | TE-59 |
 | `producto-terminado` | `/api/terminado/pendientes/` (inspecciones con aptas por ingresar, con las variantes de su referencia y lo planificado), `/api/terminado/ingresos/` (listar con filtros `referencia`, `lote`, `desde`, `hasta` y `q`, y registrar el ingreso de una inspección) y `/api/terminado/ingresos/<id>/` (consultar con su reparto por talla). No hay `PUT` ni `DELETE`: un ingreso no se edita | TE-60 |
@@ -76,6 +79,7 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | `ventas` | `/api/ventas/precios/` (referencias activas con su costo de fábrica y precios; filtro `q`) y `/api/ventas/precios/<referencia>/` (`PUT`: registrar o actualizar). Modificar exige `ventas.precios` | TE-62 |
 | `ventas` | `/api/ventas/facturas/` (listar con filtros `cliente`, `estado`, `desde`, `hasta`, `q` y `limit`, y emitir la factura POS interna descontando el inventario) y `/api/ventas/facturas/<id>/` (consultar con sus líneas). No hay `PUT` ni `DELETE`: una factura no se edita | TE-62 |
 | `ventas` | `/api/ventas/facturas/<id>/pdf/` (descarga el PDF), `/api/ventas/facturas/<id>/anular/` (anula con motivo y reingresa las unidades; exige `ventas.anular`) y `/api/ventas/metadatos/` (tipos de cliente con su lista de precios y descuento máximo, transportadoras, IVA y la leyenda «Factura POS interna. No es factura electrónica.») | TE-62 |
+| `ventas` | `/api/ventas/facturas/<id>/conciliar/` (`POST`: concilia el cobro contraentrega de una factura emitida como `PAGADO`, que suma el recaudo al saldo financiero, o como `DEVOLUCION`, que reingresa las prendas al inventario; exige `ventas.gestionar`) y `/api/ventas/cartera/resumen/` (`GET`: saldo financiero y totales por cobrar, recaudados y devueltos, con su conteo; exige `ventas.ver`). Una factura se concilia una sola vez | TE-64 |
 | `ventas` | Las facturas (`/api/ventas/facturas/` y `…/<id>/`) traen el campo `guia`: la guía vigente de la factura (`id`, `estado`, `estado_nombre`, `color` del semáforo, `rastreo_estado`, `consultada_en` y `novedad`) o `null` si todavía no tiene. `transportadora` y `numero_guia` de la factura son el espejo de esa guía y solo los escribe el servicio de guías | TE-63 |
 | `envios` | `/api/envios/metadatos/` (estados con su color de semáforo, transiciones permitidas, transportadoras y cuál se rastrea, plazos para anotar la guía y si el rastreo está habilitado), `/api/envios/resumen/` (conteos por estado, facturas sin guía, novedades abiertas y devoluciones por vendedor con su flete) y `/api/envios/pendientes/` (facturas emitidas sin guía, con `horas_sin_guia` y `urgencia`: `normal`, `atencion` desde 4 h o `vencida` desde 24 h) | TE-63 |
 | `envios` | `/api/envios/guias/` (listar con filtros `estado`, `transportadora`, `factura`, `desde`, `hasta`, `q`, `todas` y `limit`) y `/api/envios/guias/<id>/` (detalle con el historial propio y la línea de tiempo guardada de la transportadora, sin llamar a la API). Una guía no se borra ni se crea suelta: nace al anotarla en una factura | TE-63 |
@@ -84,10 +88,12 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | `envios` | `/api/envios/relaciones/` (`GET` con filtro `transportadora`; `POST` crea la relación de despacho `RD-0001` y pasa sus guías a en tránsito), `/api/envios/relaciones/<id>/` y `/api/envios/relaciones/<id>/pdf/` (descarga `RD-0001.pdf`) | TE-63 |
 | `compras` | `/api/compras/ordenes/` y `/api/compras/ordenes/<id>/` (órdenes de compra de materiales: crear, listar con filtros `estado`, `proveedor` y `q`, y editar mientras son borrador), `/api/compras/ordenes/<id>/aprobar/`, `cancelar/` y `cerrar/` (aprobación del Gerente, cancelación y cierre con motivo) | — |
 | `compras` | `/api/compras/recepciones/` (recibir mercancía con varios productos a la vez, contra una orden aprobada o suelta; cada fila entra al almacén con la misma regla del ingreso: stock, costo promedio y kardex) y `/api/compras/metadatos/` (estados y tolerancia de exceso) | — |
+| `reportes` | `/api/reportes/metadatos/` (opciones de los filtros: tipos de jean, estados de orden y de cobro, tipos de cliente y referencias) y `/api/reportes/gerencial/` (`GET`: indicadores de producción, calidad y ventas, con los filtros `desde`, `hasta`, `tipo_jean`, `referencia`, `estado_orden`, `estado_cobro` y `tipo_cliente`). Ambas exigen `reportes.ver` | TE-65 |
+| `reportes` | `/api/reportes/refrescar/` (`POST`: refresca a la fuerza las dos vistas SQL materializadas en PostgreSQL; en SQLite responde `refreshed: false` porque son vistas normales). Exige `reportes.ver`. La consulta gerencial ya las refresca sola en PostgreSQL | TE-65 |
 | `salud` | `/api/health/`, `/api/health/db/` | — |
 
 Los listados aceptan `?limit=` (por defecto 100) y los filtros que indica Swagger para cada uno (por ejemplo `?q=`, `?estado=`,
-`?categoria=`). Las rutas de producción que reciben una acción sobre un lote usan el id del **lote**, no el de la orden.
+`?categoria=`). Los listados de lavandería son la excepción: devuelven la lista completa, sin filtros ni `limit`. Las rutas de producción que reciben una acción sobre un lote usan el id del **lote**, no el de la orden.
 
 ## Ejemplo: registrar un ingreso
 
@@ -250,6 +256,70 @@ guía; si la guía está devuelta, es además el `flete_vendedor`: se registra y
 
 Anular una factura (`POST /api/ventas/facturas/<id>/anular/`) con la guía ya despachada se rechaza con `400`; con la guía por despachar, se anula
 también la guía.
+
+## Ejemplo: remitir lotes a lavandería y asentar la recepción
+
+Primero se consultan los lotes que están en la planta (`GET /api/lavanderia/lotes-disponibles/`), la lavandería (`GET /api/lavanderia/proveedores/`) y
+las recetas de lavado (`GET /api/lavanderia/recetas/`, cuyo `codigo` se envía como `receta_id`). La remisión saca de la planta los lotes
+indicados (pasan a `EN_TRANSITO`) y calcula el `costo_estimado` con la tarifa de la receta de cada lote.
+
+```bash
+curl -X POST http://localhost:8000/api/lavanderia/remisiones/   -H "Authorization: Bearer <access>" -H "Content-Type: application/json"   -d '{"lavanderia_id": 4, "fecha_emision": "2026-11-02", "fecha_entrega_estimada": "2026-11-06", "transportador_nombre": "Transportes Andina", "vehiculo_placa": "ABC123", "tulas_bultos": 2, "peso_kg": "38.5", "lotes": [{"lote_id": 12, "cantidad": 40, "receta_id": "REC-SW-01", "instrucciones_especiales": "Bigotes suaves"}]}'
+```
+
+Respuesta `201` con la remisión (`REM-LAV-2026-0001`, estado `EN_TRANSITO`), la lavandería, el detalle de lotes, `total_prendas` y `costo_estimado`.
+Errores: `400` si no hay lotes, un lote se repite, la lavandería no existe, un lote ya no está en la planta o la cantidad supera las unidades del lote;
+`403` si el rol no tiene `lavanderia.gestionar`.
+
+Cuando la lavandería devuelve la mercancía se asienta la recepción contra la remisión, con el cotejo de **cada** lote de ella. Por lote,
+`cantidad_recibida_conforme` + `cantidad_merma` + `cantidad_danada` debe sumar exactamente lo enviado:
+
+```bash
+curl -X POST http://localhost:8000/api/lavanderia/recepciones/   -H "Authorization: Bearer <access>" -H "Content-Type: application/json"   -d '{"remision_id": 1, "fecha_recepcion": "2026-11-06", "factura_remision_externa": "FV-8841", "lotes": [{"lote_id": 12, "cantidad_recibida_conforme": 36, "cantidad_merma": 2, "motivo_merma": "Faltaron dos prendas en la entrega", "cantidad_danada": 2, "tipo_dano": "Quemadura de permanganato"}]}'
+```
+
+Respuesta `201` con el acta (`REC-LAV-2026-0001`): totales enviado, conforme, merma y dañadas, `costo_total_perdida` (merma más dañadas por el
+`costo_unitario_prenda` de cada línea) y `costo_servicio_lavado`. La remisión pasa a `RETORNADA` y cada lote vuelve a la planta con **solo las
+conformes** como cantidad; esas conformes son las que aparecen después en `GET /api/calidad/pendientes/` para inspeccionarlas. Errores: `400` si la suma no
+cuadra (`«… deben sumar exactamente las 40 und enviadas»`), si hay merma sin `motivo_merma` o dañadas sin `tipo_dano`, si faltan lotes de la remisión por
+cotejar o uno no es de ella, o si la remisión ya fue retornada o está anulada.
+
+## Ejemplo: conciliar un pago contraentrega
+
+Cuando la transportadora gira el recaudo de una factura emitida (`estado_cobro` `POR_COBRAR`), se concilia como pagada. Una factura se concilia una sola
+vez: después queda `PAGADO` o `DEVOLUCION` y no se mueve.
+
+```bash
+curl -X POST http://localhost:8000/api/ventas/facturas/1/conciliar/   -H "Authorization: Bearer <access>" -H "Content-Type: application/json"   -d '{"estado_cobro": "PAGADO", "observaciones": "Giro de la transportadora del 12 de noviembre"}'
+```
+
+Responde `200` con la factura en `estado_cobro` `PAGADO`, con la fecha de cobro y quién la cobró. El `valor_a_recaudar` se suma al saldo financiero de la empresa
+(caja general) y queda un movimiento de cartera con el saldo antes y después. Para una devolución se envía
+`{"estado_cobro": "DEVOLUCION", "motivo": "El cliente rechazó el pedido"}` (el motivo lleva de 5 a 255 caracteres): las prendas vuelven al producto terminado con un
+movimiento `DEVOLUCION_VENTA` por línea y el saldo no cambia. Errores: `400` si el estado no es `PAGADO` o `DEVOLUCION`, la factura está anulada, ya fue gestionada
+o falta el motivo de la devolución; `404` si no existe; `403` si el rol no tiene `ventas.gestionar`.
+
+El resumen está en `GET /api/ventas/cartera/resumen/`: `saldo_financiero`, `total_por_cobrar` y `conteo_por_cobrar`, `total_recaudado` y `conteo_pagadas`,
+`total_devoluciones` y `conteo_devoluciones`.
+
+## Ejemplo: consultar el reporte gerencial
+
+Es solo lectura y exige `reportes.ver`. Los filtros son opcionales, se combinan y van en la URL; las opciones válidas de cada uno salen de
+`GET /api/reportes/metadatos/`. Aquí, las ventas ya recaudadas de un tipo de jean en el período de la entrega:
+
+```bash
+curl "http://localhost:8000/api/reportes/gerencial/?desde=2026-10-19&hasta=2026-11-09&tipo_jean=SLIM&estado_cobro=PAGADO"   -H "Authorization: Bearer <access>"
+```
+
+Responde `200` con `filtros_aplicados` y cuatro bloques de datos:
+
+- `kpis`: órdenes, prendas planificadas, aptas y marras, `tasa_calidad_pct`, facturas emitidas, unidades vendidas, `ingresos_totales`, `utilidad_bruta`
+  (la base gravable menos el costo de fábrica estimado), `recaudado_periodo`, `pendiente_recaudo_periodo` y `saldo_financiero_empresa`.
+- `consolidado_tipo_jean`: producción y ventas agrupadas por tipo de jean.
+- `ordenes_produccion`: una fila por orden con su calidad (`tasa_calidad_pct`) y el avance de los lotes (`avance_lotes_pct`).
+- `ventas_por_referencia` (con `margen_pct`) y `ventas_detalle` (las 250 líneas más recientes).
+
+Solo cuentan las facturas emitidas (las anuladas no). Los datos salen de dos vistas SQL materializadas; en PostgreSQL cada consulta las refresca antes de leer.
 
 ## Mantener la documentación al día
 

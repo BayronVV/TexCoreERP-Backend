@@ -29,9 +29,9 @@ python manage.py seed_admin          # crea el administrador inicial
 python manage.py runserver           # http://localhost:8000
 ```
 
-`migrate` crea las tablas de todos los módulos y carga los roles y permisos iniciales (incluidos los de referencias,
-fichas técnicas, compras, calidad, producto terminado, ventas y envíos). Al terminar, activa RLS en las tablas de Supabase (ver
-[convenciones](convenciones-base-de-datos.md#4-seguridad-en-supabase)).
+`migrate` crea las tablas de todos los módulos (54 en 9 apps), las dos vistas SQL de los reportes gerenciales y carga los roles y permisos iniciales (31 permisos: incluidos los de referencias,
+fichas técnicas, compras, lavandería, calidad, producto terminado, ventas, envíos y reportes). Al terminar, activa RLS en las tablas de Supabase (ver
+[convenciones](convenciones-base-de-datos.md#4-seguridad-en-supabase)). En Render corre solo en cada arranque (ver [despliegue](despliegue-render.md)).
 
 Para trabajar **sin conexión** deja `DATABASE_URL` vacío: el sistema usa un archivo SQLite local (`db.sqlite3`, ignorado por
 git). Así se prueba sin tocar Supabase. Las pruebas automáticas siempre usan SQLite, aunque `DATABASE_URL` esté definida.
@@ -65,6 +65,7 @@ La variable `VITE_API_URL` apunta al backend (por defecto `http://localhost:8000
 | `PASSWORD_RESET_TOKEN_MINUTES`, `ACCOUNT_INVITE_TOKEN_HOURS` | Vigencia del enlace de recuperación (15 min) y de la invitación (48 h). |
 | `MEDIA_ROOT` | Carpeta de las evidencias de inventario (por defecto `backend/media/`). |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Datos que usa `seed_admin` si no se pasan por argumento. |
+| `SEED_DEMO_ON_DEPLOY` | `true` siembra los datos de demostración (simulados) al final del `migrate` del arranque, con `seed_demo_completo --permitir-produccion`. Por defecto `false`. Idempotente, no borra nada y un fallo de la siembra no impide el arranque. Se apaga solo al correr `manage.py test`. |
 | `TRACK123_API_KEY` | Clave de la API de Track123 para consultar el estado de las guías (HU 7.2). Secreto: va en el `.env` local (git lo ignora) y en las variables de Render, nunca en el repositorio. Vacía = rastreo apagado. |
 | `TRACK123_ENABLED` | `true` enciende el rastreo; por defecto `false`. Se apaga solo al correr `manage.py test`. |
 | `TRACK123_BASE_URL`, `TRACK123_TIMEOUT`, `TRACK123_COOLDOWN_MINUTES`, `TRACK123_QUOTA_RESERVE` | Opcionales. Por defecto: ruta `https://api.track123.com/gateway/open-api/tk/v2.1`, 10 segundos de espera, 10 minutos de enfriamiento entre consultas de una misma guía y 10 registros de cuota de reserva. |
@@ -84,20 +85,27 @@ La lista completa y los valores por defecto están en `.env.example` y en el [RE
 | `python manage.py seed_demo_compras` | Órdenes de compra: borrador, aprobada y con recepción parcial. |
 | `python manage.py seed_demo_calidad` | 8 defectos típicos de denim y dos lotes devueltos de lavandería: uno inspeccionado y otro por inspeccionar. Necesita antes `seed_demo_inventario` y `seed_demo_produccion`. |
 | `python manage.py seed_demo_terminado` | Ingresa al inventario final (producto terminado) las aptas de la inspección de demostración, por las mismas reglas de la aplicación. Necesita antes `seed_demo_calidad`. |
-| `python manage.py seed_demo_ventas` | 4 clientes (distribuidor, mayoristas y detal) y el costo de fábrica y los precios de demostración de las referencias de la demo. No crea facturas. Necesita antes las referencias de demostración (`seed_demo_referencias`) y, para vender, `seed_demo_terminado`. |
+| `python manage.py seed_demo_ventas` | 4 clientes (distribuidor, mayoristas y detal), el costo de fábrica y los precios de demostración de las referencias activas, la caja general (saldo financiero en cero) y, si todavía no hay facturas y hay stock de `REF-0001`, hasta 3 facturas de demostración. Necesita antes las referencias de demostración (`seed_demo_referencias`) y, para facturar, el stock de producto terminado (`seed_demo_terminado`). |
 | `python manage.py seed_demo_envios` | Guías de demostración (HU 7.2): las 3 guías reales de Interrapidísimo del PO quedan entregadas con la respuesta real guardada, y guías sintéticas (marcadas) para ver todo el semáforo: por despachar, en tránsito dentro de una relación, con novedad, devuelta con su flete y una factura sin guía. Idempotente, solo con `DJANGO_DEBUG=true` y **no llama a Track123 ni gasta cuota**. Necesita antes `seed_demo_ventas` y stock de producto terminado. |
+| `python manage.py seed_demo_lavanderia` | Lavanderías (proveedores de la categoría lavandería), cuatro recetas de lavado con su tarifa y los lotes en la planta interna. Idempotente. **No forma parte de `seed_demo_completo`** (`seed_demo_calidad` solo crea una receta de demostración si no hay ninguna, y deja las remisiones y recepciones de lavandería de ejemplo) y, a diferencia de los otros `seed_demo_*`, no revisa `DJANGO_DEBUG`. |
 | `python manage.py seed_demo_tarifas` | Una tarifa de mano de obra por minuto para corte, confección y terminación (vigentes desde el 1 de enero de 2026), para que la liquidación de las órdenes no marque el costo como incompleto. Idempotente. |
 | `python manage.py seed_demo_stock` | Entre 12 y 20 unidades en cada talla y color de las referencias activas, por ajuste manual (motivo «Sobrante o hallazgo», con su comprobante `AJT`). Solo sube lo que está por debajo de la meta. |
-| `python manage.py seed_demo_completo` | **Todo en uno**: encadena los comandos anteriores en su orden, salta los módulos que ya tienen datos y al final imprime cuántos registros tiene cada módulo (falla si alguno quedó vacío). Con `--permitir-produccion` corre también con `DJANGO_DEBUG=false`: es la siembra de los datos **simulados** de la demostración sobre la base compartida; no borra nada ni toca usuarios, roles ni permisos. |
+| `python manage.py seed_demo_completo` | **Todo en uno**: encadena inventario, producción, recursos, tarifas, compras, calidad, producto terminado, stock por talla y color, ventas y envíos, en su orden; salta los módulos que ya tienen datos y al final imprime cuántos registros tiene cada módulo (falla si alguno quedó vacío). Con `--permitir-produccion` corre también con `DJANGO_DEBUG=false`: es la siembra de los datos **simulados** de la demostración sobre la base compartida; no borra nada ni toca usuarios, roles ni permisos. Es el comando que dispara `SEED_DEMO_ON_DEPLOY`. |
 | `python manage.py generar_erd --salida docs/modelo-de-datos.md` | Regenera el [modelo de datos](modelo-de-datos.md). |
-| `python manage.py test` | Ejecuta la suite de pruebas (922). |
+| `python manage.py test` | Ejecuta la suite de pruebas (928). |
 | `python manage.py spectacular --validate --file schema.yml` | Valida y exporta el esquema OpenAPI (borra después `schema.yml`). |
 
 ## Datos de demostración
 
 Para ver el sistema con información (por ejemplo, el Monitor de estado con lotes en distintos estados) existen comandos de
-demostración. **Solo funcionan con `DJANGO_DEBUG=true`** y nunca deben correrse en producción. Pasan por las mismas reglas
+demostración. Los `seed_demo_*` sueltos **solo funcionan con `DJANGO_DEBUG=true`**; la única forma de sembrar con `DJANGO_DEBUG=false` es
+`seed_demo_completo --permitir-produccion` (o la variable `SEED_DEMO_ON_DEPLOY=true` en Render). Pasan por las mismas reglas
 que la aplicación, así que el kardex, los saldos y los códigos quedan coherentes, y son idempotentes: lo que ya existe no se repite.
+
+!!! note "Los datos de los servidores de Render son simulados"
+    La base compartida de desarrollo y de la demostración desplegada en Render (<https://texcore-web.onrender.com>) contiene solo datos de
+    demostración: clientes, facturas, guías, lotes y existencias inventados para mostrar el sistema. Se pueden modificar o completar sin
+    riesgo, pero no son información real de una empresa. La siembra nunca toca los usuarios, los roles ni los permisos.
 
 ```bash
 python manage.py seed_admin               # 1. un usuario para entrar y quien firma lo sembrado
@@ -107,20 +115,21 @@ python manage.py seed_demo_recursos       # 4. operarios y máquinas asignados a
 python manage.py seed_demo_compras        # 5. órdenes de compra en borrador, aprobada y con recepción parcial
 python manage.py seed_demo_calidad        # 6. defectos típicos y dos lotes devueltos de lavandería (uno ya inspeccionado)
 python manage.py seed_demo_terminado      # 7. ingresa al inventario final las aptas de la inspección de demostración
-python manage.py seed_demo_ventas         # 8. clientes y precios de demostración para vender (no crea facturas)
+python manage.py seed_demo_ventas         # 8. clientes, precios y, si hay stock, hasta 3 facturas de demostración
 python manage.py seed_demo_envios         # 9. guías de demostración: las 3 reales entregadas y otras sintéticas para el semáforo
+python manage.py seed_demo_lavanderia     # opcional: lavanderías y recetas de lavado (no está en seed_demo_completo)
 # o, todo de una vez (incluye tarifas y stock por talla y color):
 python manage.py seed_demo_completo       # --permitir-produccion para correrlo contra la base de producción (datos simulados)
 ```
 
-- El paso 8 necesita las referencias del 2 y, para tener prendas que facturar, el 7; las facturas se hacen en vivo desde **Ventas y Despachos → Nueva venta**.
+- El paso 8 necesita las referencias del 2 y, para tener prendas que facturar, el 7; las demás facturas se hacen en vivo desde **Ventas y Despachos → Nueva venta**.
 - El paso 9 emite sus propias facturas de demostración (observaciones «Demo envíos: …») por las mismas reglas que *Nueva venta*, así que necesita el 8 y stock de producto terminado (el 7). Puede correrse varias veces: no duplica nada. Si las facturas demo de la HU 7.3 traen guías ficticias, las reemplaza por las tres reales.
 - Los pasos 3 a 7 necesitan el 2; el 6 necesita además el 3 (los lotes salen de las órdenes de producción) y el 7 necesita el 6 (ingresa las aptas de la inspección de demostración). `seed_demo_inventario` ya ejecuta `seed_inventario` y `seed_demo_referencias`.
 - Los usuarios que participan se toman de los que ya existen: `seed_demo_compras` busca uno de Producción para crear, un Gerente
   o Administrador para aprobar y un Almacenista distinto del creador para recibir; si falta el Almacenista, la orden queda
   aprobada sin recepción.
-- No se siembran tarifas de mano de obra: en la **Liquidación de Órdenes** la mano de obra aparece *Sin tarifa* hasta que alguien
-  registre una en la pestaña **Tarifas por Minuto**.
+- `seed_demo_tarifas` (parte de `seed_demo_completo`) siembra una tarifa por etapa; si no se corre, en la **Liquidación de Órdenes** la mano de
+  obra aparece *Sin tarifa* hasta que alguien registre una en la pestaña **Tarifas por Minuto**.
 - Las cuentas que se usen para mirar la demo se crean desde **Seguridad y Usuarios**; no hay usuarios de demostración por rol.
 
 ## Rastreo de guías con Track123 (HU 7.2)
@@ -159,7 +168,7 @@ python manage.py test apps.inventory -v 2  # con detalle
 python manage.py test --parallel 4         # en paralelo, más rápido
 ```
 
-La suite cubre `users`, `inventory`, `references`, `production`, `purchasing`, `quality`, `finished`, `sales`, `shipping` y `core`. Las pruebas de los comandos de demostración
+La suite cubre `users`, `inventory`, `references`, `production` (con lavandería), `purchasing`, `quality`, `finished`, `sales`, `shipping`, `reports` y `core`. Las pruebas de los comandos de demostración
 (`test_seed*.py`) verifican que sean idempotentes. En el frontend, `npm test` prueba la lógica pura de las pantallas (reparto de
 lotes, tablero, costeo, recursos, compras, calidad, producto terminado...).
 
@@ -185,7 +194,10 @@ El sitio se publica solo en GitHub Pages cuando cambian `docs/` o `mkdocs.yml` e
 | 403 en una ruta | El rol no tiene el permiso. Se asigna en **Seguridad → Roles y permisos**. |
 | No llega el correo de recuperación | Revisa `EMAIL_*`. En Render gratuito el SMTP de los puertos 25, 465 y 587 está bloqueado: se usa Brevo por el 2525 (ver [despliegue](despliegue-render.md)). |
 | Las evidencias desaparecen tras desplegar | El disco de Render es efímero. Pendiente: almacenamiento persistente. |
-| Un comando `seed_demo_*` dice que solo funciona con `DJANGO_DEBUG=true` | Es a propósito: no se siembran datos de demostración fuera de desarrollo. |
+| Un comando `seed_demo_*` dice que solo funciona con `DJANGO_DEBUG=true` | Es a propósito: no se siembran datos de demostración fuera de desarrollo. Para sembrar la demostración en Render usa `seed_demo_completo --permitir-produccion` o `SEED_DEMO_ON_DEPLOY=true`. |
+| `seed_demo_completo` falla con «Quedaron módulos sin datos» | Algún paso no pudo sembrar su módulo. Corre antes los pasos que faltan o revisa el mensaje del paso. |
+| La lista de recetas de lavado o de lavanderías sale vacía | No existe pantalla ni ruta para crear recetas: se cargan con `seed_demo_lavanderia` o con `seed_demo_completo`. Las lavanderías son proveedores de la categoría lavandería. |
+| El tablero de reportes no cambia tras refrescar | En SQLite las vistas de reportes son normales y se leen al instante; en PostgreSQL son materializadas y cada consulta las refresca antes de leer. `POST /api/reportes/refrescar/` fuerza el refresco. |
 | La recepción de mercancía responde que quien creó la orden no puede recibirla | Separación de funciones: la recibe otro usuario con permiso de inventario (Almacenista). |
 | La liquidación muestra *Sin tarifa* o *Sin costo* | Falta registrar la tarifa por minuto de la etapa, o la compra del material no trajo costo unitario. El cálculo se marca como parcial. |
 | Al facturar dice «Falta el precio de venta de: …» | La referencia no tiene fila en *Ventas y Despachos → Precios*. El Gerente registra el costo de fábrica y los precios (o corre `seed_demo_ventas` en desarrollo). |

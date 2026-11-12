@@ -3,9 +3,1250 @@
 > Generado automáticamente con `python manage.py generar_erd --salida docs/modelo-de-datos.md`.
 > No lo edites a mano: vuelve a generarlo cuando cambie un modelo.
 
-Todas las tablas de negocio heredan de `BaseModel` y por eso incluyen además `created_at`, `updated_at` y `deleted_at` (borrado lógico; ver [convenciones de base de datos](convenciones-base-de-datos.md)). Esas columnas no se repiten abajo.
+El modelo tiene **54 tablas** de negocio en 9 módulos, más dos vistas materializadas de reportes. Todas las tablas de negocio heredan de `BaseModel` y por eso incluyen además `created_at`, `updated_at` y `deleted_at` (borrado lógico; ver [convenciones de base de datos](convenciones-base-de-datos.md)). Esas columnas no se repiten abajo.
 
-## Diagrama entidad-relación
+## Cómo leer este modelo
+
+El modelo se presenta en tres niveles, de lo general a lo particular:
+
+1. **[Mapa de módulos](#mapa-de-modulos)** y **[mapa general de tablas](#mapa-general-de-tablas)**: primero los módulos y sus dependencias; luego solo las entidades y sus relaciones, agrupadas por módulo. Sirven para ver cómo se conectan las aplicaciones entre sí.
+2. **[Diagramas por módulo](#diagramas-por-modulo)**: las tablas de cada módulo con sus columnas, y las tablas de otros módulos con las que se relacionan (mostradas solo con su clave).
+3. **[Detalle por tabla](#tablas)**: cada campo con su tipo, restricciones y relación.
+
+Además, la sección [Vistas materializadas de reportes](#vistas-materializadas-de-reportes) describe las vistas analíticas de la aplicación `reports`, que no son modelos de Django.
+
+Cada diagrama se publica como imagen (SVG, ampliable con clic) y también como código Mermaid, que el sitio dibuja en el navegador. Para regenerarlo, desde `backend`:
+
+```bash
+python manage.py generar_erd --salida docs/modelo-de-datos.md --mermaid-dir <carpeta temporal>
+# imagen de cada diagrama (mermaid-cli):
+#   mmdc -i <carpeta>/mapa-modulos.mmd -o docs/img/mapa-modulos.svg
+```
+
+## Mapa de módulos
+
+Un nodo por módulo y una flecha por cada par de módulos con dependencia por clave foránea; va del módulo referenciado al que guarda la clave y se rotula con el número de relaciones. Se excluyen las relaciones hacia `CustomUser` (seguridad), que casi todos los módulos usan para registrar responsables; por eso Usuarios y seguridad aparece sin flechas.
+
+[![Mapa de módulos del modelo de datos](img/mapa-modulos.svg)](img/mapa-modulos.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mapa-modulos.svg){ target=_blank } · [Descargar PNG](img/mapa-modulos.png)
+
+??? note "Ver como código Mermaid (se dibuja en el navegador)"
+
+    ```mermaid
+    flowchart TB
+        m_seguridad["Usuarios y seguridad<br/>(6 tablas)"]
+        m_inventario["Inventario<br/>(7 tablas)"]
+        m_compras["Compras<br/>(4 tablas)"]
+        m_referencias["Referencias<br/>(5 tablas)"]
+        m_produccion["Producción y lavandería<br/>(14 tablas)"]
+        m_calidad["Calidad<br/>(3 tablas)"]
+        m_terminado["Producto terminado<br/>(6 tablas)"]
+        m_ventas["Ventas y cartera<br/>(6 tablas)"]
+        m_envios["Envíos<br/>(3 tablas)"]
+        m_calidad -->|"1 relación"| m_terminado
+        m_inventario -->|"5 relaciones"| m_compras
+        m_inventario -->|"2 relaciones"| m_produccion
+        m_inventario -->|"1 relación"| m_referencias
+        m_produccion -->|"2 relaciones"| m_calidad
+        m_produccion -->|"2 relaciones"| m_terminado
+        m_referencias -->|"1 relación"| m_inventario
+        m_referencias -->|"2 relaciones"| m_produccion
+        m_referencias -->|"4 relaciones"| m_terminado
+        m_referencias -->|"2 relaciones"| m_ventas
+        m_ventas -->|"1 relación"| m_envios
+        m_ventas -->|"1 relación"| m_terminado
+    ```
+
+## Mapa general de tablas
+
+Cada flecha va de la tabla referenciada a la tabla que guarda la clave foránea. Para que sea legible se omiten las relaciones con `CustomUser` (responsable, creador, etc.) que salen de casi todos los módulos; están en el detalle por tabla y en el diagrama completo.
+
+[![Mapa general del modelo de datos](img/mapa-general.svg)](img/mapa-general.svg){ target=_blank }
+
+[Abrir imagen SVG](img/mapa-general.svg){ target=_blank } · [Descargar PNG](img/mapa-general.png)
+
+??? note "Ver como código Mermaid (se dibuja en el navegador)"
+
+    ```mermaid
+    flowchart TB
+        subgraph sg_seguridad["Usuarios y seguridad"]
+            ModulePermission
+            Role
+            RolePermission
+            CustomUser
+            AccessLog
+            PasswordResetToken
+        end
+        subgraph sg_inventario["Inventario"]
+            Consecutivo
+            Proveedor
+            Producto
+            OrdenSalida
+            OrdenLinea
+            Movimiento
+            Evidencia
+        end
+        subgraph sg_compras["Compras"]
+            OrdenCompra
+            LineaCompra
+            Recepcion
+            RecepcionLinea
+        end
+        subgraph sg_referencias["Referencias"]
+            Referencia
+            Variante
+            ImagenReferencia
+            FichaTecnica
+            FichaLinea
+        end
+        subgraph sg_produccion["Producción y lavandería"]
+            OrdenProduccion
+            Lote
+            LoteTalla
+            EtapaLote
+            EventoEtapa
+            TarifaManoObra
+            Operario
+            Maquina
+            AsignacionEtapa
+            RecetaLavado
+            RemisionLavanderia
+            RemisionLote
+            RecepcionLavanderia
+            RecepcionLote
+        end
+        subgraph sg_calidad["Calidad"]
+            TipoDefecto
+            Inspeccion
+            MarraDetalle
+        end
+        subgraph sg_terminado["Producto terminado"]
+            StockTerminado
+            IngresoTerminado
+            IngresoLinea
+            AjusteTerminado
+            AjusteLinea
+            MovimientoTerminado
+        end
+        subgraph sg_ventas["Ventas y cartera"]
+            Cliente
+            PrecioReferencia
+            FacturaVenta
+            DetalleVenta
+            SaldoFinanciero
+            MovimientoCartera
+        end
+        subgraph sg_envios["Envíos"]
+            RelacionDespacho
+            Guia
+            EventoGuia
+        end
+        AjusteTerminado --> AjusteLinea
+        AjusteTerminado --> MovimientoTerminado
+        Cliente --> FacturaVenta
+        CustomUser --> AccessLog
+        CustomUser --> PasswordResetToken
+        CustomUser --> RolePermission
+        EtapaLote --> AsignacionEtapa
+        EtapaLote --> EventoEtapa
+        FacturaVenta --> DetalleVenta
+        FacturaVenta --> Guia
+        FacturaVenta --> MovimientoCartera
+        FacturaVenta --> MovimientoTerminado
+        FichaTecnica --> FichaLinea
+        Guia --> EventoGuia
+        IngresoTerminado --> IngresoLinea
+        IngresoTerminado --> MovimientoTerminado
+        Inspeccion --> IngresoTerminado
+        Inspeccion --> MarraDetalle
+        LineaCompra --> RecepcionLinea
+        Lote --> EtapaLote
+        Lote --> IngresoTerminado
+        Lote --> Inspeccion
+        Lote --> LoteTalla
+        Lote --> MovimientoTerminado
+        Lote --> RecepcionLote
+        Lote --> RemisionLote
+        Maquina --> AsignacionEtapa
+        ModulePermission --> RolePermission
+        Movimiento --> Evidencia
+        Movimiento --> RecepcionLinea
+        Operario --> AsignacionEtapa
+        OrdenCompra --> LineaCompra
+        OrdenCompra --> Recepcion
+        OrdenProduccion --> Lote
+        OrdenSalida --> Evidencia
+        OrdenSalida --> Movimiento
+        OrdenSalida --> OrdenLinea
+        OrdenSalida --> OrdenProduccion
+        Producto --> FichaLinea
+        Producto --> LineaCompra
+        Producto --> Movimiento
+        Producto --> OrdenLinea
+        Producto --> OrdenSalida
+        Producto --> RecepcionLinea
+        Proveedor --> Movimiento
+        Proveedor --> OrdenCompra
+        Proveedor --> Recepcion
+        Proveedor --> RemisionLavanderia
+        Recepcion --> RecepcionLinea
+        RecepcionLavanderia --> RecepcionLote
+        RecepcionLote --> Inspeccion
+        RecetaLavado --> RemisionLote
+        Referencia --> FichaTecnica
+        Referencia --> ImagenReferencia
+        Referencia --> OrdenProduccion
+        Referencia --> OrdenSalida
+        Referencia --> PrecioReferencia
+        Referencia --> Variante
+        RelacionDespacho --> Guia
+        RemisionLavanderia --> RecepcionLavanderia
+        RemisionLavanderia --> RemisionLote
+        RemisionLote --> RecepcionLote
+        Role --> CustomUser
+        Role --> RolePermission
+        TipoDefecto --> MarraDetalle
+        Variante --> AjusteLinea
+        Variante --> DetalleVenta
+        Variante --> IngresoLinea
+        Variante --> LoteTalla
+        Variante --> MovimientoTerminado
+        Variante --> StockTerminado
+    ```
+
+## Diagramas por módulo
+
+### Usuarios y seguridad
+
+Tablas: `ModulePermission`, `Role`, `RolePermission`, `CustomUser`, `AccessLog`, `PasswordResetToken`.
+
+[![Diagrama del módulo Usuarios y seguridad](img/modulo-seguridad.svg)](img/modulo-seguridad.svg){ target=_blank }
+
+[Abrir imagen SVG](img/modulo-seguridad.svg){ target=_blank } · [Descargar PNG](img/modulo-seguridad.png)
+
+??? note "Ver como código Mermaid (se dibuja en el navegador)"
+
+    ```mermaid
+    erDiagram
+        ModulePermission {
+            bigint id PK
+            varchar_60 code UK
+            varchar_120 name
+            varchar_40 module
+            varchar_255 description
+        }
+        Role {
+            bigint id PK
+            varchar_20 code UK
+            varchar_60 name
+            varchar_255 description
+            boolean is_system
+        }
+        RolePermission {
+            bigint id PK
+            bigint role FK
+            bigint permission FK
+            timestamp granted_at
+            bigint granted_by FK
+        }
+        CustomUser {
+            bigint id PK
+            varchar_128 password
+            timestamp last_login
+            boolean is_superuser
+            varchar_150 username UK
+            varchar_150 first_name
+            varchar_150 last_name
+            varchar_254 email
+            boolean is_staff
+            boolean is_active
+            timestamp date_joined
+            varchar_20 role FK
+            varchar_20 requested_area FK
+            varchar_20 document_id
+        }
+        AccessLog {
+            bigint id PK
+            bigint user FK
+            varchar_254 email
+            varchar_20 event
+            inet ip
+            varchar_300 forwarded
+            varchar_255 user_agent
+        }
+        PasswordResetToken {
+            bigint id PK
+            bigint user FK
+            varchar_64 token_hash UK
+            varchar_10 purpose
+            timestamp expires_at
+            timestamp used_at
+            inet requested_ip
+        }
+        CustomUser |o--o{ AccessLog : "user"
+        CustomUser |o--o{ RolePermission : "granted_by"
+        CustomUser ||--o{ PasswordResetToken : "user"
+        ModulePermission ||--o{ RolePermission : "permission"
+        Role |o--o{ CustomUser : "requested_area"
+        Role ||--o{ CustomUser : "role"
+        Role ||--o{ RolePermission : "role"
+    ```
+
+### Inventario
+
+Tablas: `Consecutivo`, `Proveedor`, `Producto`, `OrdenSalida`, `OrdenLinea`, `Movimiento`, `Evidencia`.
+
+Relaciones con otros módulos (solo clave): `Referencia` (Referencias), `FichaLinea` (Referencias), `OrdenProduccion` (Producción y lavandería), `RemisionLavanderia` (Producción y lavandería), `OrdenCompra` (Compras), `LineaCompra` (Compras), `Recepcion` (Compras), `RecepcionLinea` (Compras).
+
+[![Diagrama del módulo Inventario](img/modulo-inventario.svg)](img/modulo-inventario.svg){ target=_blank }
+
+[Abrir imagen SVG](img/modulo-inventario.svg){ target=_blank } · [Descargar PNG](img/modulo-inventario.png)
+
+??? note "Ver como código Mermaid (se dibuja en el navegador)"
+
+    ```mermaid
+    erDiagram
+        Consecutivo {
+            bigint id PK
+            varchar_10 clave UK
+            int ultimo
+        }
+        Proveedor {
+            bigint id PK
+            varchar_10 nit
+            varchar_1 nit_dv
+            varchar_150 razon_social
+            varchar_20 categoria
+            varchar_120 contacto
+            varchar_20 telefono
+            varchar_120 correo
+            varchar_80 ciudad
+            varchar_200 direccion
+        }
+        Producto {
+            bigint id PK
+            varchar_20 codigo
+            varchar_150 nombre
+            varchar_15 tipo
+            varchar_20 categoria
+            varchar_10 unidad
+            decimal_12_2 stock_actual
+            decimal_12_2 stock_minimo
+            decimal_14_4 costo_promedio
+            varchar_255 descripcion
+            decimal_4_2 ancho_util
+            varchar_60 color
+            varchar_120 composicion
+            bytea imagen
+            varchar_20 imagen_tipo
+            int imagen_version
+        }
+        OrdenSalida {
+            bigint id PK
+            varchar_20 codigo
+            varchar_12 tipo
+            varchar_12 estado
+            date fecha_salida
+            varchar_120 responsable
+            varchar_120 destino
+            bigint referencia FK
+            varchar_60 ficha_tecnica
+            bigint producto_resultado FK
+            decimal_12_2 cantidad_prendas
+            text observaciones
+            bigint registrado_por FK
+            timestamp completada_at
+            timestamp anulada_at
+            varchar_255 motivo_anulacion
+        }
+        OrdenLinea {
+            bigint id PK
+            bigint orden FK
+            bigint producto FK
+            decimal_12_2 cantidad
+            decimal_14_4 costo_unitario
+        }
+        Movimiento {
+            bigint id PK
+            bigint producto FK
+            varchar_8 tipo
+            varchar_15 motivo
+            decimal_12_2 cantidad
+            decimal_14_4 costo_unitario
+            decimal_12_2 stock_antes
+            decimal_12_2 stock_despues
+            date fecha
+            bigint proveedor FK
+            varchar_150 proveedor_nombre
+            varchar_40 orden_compra
+            varchar_60 lote
+            bigint orden FK
+            text observaciones
+            bigint registrado_por FK
+        }
+        Evidencia {
+            bigint id PK
+            bigint movimiento FK
+            bigint orden FK
+            varchar archivo
+            varchar_120 nombre_original
+            varchar_40 content_type
+            int tamano
+            bigint subido_por FK
+        }
+        Referencia {
+            bigint id PK
+        }
+        FichaLinea {
+            bigint id PK
+        }
+        OrdenProduccion {
+            bigint id PK
+        }
+        RemisionLavanderia {
+            bigint id PK
+        }
+        OrdenCompra {
+            bigint id PK
+        }
+        LineaCompra {
+            bigint id PK
+        }
+        Recepcion {
+            bigint id PK
+        }
+        RecepcionLinea {
+            bigint id PK
+        }
+        Movimiento |o--o{ Evidencia : "movimiento"
+        Movimiento ||--o{ RecepcionLinea : "movimiento"
+        OrdenSalida |o--o{ Evidencia : "orden"
+        OrdenSalida |o--o{ Movimiento : "orden"
+        OrdenSalida ||--o{ OrdenLinea : "orden"
+        OrdenSalida ||--o{ OrdenProduccion : "orden_salida"
+        Producto ||--o{ FichaLinea : "producto"
+        Producto ||--o{ LineaCompra : "producto"
+        Producto ||--o{ Movimiento : "producto"
+        Producto ||--o{ OrdenLinea : "producto"
+        Producto ||--o{ OrdenSalida : "producto_resultado"
+        Producto ||--o{ RecepcionLinea : "producto"
+        Proveedor |o--o{ Movimiento : "proveedor"
+        Proveedor ||--o{ OrdenCompra : "proveedor"
+        Proveedor ||--o{ Recepcion : "proveedor"
+        Proveedor ||--o{ RemisionLavanderia : "lavanderia"
+        Referencia |o--o{ OrdenSalida : "referencia"
+    ```
+
+### Compras
+
+Tablas: `OrdenCompra`, `LineaCompra`, `Recepcion`, `RecepcionLinea`.
+
+Relaciones con otros módulos (solo clave): `Proveedor` (Inventario), `Producto` (Inventario), `Movimiento` (Inventario).
+
+[![Diagrama del módulo Compras](img/modulo-compras.svg)](img/modulo-compras.svg){ target=_blank }
+
+[Abrir imagen SVG](img/modulo-compras.svg){ target=_blank } · [Descargar PNG](img/modulo-compras.png)
+
+??? note "Ver como código Mermaid (se dibuja en el navegador)"
+
+    ```mermaid
+    erDiagram
+        OrdenCompra {
+            bigint id PK
+            varchar_20 codigo
+            bigint proveedor FK
+            date fecha
+            date fecha_esperada
+            varchar_120 condiciones_pago
+            varchar_500 notas
+            varchar_16 estado
+            bigint creado_por FK
+            bigint aprobado_por FK
+            timestamp aprobada_at
+            varchar_255 motivo_cierre
+            timestamp cerrada_at
+        }
+        LineaCompra {
+            bigint id PK
+            bigint orden FK
+            bigint producto FK
+            decimal_12_2 cantidad_pedida
+            decimal_14_4 precio_pactado
+        }
+        Recepcion {
+            bigint id PK
+            varchar_20 codigo
+            bigint orden FK
+            bigint proveedor FK
+            varchar_40 documento
+            date fecha
+            varchar_500 observaciones
+            bigint recibido_por FK
+        }
+        RecepcionLinea {
+            bigint id PK
+            bigint recepcion FK
+            bigint linea_compra FK
+            bigint producto FK
+            bigint movimiento FK, UK
+            decimal_12_2 cantidad
+            varchar_60 lote
+            decimal_14_4 costo_unitario
+        }
+        Proveedor {
+            bigint id PK
+        }
+        Producto {
+            bigint id PK
+        }
+        Movimiento {
+            bigint id PK
+        }
+        LineaCompra |o--o{ RecepcionLinea : "linea_compra"
+        Movimiento ||--o{ RecepcionLinea : "movimiento"
+        OrdenCompra |o--o{ Recepcion : "orden"
+        OrdenCompra ||--o{ LineaCompra : "orden"
+        Producto ||--o{ LineaCompra : "producto"
+        Producto ||--o{ RecepcionLinea : "producto"
+        Proveedor ||--o{ OrdenCompra : "proveedor"
+        Proveedor ||--o{ Recepcion : "proveedor"
+        Recepcion ||--o{ RecepcionLinea : "recepcion"
+    ```
+
+### Referencias
+
+Tablas: `Referencia`, `Variante`, `ImagenReferencia`, `FichaTecnica`, `FichaLinea`.
+
+Relaciones con otros módulos (solo clave): `OrdenSalida` (Inventario), `Producto` (Inventario), `OrdenProduccion` (Producción y lavandería), `LoteTalla` (Producción y lavandería), `StockTerminado` (Producto terminado), `IngresoLinea` (Producto terminado), `AjusteLinea` (Producto terminado), `MovimientoTerminado` (Producto terminado), `PrecioReferencia` (Ventas y cartera), `DetalleVenta` (Ventas y cartera).
+
+[![Diagrama del módulo Referencias](img/modulo-referencias.svg)](img/modulo-referencias.svg){ target=_blank }
+
+[Abrir imagen SVG](img/modulo-referencias.svg){ target=_blank } · [Descargar PNG](img/modulo-referencias.png)
+
+??? note "Ver como código Mermaid (se dibuja en el navegador)"
+
+    ```mermaid
+    erDiagram
+        Referencia {
+            bigint id PK
+            varchar_20 codigo
+            varchar_150 nombre
+            varchar_500 descripcion
+            varchar_15 ajuste
+            varchar_15 estado
+            bigint creado_por FK
+        }
+        Variante {
+            bigint id PK
+            bigint referencia FK
+            varchar_10 talla
+            varchar_60 color
+        }
+        ImagenReferencia {
+            bigint id PK
+            bigint referencia FK
+            bytea imagen
+            varchar_20 tipo
+            int version
+            boolean principal
+        }
+        FichaTecnica {
+            bigint id PK
+            bigint referencia FK
+            varchar_15 lavado
+            varchar_500 notas
+            bigint actualizado_por FK
+            bytea documento
+            varchar_120 documento_nombre
+            int documento_tamano
+            int documento_version
+        }
+        FichaLinea {
+            bigint id PK
+            bigint ficha FK
+            bigint producto FK
+            decimal_10_3 cantidad
+            decimal_5_2 merma
+            varchar_120 observaciones
+        }
+        OrdenSalida {
+            bigint id PK
+        }
+        Producto {
+            bigint id PK
+        }
+        OrdenProduccion {
+            bigint id PK
+        }
+        LoteTalla {
+            bigint id PK
+        }
+        StockTerminado {
+            bigint id PK
+        }
+        IngresoLinea {
+            bigint id PK
+        }
+        AjusteLinea {
+            bigint id PK
+        }
+        MovimientoTerminado {
+            bigint id PK
+        }
+        PrecioReferencia {
+            bigint id PK
+        }
+        DetalleVenta {
+            bigint id PK
+        }
+        FichaTecnica ||--o{ FichaLinea : "ficha"
+        Producto ||--o{ FichaLinea : "producto"
+        Referencia |o--o{ OrdenSalida : "referencia"
+        Referencia ||--o{ FichaTecnica : "referencia"
+        Referencia ||--o{ ImagenReferencia : "referencia"
+        Referencia ||--o{ OrdenProduccion : "referencia"
+        Referencia ||--o{ PrecioReferencia : "referencia"
+        Referencia ||--o{ Variante : "referencia"
+        Variante ||--o{ AjusteLinea : "variante"
+        Variante ||--o{ DetalleVenta : "variante"
+        Variante ||--o{ IngresoLinea : "variante"
+        Variante ||--o{ LoteTalla : "variante"
+        Variante ||--o{ MovimientoTerminado : "variante"
+        Variante ||--o{ StockTerminado : "variante"
+    ```
+
+### Producción y lavandería
+
+Tablas: `OrdenProduccion`, `Lote`, `LoteTalla`, `EtapaLote`, `EventoEtapa`, `TarifaManoObra`, `Operario`, `Maquina`, `AsignacionEtapa`, `RecetaLavado`, `RemisionLavanderia`, `RemisionLote`, `RecepcionLavanderia`, `RecepcionLote`.
+
+Relaciones con otros módulos (solo clave): `OrdenSalida` (Inventario), `Referencia` (Referencias), `Variante` (Referencias), `Proveedor` (Inventario), `Inspeccion` (Calidad), `IngresoTerminado` (Producto terminado), `MovimientoTerminado` (Producto terminado).
+
+[![Diagrama del módulo Producción y lavandería](img/modulo-produccion.svg)](img/modulo-produccion.svg){ target=_blank }
+
+[Abrir imagen SVG](img/modulo-produccion.svg){ target=_blank } · [Descargar PNG](img/modulo-produccion.png)
+
+??? note "Ver como código Mermaid (se dibuja en el navegador)"
+
+    ```mermaid
+    erDiagram
+        OrdenProduccion {
+            bigint id PK
+            bigint orden_salida FK, UK
+            varchar_20 codigo
+            bigint referencia FK
+            int cantidad
+            bigint creado_por FK
+        }
+        Lote {
+            bigint id PK
+            bigint orden FK
+            positivesmallinteger numero
+            varchar_24 codigo
+            int cantidad
+            varchar_20 estado_inventario
+        }
+        LoteTalla {
+            bigint id PK
+            bigint lote FK
+            bigint variante FK
+            varchar_10 talla
+            varchar_60 color
+            int cantidad
+        }
+        EtapaLote {
+            bigint id PK
+            bigint lote FK
+            varchar_16 etapa
+            positivesmallinteger secuencia
+            varchar_10 estado
+            timestamp inicio_at
+            timestamp fin_at
+            timestamp reanudada_at
+            int acumulado_s
+            bigint responsable FK
+        }
+        EventoEtapa {
+            bigint id PK
+            bigint etapa_lote FK
+            varchar_10 accion
+            varchar_10 de_estado
+            varchar_10 a_estado
+            bigint usuario FK
+            timestamp momento
+            varchar_255 nota
+        }
+        TarifaManoObra {
+            bigint id PK
+            varchar_16 etapa
+            decimal_12_4 costo_minuto
+            date vigente_desde
+            bigint creado_por FK
+        }
+        Operario {
+            bigint id PK
+            varchar_20 codigo
+            varchar_120 nombres
+            varchar_20 documento
+            json etapas
+            varchar_8 tipo_pago
+            boolean activo
+            bigint usuario FK
+        }
+        Maquina {
+            bigint id PK
+            varchar_20 codigo
+            varchar_14 tipo
+            varchar_120 marca_modelo
+            varchar_60 serial
+            varchar_80 ubicacion
+            varchar_14 estado
+            json etapas
+            varchar_255 observaciones
+            boolean activo
+        }
+        AsignacionEtapa {
+            bigint id PK
+            bigint etapa_lote FK
+            bigint operario FK
+            bigint maquina FK
+            timestamp inicio_at
+            timestamp fin_at
+            bigint asignada_por FK
+        }
+        RecetaLavado {
+            bigint id PK
+            varchar_20 codigo
+            varchar_150 nombre
+            varchar_100 categoria
+            text descripcion
+            varchar_40 temperatura_proceso
+            int duracion_horas
+            decimal_12_2 tarifa_sugerida
+        }
+        RemisionLavanderia {
+            bigint id PK
+            varchar_30 codigo
+            date fecha_emision
+            date fecha_entrega_estimada
+            bigint lavanderia FK
+            varchar_150 transportador_nombre
+            varchar_30 vehiculo_placa
+            int tulas_bultos
+            decimal_10_2 peso_kg
+            decimal_14_2 costo_estimado
+            varchar_20 estado
+            text observaciones
+            bigint responsable FK
+            bigint creado_por FK
+        }
+        RemisionLote {
+            bigint id PK
+            bigint remision FK
+            bigint lote FK
+            int cantidad
+            bigint receta FK
+            varchar_150 receta_nombre
+            text instrucciones_especiales
+        }
+        RecepcionLavanderia {
+            bigint id PK
+            varchar_30 codigo
+            bigint remision FK
+            varchar_60 factura_remision_externa
+            date fecha_recepcion
+            int total_enviado
+            int total_recibido_conforme
+            int total_merma
+            int total_danadas
+            decimal_14_2 costo_total_perdida
+            decimal_14_2 costo_servicio_lavado
+            varchar_20 estado
+            text observaciones
+            bigint responsable FK
+            bigint creado_por FK
+        }
+        RecepcionLote {
+            bigint id PK
+            bigint recepcion FK
+            bigint remision_lote FK
+            bigint lote FK
+            int cantidad_enviada
+            int cantidad_recibida_conforme
+            int cantidad_merma
+            int cantidad_danada
+            varchar_200 motivo_merma
+            varchar_200 tipo_dano
+            decimal_12_2 costo_unitario_prenda
+            decimal_14_2 costo_perdida
+            text observaciones
+        }
+        OrdenSalida {
+            bigint id PK
+        }
+        Referencia {
+            bigint id PK
+        }
+        Variante {
+            bigint id PK
+        }
+        Proveedor {
+            bigint id PK
+        }
+        Inspeccion {
+            bigint id PK
+        }
+        IngresoTerminado {
+            bigint id PK
+        }
+        MovimientoTerminado {
+            bigint id PK
+        }
+        EtapaLote ||--o{ AsignacionEtapa : "etapa_lote"
+        EtapaLote ||--o{ EventoEtapa : "etapa_lote"
+        Lote |o--o{ MovimientoTerminado : "lote"
+        Lote ||--o{ EtapaLote : "lote"
+        Lote ||--o{ IngresoTerminado : "lote"
+        Lote ||--o{ Inspeccion : "lote"
+        Lote ||--o{ LoteTalla : "lote"
+        Lote ||--o{ RecepcionLote : "lote"
+        Lote ||--o{ RemisionLote : "lote"
+        Maquina |o--o{ AsignacionEtapa : "maquina"
+        Operario |o--o{ AsignacionEtapa : "operario"
+        OrdenProduccion ||--o{ Lote : "orden"
+        OrdenSalida ||--o{ OrdenProduccion : "orden_salida"
+        Proveedor ||--o{ RemisionLavanderia : "lavanderia"
+        RecepcionLavanderia ||--o{ RecepcionLote : "recepcion"
+        RecepcionLote ||--o{ Inspeccion : "recepcion_lote"
+        RecetaLavado |o--o{ RemisionLote : "receta"
+        Referencia ||--o{ OrdenProduccion : "referencia"
+        RemisionLavanderia ||--o{ RecepcionLavanderia : "remision"
+        RemisionLavanderia ||--o{ RemisionLote : "remision"
+        RemisionLote ||--o{ RecepcionLote : "remision_lote"
+        Variante ||--o{ LoteTalla : "variante"
+    ```
+
+### Calidad
+
+Tablas: `TipoDefecto`, `Inspeccion`, `MarraDetalle`.
+
+Relaciones con otros módulos (solo clave): `Lote` (Producción y lavandería), `RecepcionLote` (Producción y lavandería), `IngresoTerminado` (Producto terminado).
+
+[![Diagrama del módulo Calidad](img/modulo-calidad.svg)](img/modulo-calidad.svg){ target=_blank }
+
+[Abrir imagen SVG](img/modulo-calidad.svg){ target=_blank } · [Descargar PNG](img/modulo-calidad.png)
+
+??? note "Ver como código Mermaid (se dibuja en el navegador)"
+
+    ```mermaid
+    erDiagram
+        TipoDefecto {
+            bigint id PK
+            varchar_20 codigo
+            varchar_80 nombre
+            varchar_255 descripcion
+            boolean corregible
+            boolean activo
+        }
+        Inspeccion {
+            bigint id PK
+            varchar_20 codigo
+            bigint lote FK
+            bigint recepcion_lote FK
+            int cantidad_recibida
+            int aptas
+            int marras
+            varchar_500 observaciones
+            bigint inspector FK
+            date fecha
+        }
+        MarraDetalle {
+            bigint id PK
+            bigint inspeccion FK
+            bigint tipo_defecto FK
+            varchar_80 defecto_nombre
+            boolean corregible
+            int cantidad
+            varchar_255 nota
+        }
+        Lote {
+            bigint id PK
+        }
+        RecepcionLote {
+            bigint id PK
+        }
+        IngresoTerminado {
+            bigint id PK
+        }
+        Inspeccion ||--o{ IngresoTerminado : "inspeccion"
+        Inspeccion ||--o{ MarraDetalle : "inspeccion"
+        Lote ||--o{ Inspeccion : "lote"
+        RecepcionLote ||--o{ Inspeccion : "recepcion_lote"
+        TipoDefecto ||--o{ MarraDetalle : "tipo_defecto"
+    ```
+
+### Producto terminado
+
+Tablas: `StockTerminado`, `IngresoTerminado`, `IngresoLinea`, `AjusteTerminado`, `AjusteLinea`, `MovimientoTerminado`.
+
+Relaciones con otros módulos (solo clave): `Variante` (Referencias), `Inspeccion` (Calidad), `Lote` (Producción y lavandería), `FacturaVenta` (Ventas y cartera).
+
+[![Diagrama del módulo Producto terminado](img/modulo-terminado.svg)](img/modulo-terminado.svg){ target=_blank }
+
+[Abrir imagen SVG](img/modulo-terminado.svg){ target=_blank } · [Descargar PNG](img/modulo-terminado.png)
+
+??? note "Ver como código Mermaid (se dibuja en el navegador)"
+
+    ```mermaid
+    erDiagram
+        StockTerminado {
+            bigint id PK
+            bigint variante FK
+            int cantidad
+        }
+        IngresoTerminado {
+            bigint id PK
+            varchar_20 codigo
+            bigint inspeccion FK
+            bigint lote FK
+            int aptas
+            varchar_80 ubicacion
+            varchar_500 observaciones
+            bigint recibido_por FK
+            date fecha
+        }
+        IngresoLinea {
+            bigint id PK
+            bigint ingreso FK
+            bigint variante FK
+            varchar_10 talla
+            varchar_60 color
+            int cantidad
+            int planificada
+        }
+        AjusteTerminado {
+            bigint id PK
+            varchar_20 codigo
+            varchar_20 motivo
+            varchar_500 observacion
+            bigint realizado_por FK
+            date fecha
+            uuid token
+            int unidades_faltantes
+            int unidades_sobrantes
+        }
+        AjusteLinea {
+            bigint id PK
+            bigint ajuste FK
+            bigint variante FK
+            varchar_10 talla
+            varchar_60 color
+            int stock_antes
+            int stock_contado
+            int diferencia
+        }
+        MovimientoTerminado {
+            bigint id PK
+            bigint variante FK
+            varchar_20 tipo
+            int cantidad
+            int saldo_antes
+            int saldo_despues
+            bigint ingreso FK
+            bigint ajuste FK
+            bigint factura FK
+            bigint lote FK
+            bigint usuario FK
+            varchar_255 motivo
+        }
+        Variante {
+            bigint id PK
+        }
+        Inspeccion {
+            bigint id PK
+        }
+        Lote {
+            bigint id PK
+        }
+        FacturaVenta {
+            bigint id PK
+        }
+        AjusteTerminado |o--o{ MovimientoTerminado : "ajuste"
+        AjusteTerminado ||--o{ AjusteLinea : "ajuste"
+        FacturaVenta |o--o{ MovimientoTerminado : "factura"
+        IngresoTerminado |o--o{ MovimientoTerminado : "ingreso"
+        IngresoTerminado ||--o{ IngresoLinea : "ingreso"
+        Inspeccion ||--o{ IngresoTerminado : "inspeccion"
+        Lote |o--o{ MovimientoTerminado : "lote"
+        Lote ||--o{ IngresoTerminado : "lote"
+        Variante ||--o{ AjusteLinea : "variante"
+        Variante ||--o{ IngresoLinea : "variante"
+        Variante ||--o{ MovimientoTerminado : "variante"
+        Variante ||--o{ StockTerminado : "variante"
+    ```
+
+### Ventas y cartera
+
+Tablas: `Cliente`, `PrecioReferencia`, `FacturaVenta`, `DetalleVenta`, `SaldoFinanciero`, `MovimientoCartera`.
+
+Relaciones con otros módulos (solo clave): `MovimientoTerminado` (Producto terminado), `Referencia` (Referencias), `Variante` (Referencias), `Guia` (Envíos).
+
+[![Diagrama del módulo Ventas y cartera](img/modulo-ventas.svg)](img/modulo-ventas.svg){ target=_blank }
+
+[Abrir imagen SVG](img/modulo-ventas.svg){ target=_blank } · [Descargar PNG](img/modulo-ventas.png)
+
+??? note "Ver como código Mermaid (se dibuja en el navegador)"
+
+    ```mermaid
+    erDiagram
+        Cliente {
+            bigint id PK
+            varchar_20 codigo
+            varchar_3 tipo_documento
+            varchar_20 documento
+            varchar_1 dv
+            varchar_150 nombre
+            varchar_12 tipo
+            varchar_80 ciudad
+            varchar_200 direccion
+            varchar_20 telefono
+            varchar_120 correo
+            boolean activo
+        }
+        PrecioReferencia {
+            bigint id PK
+            bigint referencia FK
+            positivebiginteger costo_fabrica
+            positivebiginteger precio_detal
+            positivebiginteger precio_mayorista
+            bigint actualizado_por FK
+        }
+        FacturaVenta {
+            bigint id PK
+            varchar_20 numero
+            bigint cliente FK
+            varchar_150 cliente_nombre
+            varchar_40 cliente_documento
+            varchar_12 cliente_tipo
+            varchar_80 cliente_ciudad
+            varchar_200 cliente_direccion
+            varchar_20 cliente_telefono
+            bigint vendedor FK
+            date fecha
+            varchar_10 estado
+            varchar_15 modalidad_pago
+            varchar_12 estado_cobro
+            varchar_16 transportadora
+            varchar_40 numero_guia
+            varchar_500 observaciones
+            positivebiginteger subtotal
+            positivebiginteger descuento_total
+            positivebiginteger base_gravable
+            positivesmallinteger iva_tarifa
+            positivebiginteger iva_total
+            positivebiginteger total
+            positivebiginteger valor_a_recaudar
+            uuid token
+            varchar_255 motivo_anulacion
+            bigint anulada_por FK
+            timestamp anulada_en
+            timestamp fecha_cobro
+            bigint cobrado_por FK
+            varchar_255 motivo_devolucion
+        }
+        DetalleVenta {
+            bigint id PK
+            bigint factura FK
+            bigint variante FK
+            varchar_20 referencia_codigo
+            varchar_150 referencia_nombre
+            varchar_10 talla
+            varchar_60 color
+            int cantidad
+            positivebiginteger precio_unitario
+            positivesmallinteger descuento_pct
+            positivebiginteger costo_fabrica
+            positivebiginteger subtotal
+            positivebiginteger descuento
+            positivebiginteger base
+            positivebiginteger iva
+            positivebiginteger total
+        }
+        SaldoFinanciero {
+            bigint id PK
+            varchar_100 nombre
+            bigint saldo_actual
+        }
+        MovimientoCartera {
+            bigint id PK
+            bigint factura FK
+            varchar_20 tipo
+            bigint monto
+            bigint saldo_antes
+            bigint saldo_despues
+            bigint usuario FK
+            varchar_255 observaciones
+        }
+        MovimientoTerminado {
+            bigint id PK
+        }
+        Referencia {
+            bigint id PK
+        }
+        Variante {
+            bigint id PK
+        }
+        Guia {
+            bigint id PK
+        }
+        Cliente ||--o{ FacturaVenta : "cliente"
+        FacturaVenta |o--o{ MovimientoTerminado : "factura"
+        FacturaVenta ||--o{ DetalleVenta : "factura"
+        FacturaVenta ||--o{ Guia : "factura"
+        FacturaVenta ||--o{ MovimientoCartera : "factura"
+        Referencia ||--o{ PrecioReferencia : "referencia"
+        Variante ||--o{ DetalleVenta : "variante"
+    ```
+
+### Envíos
+
+Tablas: `RelacionDespacho`, `Guia`, `EventoGuia`.
+
+Relaciones con otros módulos (solo clave): `FacturaVenta` (Ventas y cartera).
+
+[![Diagrama del módulo Envíos](img/modulo-envios.svg)](img/modulo-envios.svg){ target=_blank }
+
+[Abrir imagen SVG](img/modulo-envios.svg){ target=_blank } · [Descargar PNG](img/modulo-envios.png)
+
+??? note "Ver como código Mermaid (se dibuja en el navegador)"
+
+    ```mermaid
+    erDiagram
+        RelacionDespacho {
+            bigint id PK
+            varchar_20 codigo
+            varchar_16 transportadora
+            date fecha
+            varchar_120 responsable
+            varchar_255 observaciones
+            uuid token
+            bigint creada_por FK
+        }
+        Guia {
+            bigint id PK
+            bigint factura FK
+            varchar_16 transportadora
+            varchar_40 numero_guia
+            varchar_14 estado
+            boolean vigente
+            bigint relacion FK
+            varchar_255 novedad
+            bigint valor_flete
+            bigint flete_vendedor
+            timestamp despachada_en
+            timestamp entregada_en
+            timestamp devuelta_en
+            boolean rastreo_registrado
+            varchar_20 rastreo_estado
+            varchar_30 rastreo_subestado
+            timestamp rastreo_consultado_en
+            timestamp rastreo_proxima_consulta
+            json rastreo_respuesta
+            boolean rastreo_sintetico
+        }
+        EventoGuia {
+            bigint id PK
+            bigint guia FK
+            varchar_14 estado_antes
+            varchar_14 estado_despues
+            varchar_255 nota
+            varchar_10 origen
+            bigint usuario FK
+        }
+        FacturaVenta {
+            bigint id PK
+        }
+        FacturaVenta ||--o{ Guia : "factura"
+        Guia ||--o{ EventoGuia : "guia"
+        RelacionDespacho |o--o{ Guia : "relacion"
+    ```
+
+## Vistas materializadas de reportes
+
+La aplicación `reports` consulta dos vistas SQL creadas por la migración `0001_vistas_materializadas` (en PostgreSQL son `MATERIALIZED VIEW`; en SQLite, vistas estándar). Son de solo lectura y no tienen modelo de negocio. Las columnas se leen del SQL de la migración.
+
+```mermaid
+flowchart LR
+    v0[("reportes_mv_produccion_ordenes")]
+    t_produccion_orden["OrdenProduccion"] --> v0
+    t_inventario_orden["OrdenSalida"] --> v0
+    t_referencias_referencia["Referencia"] --> v0
+    t_produccion_lote["Lote"] --> v0
+    t_calidad_inspeccion["Inspeccion"] --> v0
+    v1[("reportes_mv_ventas_referencias")]
+    t_ventas_factura_linea["DetalleVenta"] --> v1
+    t_ventas_factura["FacturaVenta"] --> v1
+    t_referencias_variante["Variante"] --> v1
+    t_referencias_referencia["Referencia"] --> v1
+```
+
+### `reportes_mv_produccion_ordenes`
+
+Fila consolidada de una orden de producción en la vista materializada `reportes_mv_produccion_ordenes`.
+
+Se alimenta de: `produccion_orden` (OrdenProduccion), `inventario_orden` (OrdenSalida), `referencias_referencia` (Referencia), `produccion_lote` (Lote), `calidad_inspeccion` (Inspeccion).
+
+| Columna | Tipo |
+|---|---|
+| `orden_id` | bigint |
+| `codigo` | varchar(20) |
+| `fecha_salida` | date |
+| `estado_orden` | varchar(12) |
+| `responsable` | varchar(120) |
+| `referencia_id` | bigint |
+| `referencia_codigo` | varchar(20) |
+| `referencia_nombre` | varchar(150) |
+| `tipo_jean` | varchar(15) |
+| `prendas_planificadas` | int |
+| `total_lotes` | int |
+| `prendas_en_lotes` | int |
+| `prendas_aptas` | int |
+| `prendas_marras` | int |
+
+### `reportes_mv_ventas_referencias`
+
+Fila pre-agregada de ventas por factura y referencia de jean en la vista materializada `reportes_mv_ventas_referencias`.
+
+Se alimenta de: `ventas_factura_linea` (DetalleVenta), `ventas_factura` (FacturaVenta), `referencias_variante` (Variante), `referencias_referencia` (Referencia).
+
+| Columna | Tipo |
+|---|---|
+| `linea_id` | bigint |
+| `factura_id` | bigint |
+| `numero_factura` | varchar(20) |
+| `fecha` | date |
+| `estado_factura` | varchar(10) |
+| `estado_cobro` | varchar(12) |
+| `cliente_tipo` | varchar(12) |
+| `cliente_nombre` | varchar(150) |
+| `transportadora` | varchar(16) |
+| `referencia_id` | bigint |
+| `referencia_codigo` | varchar(20) |
+| `referencia_nombre` | varchar(150) |
+| `tipo_jean` | varchar(15) |
+| `talla` | varchar(10) |
+| `color` | varchar(60) |
+| `unidades` | int |
+| `subtotal` | bigint |
+| `descuento` | bigint |
+| `base_gravable` | bigint |
+| `iva` | bigint |
+| `total` | bigint |
+| `costo_estimado` | bigint |
+
+## Diagrama entidad-relación completo
+
+Todas las tablas con todas sus columnas en un solo diagrama.
 
 ```mermaid
 erDiagram

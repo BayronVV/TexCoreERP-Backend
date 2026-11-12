@@ -15,9 +15,12 @@ backend/
 │   ├── inventory/     # Proveedores, catálogo, órdenes de salida, kardex, evidencias, alertas y costo promedio
 │   ├── purchasing/    # Órdenes de compra (crear, aprobar) y recepción de mercancía
 │   ├── references/    # Referencias de jean (variantes, imágenes) y ficha técnica de consumo por unidad
-│   ├── production/    # Simulación de material, órdenes y lotes, tiempos, recursos, monitor y costeo
+│   ├── production/    # Simulación de material, órdenes y lotes, tiempos, recursos, monitor, costeo y lavandería (remisión y recepción)
 │   ├── quality/       # Control de calidad: catálogo de defectos, inspecciones y marras de los lotes
-│   └── finished/      # Producto terminado: ingreso de las aptas, existencias por talla y libro de movimientos
+│   ├── finished/      # Producto terminado: ingreso de las aptas, existencias por talla, libro de movimientos y ajuste manual
+│   ├── sales/         # Ventas: clientes, precios, factura POS interna (PDF, anulación) y cartera contraentrega
+│   ├── shipping/      # Envíos: guías, relaciones de despacho (PDF), devolución física y rastreo con Track123
+│   └── reports/       # Reportes gerenciales sobre vistas SQL materializadas (sin tablas propias)
 ├── docs/              # Documentación (sitio MkDocs): manuales, arquitectura, modelo de datos
 ├── mkdocs.yml         # Configuración del sitio de documentación
 ├── manage.py
@@ -25,9 +28,13 @@ backend/
 └── .env.example       # Plantilla de variables de entorno (sin secretos)
 ```
 
-Los módulos de negocio de los próximos sprints (lavandería como proceso propio,
-ventas, reportes...) se agregan como `apps/<modulo>/` y se registran en
-`INSTALLED_APPS`.
+Son 9 apps con modelos (54 tablas) más `reports`, que solo lee dos vistas SQL. Los módulos nuevos
+se agregan como `apps/<modulo>/` y se registran en `INSTALLED_APPS`.
+
+**Estado: Sprint 3 entregado** (9 historias, TE-57 a TE-65). El backend cubre todo el recorrido de la prenda: referencias y producción
+(Sprint 2), lavandería, calidad, inventario final, facturación, guías de envío con rastreo Track123, cartera contraentrega y reportes gerenciales
+(Sprint 3). Cifras: 928 pruebas del backend, 221 del frontend, 114 rutas y 157 operaciones en OpenAPI.
+En producción: API <https://texcore-api.onrender.com> y sistema <https://texcore-web.onrender.com>; los datos de esos servidores son simulados.
 
 ## Documentación
 
@@ -74,6 +81,10 @@ La API queda en http://localhost:8000. Con `DATABASE_URL` vacío se usa SQLite l
 | `EMAIL_*`, `DEFAULT_FROM_EMAIL` | No | Envío de correo (por defecto se imprime en la consola). Ver `.env.example`. |
 | `API_DOCS_ENABLED`     | No (`true`) | `false` oculta `/api/docs/`, `/api/redoc/` y `/api/schema/`. |
 | `MEDIA_ROOT`           | No | Carpeta de las evidencias de inventario (por defecto `backend/media/`). |
+| `TRACK123_API_KEY`     | No | Clave de la API de Track123 para consultar el estado de las guías (HU 7.2). Secreto: solo en el `.env` local y en Render, nunca en el repositorio. Vacía = rastreo apagado. |
+| `TRACK123_ENABLED`     | No (`false`) | `true` enciende el rastreo. Se apaga solo al correr `manage.py test`. |
+| `TRACK123_BASE_URL`, `TRACK123_TIMEOUT`, `TRACK123_COOLDOWN_MINUTES`, `TRACK123_QUOTA_RESERVE` | No | Ruta de la API (`…/tk/v2.1`), segundos de espera (10), minutos de enfriamiento por guía (10) y cuota de reserva de registros (10). |
+| `SEED_DEMO_ON_DEPLOY`  | No (`false`) | `true` corre `seed_demo_completo --permitir-produccion` al final del `migrate` del arranque (datos simulados, idempotente; un fallo no impide el arranque). |
 
 Base de datos por entorno: **texcore-dev** (desarrollo diario, rama
 `pruebas`) y **texcore-prod** (rama `main`). Solo cambia `DATABASE_URL`.
@@ -119,7 +130,7 @@ Salvo los marcados como públicos, todos exigen `Authorization: Bearer <access>`
 | GET, PATCH, DELETE | `/api/roles/<id>/` | `seguridad.ver` / `seguridad.roles` | Ver, editar permisos, eliminar (solo roles no base y sin usuarios). |
 | GET | `/api/permissions/` | `seguridad.ver` | Catálogo de permisos por módulo. |
 
-Las rutas de cada módulo de negocio se describen más abajo (inventario, referencias, producción y compras). El mapa completo
+Las rutas de cada módulo de negocio se describen más abajo (inventario, compras, referencias, producción, lavandería, calidad, producto terminado, ventas, envíos y reportes). El mapa completo
 está en [`docs/api.md`](docs/api.md) y la referencia exacta en Swagger.
 
 ## Roles y permisos (HU 1.4)
@@ -131,7 +142,9 @@ sigue guardando el código (`ADMIN`, `VENDEDOR`...), así el JWT y el
 frontend no cambian.
 
 - Cada módulo tiene los permisos `<modulo>.ver` y `<modulo>.gestionar`;
-  Seguridad además tiene `seguridad.roles`.
+  Seguridad además tiene `seguridad.roles`, Compras `compras.aprobar`, Producto terminado `producto_terminado.ajustar`, Ventas
+  `ventas.precios` y `ventas.anular`, y Envíos `envios.anotar` y `envios.devolucion`. En total son 31 permisos; la matriz rol → permiso está
+  en [`docs/roles-y-permisos.md`](docs/roles-y-permisos.md).
 - `ADMIN` tiene todos los permisos de forma implícita y no se puede
   restringir. `PENDING` no puede tener permisos.
 - Reglas de RF03: nadie cambia su propio rol ni se desactiva o elimina a
@@ -194,7 +207,7 @@ limitaciones en [`docs/despliegue-render.md`](docs/despliegue-render.md).
 
 ```powershell
 python manage.py check
-python manage.py test        # 763 pruebas; usa SQLite temporal, nunca la base en la nube
+python manage.py test        # 928 pruebas; usa SQLite temporal, nunca la base en la nube
 python manage.py test apps.production   # solo un módulo
 python manage.py spectacular --validate --file schema.yml   # valida el esquema OpenAPI (borra después schema.yml)
 ```
@@ -317,22 +330,59 @@ App `apps/quality`. Todo bajo `/api/calidad/`. Ver requiere `calidad.ver`; crear
 
 Limitaciones: sin reproceso, sin valoración de las marras, sin muestreo AQL y sin corrección de una inspección mal digitada. Detalle en [`docs/modulos.md`](docs/modulos.md).
 
-## Producto terminado (HU 6.2)
+## Producto terminado (HU 6.2 y 6.3)
 
-App `apps/finished`. Todo bajo `/api/terminado/`. Ver requiere `producto_terminado.ver` (Vendedor, Gerente, Secretaria y Admin); ingresar requiere `producto_terminado.gestionar` (Secretaria y Admin). No hay migración de permisos nueva.
+App `apps/finished`. Todo bajo `/api/terminado/`. Ver requiere `producto_terminado.ver` (Vendedor, Gerente, Secretaria y Admin); ingresar requiere `producto_terminado.gestionar` (Secretaria y Admin) y ajustar el inventario `producto_terminado.ajustar` (Secretaria y Admin; migración `users/0011`).
 
 | Endpoint | Qué hace |
 |----------|----------|
 | `GET pendientes/` | Inspecciones con aptas por ingresar, con las variantes de su referencia y lo planificado en el lote. |
 | `GET/POST ingresos/`, `GET ingresos/<id>/` | Ingreso `IPT-0001` de las aptas de una inspección, repartidas por talla y color: la suma debe ser exactamente las aptas. Una sola vez por inspección (doble ingreso: 409) y sin `PUT`/`DELETE` (RF21). |
 | `GET existencias/` | Matriz referencia × color × talla de las prendas de primera calidad, con las celdas en cero. |
-| `GET movimientos/` | Libro de solo inserción (`ENTRADA_PRODUCCION` hoy; `AJUSTE` y `SALIDA_VENTA` para las HU 6.3 y 7.1) con saldo antes y después. |
+| `GET movimientos/` | Libro de solo inserción (`ENTRADA_PRODUCCION`, `AJUSTE`, `SALIDA_VENTA` y `DEVOLUCION_VENTA`) con saldo antes y después. |
+| `GET/POST ajustes/`, `GET ajustes/<id>/`, `GET metadatos/` | Ajuste manual `AJT-0001` contra el conteo físico (HU 6.3): solo lo que cambia, con motivo, observación, comprobante y token anti doble clic; si el saldo cambió desde que se leyó responde `409`. Sin `PUT`/`DELETE`: un ajuste equivocado se corrige con otro. |
 
-Todo es una transacción con la inspección bloqueada; el saldo nunca es negativo. Las marras no entran a este saldo. Limitaciones: sin reversa de ingresos (se corregirá con un ajuste, HU 6.3), sin ubicaciones controladas (solo texto libre), sin reservas ni valorización, sin recepción parcial, sin notificación por correo y las marras siguen sin inventario (HU 6.4). Detalle en [`docs/modulos.md`](docs/modulos.md).
+Todo es una transacción con la inspección bloqueada; el saldo nunca es negativo. Las marras no entran a este saldo. Limitaciones: sin reversa de ingresos (se corrige con un ajuste manual), sin ubicaciones controladas (solo texto libre), sin reservas ni valorización, sin recepción parcial, sin notificación por correo y las marras siguen sin inventario (HU 6.4). Detalle en [`docs/modulos.md`](docs/modulos.md).
+
+## Lavandería: remisión de salida y recepción (HU 5.1 y 5.2)
+
+Dentro de `apps/production`. Todo bajo `/api/lavanderia/`. Ver requiere `lavanderia.ver` (Gerente y Jefe de Producción); despachar y recibir requiere `lavanderia.gestionar` (Jefe de Producción).
+
+| Endpoint | Qué hace |
+|----------|----------|
+| `GET lotes-disponibles/`, `proveedores/`, `recetas/` | Lotes en la planta interna, lavanderías y recetas de lavado con su tarifa sugerida. |
+| `GET/POST remisiones/` | Historial y remisión de salida `REM-LAV-AAAA-0001`: saca los lotes de la planta (pasan a `EN_TRANSITO`) y calcula el costo estimado. |
+| `GET remisiones-pendientes/` | Remisiones por recibir, con los días en proceso. |
+| `GET/POST recepciones/`, `GET recepciones/<id>/` | Recepción `REC-LAV-AAAA-0001`: coteja por lote conformes + mermas + dañadas = enviadas (motivo obligatorio si hay mermas o daños), liquida la pérdida, devuelve el lote a la planta con las conformes y marca la remisión `RETORNADA`. |
+
+Las conformes de la recepción son las que luego se inspeccionan en Control de calidad. Una remisión o recepción registrada no se edita ni se borra.
+
+## Ventas, cartera y envíos (HU 7.1 a 7.3)
+
+Apps `apps/sales` (`/api/ventas/`) y `apps/shipping` (`/api/envios/`). Detalle de cada ruta y de sus permisos en [`docs/api.md`](docs/api.md) y [`docs/roles-y-permisos.md`](docs/roles-y-permisos.md).
+
+| Endpoint | Qué hace |
+|----------|----------|
+| `GET/POST ventas/clientes/`, `GET/PATCH ventas/clientes/<id>/`, `GET ventas/precios/`, `PUT ventas/precios/<referencia>/` | Clientes y precios por referencia (costo de fábrica, mayorista y detal). Los precios exigen `ventas.precios` (Gerente). |
+| `GET/POST ventas/facturas/`, `GET ventas/facturas/<id>/`, `GET …/<id>/pdf/`, `POST …/<id>/anular/` | Factura POS interna (**no es factura electrónica**) `FV-0001`: descuenta el producto terminado por talla y color, descuento del vendedor con tope por tipo de cliente, IVA del 19 %, token anti doble clic y anulación con reingreso. Solo contraentrega. |
+| `POST ventas/facturas/<id>/conciliar/`, `GET ventas/cartera/resumen/` | Conciliación del cobro (HU 7.3): `PAGADO` suma al saldo financiero; `DEVOLUCION` reingresa las prendas. Se concilia una sola vez. |
+| `GET envios/guias/`, `…/<id>/`, `POST envios/facturas/<id>/guia/`, `POST envios/guias/<id>/estado/`, `PATCH …/flete/`, `POST …/devolucion/` | Guías de envío con semáforo de estados, historial de solo inserción, flete y devolución física en cartera. |
+| `GET/POST envios/relaciones/`, `…/<id>/`, `…/<id>/pdf/` | Relaciones de despacho `RD-0001` con PDF; todas las guías pasan a `EN_TRANSITO` en una sola transacción. |
+| `POST envios/guias/<id>/rastrear/`, `GET envios/rastreo/estado/` | Estado real de las guías de Interrapidísimo con Track123 (HU 7.2). Opcional, solo por botón, con enfriamiento y reserva de cuota; si falla responde `503` y la guía no cambia. |
+
+## Reportes gerenciales (HU 7.4)
+
+App `apps/reports`. Todo bajo `/api/reportes/` y con `reportes.ver` (Gerente). Solo lee dos vistas SQL (`reportes_mv_produccion_ordenes` y `reportes_mv_ventas_referencias`), materializadas en PostgreSQL y normales en SQLite.
+
+| Endpoint | Qué hace |
+|----------|----------|
+| `GET metadatos/` | Opciones de los filtros: tipos de jean, estados de orden y de cobro, tipos de cliente y referencias. |
+| `GET gerencial/` | Indicadores de producción, calidad y ventas, consolidado por tipo de jean, órdenes, ventas por referencia y detalle (250 líneas). Filtros `desde`, `hasta`, `tipo_jean`, `referencia`, `estado_orden`, `estado_cobro` y `tipo_cliente`. En PostgreSQL refresca las vistas antes de leer. |
+| `POST refrescar/` | Fuerza el refresco de las vistas materializadas. |
 
 ## Datos de demostración
 
-Solo con `DJANGO_DEBUG=true`, idempotentes y por las mismas reglas de la aplicación:
+Solo con `DJANGO_DEBUG=true` (salvo `seed_demo_completo --permitir-produccion`), idempotentes y por las mismas reglas de la aplicación:
 
 ```powershell
 python manage.py seed_admin
@@ -342,6 +392,15 @@ python manage.py seed_demo_recursos      # operarios y máquinas asignados
 python manage.py seed_demo_compras       # órdenes de compra en borrador, aprobada y parcial
 python manage.py seed_demo_calidad       # defectos típicos y dos lotes devueltos de lavandería (uno inspeccionado)
 python manage.py seed_demo_terminado     # ingresa al inventario final las aptas de la inspección de demostración
+python manage.py seed_demo_ventas        # clientes, precios y hasta 3 facturas de demostración
+python manage.py seed_demo_envios        # guías de demostración (no llama a Track123 ni gasta cuota)
+python manage.py seed_demo_lavanderia    # opcional: lavanderías y recetas de lavado (no está en seed_demo_completo)
+
+# o todo de una vez, en su orden y sin duplicar:
+python manage.py seed_demo_completo
+python manage.py seed_demo_completo --permitir-produccion   # contra la base desplegada (datos simulados)
 ```
 
-Los comandos de los pasos 3 a 6 necesitan el 2; `seed_demo_calidad` necesita además `seed_demo_produccion`, y `seed_demo_terminado` necesita `seed_demo_calidad`. No se siembran tarifas de mano de obra: se registran desde la pantalla de liquidación.
+En Render se puede sembrar sola en cada despliegue con `SEED_DEMO_ON_DEPLOY=true`. Los datos de los servidores desplegados son simulados.
+
+Los comandos de producción, recursos y compras necesitan `seed_demo_inventario`; `seed_demo_calidad` necesita además `seed_demo_produccion`, `seed_demo_terminado` necesita `seed_demo_calidad`, y `seed_demo_ventas` y `seed_demo_envios` necesitan el stock de producto terminado. Las tarifas de mano de obra y el stock por talla y color los siembran `seed_demo_tarifas` y `seed_demo_stock`, que ya van dentro de `seed_demo_completo`.

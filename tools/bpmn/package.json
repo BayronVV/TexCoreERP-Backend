@@ -1,0 +1,11 @@
+{
+  "name": "texcore-bpmn-render",
+  "private": true,
+  "description": "Renderiza los diagramas BPMN de TexCore a SVG y PNG. Solo para documentación; no va a producción.",
+  "type": "module",
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "bpmn-js": "^17.11.1",
+    "puppeteer-core": "^23.0.0"
+  }
+}

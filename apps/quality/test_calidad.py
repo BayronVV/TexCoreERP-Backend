@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from apps.inventory import catalog as inventory_catalog
 from apps.inventory.models import Consecutivo, Proveedor
-from apps.inventory.tests import client_for, make_user
+from apps.core.testing import client_for, make_user
 from apps.production import catalog as production_catalog
 from apps.production.models import RecetaLavado
 from apps.production.recepcion_services import create_laundry_reception

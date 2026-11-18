@@ -3,7 +3,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 
-from apps.inventory.tests import make_user
+from apps.core.testing import make_user
 
 from . import catalog
 from .models import AsignacionEtapa, Maquina, Operario

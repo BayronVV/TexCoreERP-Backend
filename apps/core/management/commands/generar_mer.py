@@ -20,7 +20,7 @@ from django.core.management.base import BaseCommand
 from django.db import models
 
 from apps.core.management.commands.generar_erd import (
-    MODULES, own_fields, module_of, module_titles, project_models,
+    own_fields, module_of, module_titles, project_models,
 )
 
 USER_MODEL = "CustomUser"

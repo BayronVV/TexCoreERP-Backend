@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 
 from apps.inventory import catalog as inventory_catalog
 from apps.inventory.models import Movimiento, OrdenSalida, Producto
-from apps.inventory.tests import client_for, make_user
+from apps.core.testing import client_for, make_user
 from apps.references import catalog as reference_catalog
 from apps.references import fichas
 from apps.references import test_ficha as ficha_tests  # solo la base: así no se repiten sus pruebas aquí

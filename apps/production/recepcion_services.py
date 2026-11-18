@@ -10,7 +10,6 @@ Reglas de negocio:
 from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError
 
 from apps.inventory.models import Consecutivo
 from apps.inventory.services import fail

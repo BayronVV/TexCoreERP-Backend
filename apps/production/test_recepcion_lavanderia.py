@@ -16,12 +16,8 @@ from apps.inventory import catalog as inv_catalog
 from apps.inventory.models import Proveedor
 from apps.production import catalog
 from apps.production.models import (
-    Lote,
-    RecepcionLavanderia,
-    RecepcionLote,
     RecetaLavado,
     RemisionLavanderia,
-    RemisionLote,
 )
 from apps.production.recepcion_services import (
     create_laundry_reception,
@@ -128,7 +124,6 @@ class RecepcionLavanderiaTests(ModelBase):
         self.assertEqual(reception["costo_total_perdida"], expected_loss)
 
         # 3. Costo servicio de lavado liquidado: 55 conformes * 3.500 = $ 192.500 COP
-        expected_service = float(Decimal("55") * Decimal("35000.00"))  # tarifa es 3500
         self.assertEqual(reception["costo_servicio_lavado"], float(Decimal("55") * Decimal("3500.00")))
 
         # 4. Estado de remisión original pasa a RETORNADA

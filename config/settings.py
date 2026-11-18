@@ -91,21 +91,24 @@ TEMPLATES = [
 
 # --- Base de datos ------------------------------------------------------------
 # DATABASE_URL apunta a Supabase (Postgres). Sin ella se usa SQLite local para
-# poder arrancar el proyecto sin conexión. Los tests usan siempre SQLite para
-# no crear bases de prueba en la nube.
+# poder arrancar el proyecto sin conexión. En pruebas se usa SQLite por defecto
+# (para no tocar la base en la nube) salvo que se defina TEST_DATABASE_URL
+# (por ejemplo con un PostgreSQL dedicado en local o en CI).
 
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "").strip()
 RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
 
-if DATABASE_URL and not RUNNING_TESTS:
+active_db_url = TEST_DATABASE_URL if RUNNING_TESTS else DATABASE_URL
+if active_db_url:
     DATABASES = {
         "default": dj_database_url.parse(
-            DATABASE_URL,
+            active_db_url,
             # 0 = una conexión por petición. Con runserver (un hilo por petición) un
             # valor mayor deja conexiones abiertas y agota el pool de Supabase.
-            conn_max_age=int(os.getenv("DB_CONN_MAX_AGE", "0")),
-            conn_health_checks=True,
-            ssl_require=env_bool("DB_SSL_REQUIRE", True),
+            conn_max_age=0 if RUNNING_TESTS else int(os.getenv("DB_CONN_MAX_AGE", "0")),
+            conn_health_checks=not RUNNING_TESTS,
+            ssl_require=env_bool("TEST_DB_SSL_REQUIRE", False) if RUNNING_TESTS else env_bool("DB_SSL_REQUIRE", True),
         )
     }
 else:
@@ -115,6 +118,13 @@ else:
             "NAME": BASE_DIR / "db.sqlite3",
         }
     }
+
+# Cifrado rápido solo al ejecutar pruebas para evitar el cuello de botella de PBKDF2
+# al crear usuarios de prueba sin debilitar producción.
+if RUNNING_TESTS:
+    PASSWORD_HASHERS = [
+        "django.contrib.auth.hashers.MD5PasswordHasher",
+    ]
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

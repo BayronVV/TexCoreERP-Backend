@@ -1,5 +1,8 @@
-# Herramientas solo para desarrollo (no se instalan en Render).
-# Instalar con:  pip install -r requirements-dev.txt
+# Herramientas solo para desarrollo y CI (no se instalan en Render).
+# Instalar con:  pip install -r requirements-dev.txt -c constraints.txt
 -r requirements.txt
 
 mkdocs-material>=9.5,<10   # Sitio de documentación:  mkdocs serve  /  mkdocs build
+ruff>=0.9,<1               # Linter estático del backend
+coverage>=7.6,<8           # Medición de cobertura de pruebas
+pip-audit>=2.7,<3          # Auditoría de vulnerabilidades en dependencias

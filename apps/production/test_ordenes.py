@@ -1,14 +1,19 @@
 """Órdenes de producción y lotes (HU 4.2 / RF11 y RF12): validación, códigos, creación en cascada, API y permisos."""
+import threading
+import unittest
+from concurrent.futures import ThreadPoolExecutor
 from decimal import Decimal
 
 from django.db import connection
+from django.test import TransactionTestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
+from apps.core.testing import client_for, make_user
 from apps.inventory import catalog as inventory_catalog
 from apps.inventory.models import Consecutivo, Movimiento, OrdenSalida, Producto
-from apps.inventory.tests import client_for, make_user
-from apps.references.models import Variante
+from apps.references import catalog as reference_catalog
+from apps.references.models import FichaLinea, FichaTecnica, Referencia, Variante
 
 from . import services
 from .models import Lote, LoteTalla, OrdenProduccion
@@ -420,3 +425,92 @@ class RegressionTests(OrderBase):
         listed = keeper.get(reverse("inventario_ordenes")).json()
         self.assertEqual([item["codigo"] for item in listed], [order["codigo"]])
         self.assertEqual(listed[0]["referencia"], self.ref["id"])
+
+
+class ConcurrencyOrderTests(TransactionTestCase):
+    """Prueba de concurrencia de órdenes (H01): dos solicitudes simultáneas que juntas superan el stock."""
+
+    serialized_rollback = True
+
+    def _setup_500m_scenario(self):
+        user = make_user("prod_concurrente@t.co", "PRODUCCION")
+        tela = Producto.objects.create(
+            codigo="TEL-CONC-1",
+            nombre="Tela Denim Concurrencia",
+            tipo=inventory_catalog.RAW_MATERIAL,
+            categoria=inventory_catalog.CAT_FABRIC,
+            unidad="m",
+            stock_actual=Decimal("500.00"),
+            ancho_util=Decimal("1.50"),
+            composicion="100% algodón",
+        )
+        generico = Producto.objects.create(
+            codigo="PG-CONC-1",
+            nombre="Pantalón genérico concurrencia",
+            tipo=inventory_catalog.GENERIC_PANTS,
+            categoria=inventory_catalog.CAT_GENERIC,
+            unidad="unidad",
+        )
+        ref = Referencia.objects.create(
+            codigo="REF-CONC-1",
+            nombre="Jean Concurrencia H01",
+            ajuste="RECTO",
+            estado=reference_catalog.ACTIVE,
+        )
+        Variante.objects.create(referencia=ref, talla="30", color="Azul")
+        ficha = FichaTecnica.objects.create(referencia=ref, lavado="ENZIMATICO")
+        # 1,00 m por prenda sin merma -> cada orden de 330 prendas consume 330,00 m (total 660 m > 500 m).
+        FichaLinea.objects.create(ficha=ficha, producto=tela, cantidad=Decimal("1.000"), merma=Decimal("0.00"))
+        return user, tela, generico, ref
+
+    @unittest.skipUnless(
+        connection.vendor == "postgresql",
+        "La concurrencia multi-hilo con SELECT ... FOR UPDATE por fila se verifica sobre PostgreSQL.",
+    )
+    def test_h01_concurrencia_postgresql_dos_ordenes_simultaneas_solo_crea_una(self):
+        user, tela, generico, ref = self._setup_500m_scenario()
+        barrier = threading.Barrier(2)
+        url = reverse("produccion_ordenes")
+
+        def send_order():
+            try:
+                barrier.wait(timeout=5)
+                client = client_for(user)
+                response = client.post(
+                    url,
+                    {"referencia": ref.id, "cantidad": 330, "producto_resultado": generico.id},
+                    format="json",
+                )
+                return response.status_code
+            finally:
+                connection.close()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            f1 = pool.submit(send_order)
+            f2 = pool.submit(send_order)
+            statuses = [f1.result(timeout=15), f2.result(timeout=15)]
+
+        self.assertEqual(sorted(statuses), [201, 400], statuses)
+        tela.refresh_from_db()
+        self.assertEqual(tela.stock_actual, Decimal("170.00"))
+        self.assertEqual(OrdenProduccion.objects.count(), 1)
+        self.assertEqual(OrdenSalida.objects.count(), 1)
+        self.assertEqual(Lote.objects.count(), 1)
+        self.assertEqual(Movimiento.objects.filter(producto=tela).count(), 1)
+
+    def test_h01_dos_ordenes_330m_sobre_500m_no_dejan_stock_negativo_ni_orden_a_medias(self):
+        user, tela, generico, ref = self._setup_500m_scenario()
+        client = client_for(user)
+        url = reverse("produccion_ordenes")
+
+        first = client.post(url, {"referencia": ref.id, "cantidad": 330, "producto_resultado": generico.id}, format="json")
+        self.assertEqual(first.status_code, 201, first.content)
+        second = client.post(url, {"referencia": ref.id, "cantidad": 330, "producto_resultado": generico.id}, format="json")
+        self.assertEqual(second.status_code, 400, second.content)
+
+        tela.refresh_from_db()
+        self.assertEqual(tela.stock_actual, Decimal("170.00"))
+        self.assertEqual(OrdenProduccion.objects.count(), 1)
+        self.assertEqual(OrdenSalida.objects.count(), 1)
+        self.assertEqual(Lote.objects.count(), 1)
+        self.assertEqual(Movimiento.objects.filter(producto=tela).count(), 1)

@@ -4,7 +4,7 @@ from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 
 from apps.inventory.models import Movimiento
-from apps.inventory.tests import make_user
+from apps.core.testing import make_user
 from apps.users.models import CustomUser
 
 from .models import OrdenCompra, Recepcion

@@ -4,7 +4,7 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.inventory.tests import client_for, make_user
+from apps.core.testing import client_for, make_user
 
 from . import catalog, resources
 from .models import AsignacionEtapa, EtapaLote, Maquina, Operario
@@ -162,7 +162,8 @@ class CatalogoOperariosTests(ResourcesBase):
         operator = self.operator("Ana", ["CORTE"])
         (lot_id, _), order = self.lots()
         self.assign(lot_id, operario=operator.pk)
-        listed = lambda: self.api.get(self.list_url).json()[0]["ocupado_en"]
+        def listed():
+            return self.api.get(self.list_url).json()[0]["ocupado_en"]
         self.assertEqual(listed(), [])  # asignado a una etapa que no está en curso: no está ocupado
         self.act(lot_id, "iniciar")
         self.assertEqual(listed(), [f"{order['codigo']}-L01 · Corte"])

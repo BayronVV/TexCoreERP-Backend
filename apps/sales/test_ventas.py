@@ -9,7 +9,7 @@ from apps.finished import catalog as finished_catalog
 from apps.finished.models import MovimientoTerminado
 from apps.finished.test_terminado import FinishedBase
 from apps.inventory.models import Consecutivo
-from apps.inventory.tests import client_for, make_user
+from apps.core.testing import client_for, make_user
 
 from . import catalog
 from .invoicing import line_amounts, round_half_up

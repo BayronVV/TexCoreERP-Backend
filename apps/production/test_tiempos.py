@@ -8,7 +8,7 @@ from django.test import SimpleTestCase
 from django.urls import reverse
 from rest_framework.exceptions import ValidationError
 
-from apps.inventory.tests import client_for, make_user
+from apps.core.testing import client_for, make_user
 
 from . import catalog, tracking
 from .models import EtapaLote, EventoEtapa, Lote, OrdenProduccion

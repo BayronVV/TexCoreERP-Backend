@@ -1,7 +1,7 @@
 """
 Pruebas del motor de costos, tarifas de mano de obra y liquidación de órdenes (HU 4.6, TE-129 y TE-130).
 """
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 from django.db import connection
@@ -9,11 +9,10 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
-from apps.inventory import catalog as inventory_catalog
-from apps.inventory.tests import client_for, make_user
+from apps.core.testing import client_for, make_user
 
 from . import catalog, costing
-from .models import EtapaLote, Lote, OrdenProduccion, TarifaManoObra
+from .models import EtapaLote, TarifaManoObra
 from .test_ordenes import OrderBase
 
 

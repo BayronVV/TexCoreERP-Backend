@@ -1,12 +1,10 @@
 from decimal import Decimal
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
 from apps.inventory import catalog as inv_catalog
 from apps.inventory.models import Proveedor
 from apps.production import catalog
-from apps.production.models import Lote, RecetaLavado, RemisionLavanderia, RemisionLote
-from apps.users.models import CustomUser
+from apps.production.models import Lote, RecetaLavado
 
 
 class Command(BaseCommand):

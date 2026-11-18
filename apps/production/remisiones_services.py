@@ -1,7 +1,6 @@
 from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
-from rest_framework.exceptions import ValidationError
 
 from apps.inventory import catalog as inv_catalog
 from apps.inventory.models import Consecutivo, Proveedor

@@ -1,0 +1,27 @@
+[tool.ruff]
+line-length = 180
+target-version = "py312"
+exclude = [
+    ".venv",
+    "venv",
+    "site",
+    "*/migrations",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E402", "E501", "E741"]
+
+[tool.coverage.run]
+source = ["apps"]
+omit = [
+    "*/migrations/*",
+    "*/test*.py",
+    "*/tests.py",
+    "*/management/commands/seed_*",
+    "*/management/commands/generar_*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false

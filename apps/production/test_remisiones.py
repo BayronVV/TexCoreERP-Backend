@@ -5,7 +5,7 @@ from rest_framework.exceptions import ValidationError
 from apps.inventory import catalog as inv_catalog
 from apps.inventory.models import Proveedor
 from apps.production import catalog
-from apps.production.models import Lote, RecetaLavado, RemisionLavanderia
+from apps.production.models import RecetaLavado
 from apps.production.remisiones_services import (
     create_laundry_remission,
     get_available_lots_for_washing,

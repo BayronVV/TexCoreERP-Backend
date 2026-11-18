@@ -1,0 +1,97 @@
+name: Calidad continua (Backend)
+
+# Verifica linter, migraciones pendientes, esquema OpenAPI, cobertura, documentación,
+# auditoría de dependencias y ejecución real sobre PostgreSQL en cada push o PR.
+on:
+  push:
+    branches: [main, pruebas]
+  pull_request:
+    branches: [main, pruebas]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-backend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  calidad-y-pruebas:
+    name: Linter, migraciones, cobertura y docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DJANGO_DEBUG: "true"
+      DJANGO_SECRET_KEY: "ci-solo-pruebas-no-usar-en-produccion"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Instalar dependencias con restricciones fijadas
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt -c constraints.txt
+      - name: Verificar linter del backend (Ruff)
+        run: ruff check apps config
+      - name: Verificar que no existan migraciones pendientes
+        run: python manage.py makemigrations --check --dry-run
+      - name: Validar esquema OpenAPI (drf-spectacular)
+        run: python manage.py spectacular --file /tmp/openapi-schema.yml --validate --fail-on-warn
+      - name: Ejecutar suite completa con cobertura (SQLite)
+        run: |
+          coverage run manage.py test
+          coverage report --fail-under=85
+      - name: Compilar documentación estricta (MkDocs)
+        run: mkdocs build --strict
+        env:
+          NO_MKDOCS_2_WARNING: "true"
+      - name: Auditoría de dependencias de producción (pip-audit)
+        run: pip-audit -r requirements.txt
+
+  verificacion-postgres:
+    name: Verificación en PostgreSQL (bloqueos, concurrencia y vistas)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: texcore
+          POSTGRES_PASSWORD: texcore
+          POSTGRES_DB: texcore_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DJANGO_DEBUG: "true"
+      DJANGO_SECRET_KEY: "ci-postgres-solo-pruebas"
+      TEST_DATABASE_URL: "postgresql://texcore:texcore@localhost:5432/texcore_test"
+      DB_SSL_REQUIRE: "false"
+      TEST_DB_SSL_REQUIRE: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Instalar dependencias con restricciones fijadas
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt -c constraints.txt
+      - name: Ejecutar pruebas críticas sobre PostgreSQL real
+        run: >
+          python manage.py test
+          apps.core.test_postgres
+          apps.production
+          apps.quality
+          apps.finished
+          apps.sales
+          apps.shipping
+          apps.reports

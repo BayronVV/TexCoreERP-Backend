@@ -25,12 +25,14 @@ def refresh_materialized_views():
     """
     Refresca las vistas SQL materializadas en PostgreSQL.
     En SQLite son vistas regulares que se evalúan al instante, por lo que no requieren refresco.
+    Dentro de bloques atómicos (por ejemplo TestCase) PostgreSQL exige refrescar sin CONCURRENTLY.
     """
     if connection.vendor != "postgresql":
         return False
+    concurrently = "" if connection.in_atomic_block else "CONCURRENTLY "
     with connection.cursor() as cursor:
-        cursor.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY reportes_mv_produccion_ordenes;")
-        cursor.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY reportes_mv_ventas_referencias;")
+        cursor.execute(f"REFRESH MATERIALIZED VIEW {concurrently}reportes_mv_produccion_ordenes;")
+        cursor.execute(f"REFRESH MATERIALIZED VIEW {concurrently}reportes_mv_ventas_referencias;")
     return True
 
 

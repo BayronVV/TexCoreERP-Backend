@@ -10,7 +10,7 @@ from rest_framework.test import APIClient
 
 from apps.inventory import catalog as inventory_catalog
 from apps.inventory.models import OrdenSalida, Producto
-from apps.inventory.tests import client_for, make_user
+from apps.core.testing import client_for, make_user
 
 from . import catalog
 from .models import FichaLinea, FichaTecnica, Referencia

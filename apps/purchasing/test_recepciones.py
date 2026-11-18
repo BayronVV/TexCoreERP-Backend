@@ -6,7 +6,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from apps.inventory.models import Movimiento
-from apps.inventory.tests import client_for, make_user, today
+from apps.core.testing import client_for, make_user, today
 
 from .models import OrdenCompra, Recepcion, RecepcionLinea
 from .test_ordenes_compra import PurchasingBase

@@ -29,3 +29,9 @@ media/
 
 # Sitio de documentación generado (mkdocs build)
 site/
+
+# Pruebas, cobertura y linter
+.coverage
+coverage.xml
+htmlcov/
+.ruff_cache/

@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.inventory.tests import client_for, make_user
+from apps.core.testing import client_for, make_user
 
 from . import catalog, monitor, tracking
 from .models import EtapaLote, Lote, OrdenProduccion
@@ -449,3 +449,34 @@ class DoneWindowTests(MonitorBase):
             response = self.api.get(self.monitor_url, {"terminadas_dias": bad})
             self.assertEqual(response.status_code, 400, bad)
             self.assertIn("terminadas_dias", response.json())
+
+
+class TransitionApiGuardTests(MonitorBase):
+    """Verifica por API que un lote no puede saltar de Planeada a Terminada sin cumplir sus etapas (H03)."""
+
+    def test_h03_rechaza_pasar_lote_de_planeada_a_terminada_sin_cumplir_etapas(self):
+        lot = self.lots_of(30, 1)[0]
+        complete_url = reverse("produccion_lote_accion", args=[lot.id, "completar"])
+
+        # Intento directo desde PLANEADA hacia Terminada (completar sin etapa iniciada)
+        rejected = self.api.post(complete_url, {}, format="json")
+        self.assertEqual(rejected.status_code, 400, rejected.content)
+        self.assertIn("etapa en curso", rejected.json()["accion"][0])
+
+        # El lote sigue en la columna PLANEADA y todas sus etapas siguen PENDIENTE
+        board = self.board()
+        self.assertEqual(self.codes(board, "PLANEADA"), [lot.codigo])
+        self.assertEqual(self.codes(board, "TERMINADA"), [])
+        self.assertEqual(
+            list(EtapaLote.objects.filter(lote=lot).values_list("estado", flat=True)),
+            [catalog.STAGE_PENDING, catalog.STAGE_PENDING, catalog.STAGE_PENDING],
+        )
+
+        # Incluso iniciando solo la primera etapa (Corte), completar no lo pasa a Terminada sino a En proceso
+        start_url = reverse("produccion_lote_accion", args=[lot.id, "iniciar"])
+        self.assertEqual(self.api.post(start_url, {}, format="json").status_code, 200)
+        partial = self.api.post(complete_url, {}, format="json")
+        self.assertEqual(partial.status_code, 200, partial.content)
+        board_after = self.board()
+        self.assertEqual(self.codes(board_after, "TERMINADA"), [])
+        self.assertEqual(self.codes(board_after, "EN_PROCESO"), [lot.codigo])

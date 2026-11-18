@@ -13,7 +13,6 @@ from django.core.management.base import BaseCommand, CommandError
 from rest_framework.exceptions import ValidationError
 
 from apps.production.models import LoteTalla
-from apps.quality.models import Inspeccion
 from apps.references.models import Variante
 
 from ... import services

@@ -5,6 +5,7 @@ from apps.sales import catalog as sales_catalog
 from apps.sales.test_ventas import SalesBase
 
 from .models import VistaProduccionOrden, VistaVentasReferencia
+from .services import refresh_materialized_views
 
 
 class ReportesGerencialesTests(SalesBase):
@@ -17,6 +18,7 @@ class ReportesGerencialesTests(SalesBase):
         self.invoice2 = self.sell([(self.v32, 2, 0)], customer=self.retail).json()
 
     def test_vistas_sql_analiticas_contienen_produccion_y_ventas(self):
+        refresh_materialized_views()
         prod_rows = list(VistaProduccionOrden.objects.all())
         self.assertEqual(len(prod_rows), 1)
         self.assertEqual(prod_rows[0].referencia_id, self.ref["id"])

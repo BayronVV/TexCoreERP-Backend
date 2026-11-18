@@ -3,37 +3,20 @@ import tempfile
 from datetime import timedelta
 from decimal import Decimal
 
-from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.core.testing import PNG, client_for, make_user, today
 from apps.references import catalog as reference_catalog
 from apps.references.models import FichaLinea, FichaTecnica, Referencia
 
 from . import catalog
 from .models import Consecutivo, Movimiento, OrdenSalida, Producto, Proveedor
 
-User = get_user_model()
-PASSWORD = "Passw0rd!23"
-PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 32
 TMP_MEDIA = tempfile.mkdtemp()
-
-
-def make_user(email, role):
-    return User.objects.create_user(username=email, email=email, password=PASSWORD, role_id=role)
-
-
-def client_for(user):
-    client = APIClient()
-    client.force_authenticate(user)
-    return client
-
-
-def today():
-    return timezone.localdate().isoformat()
 
 
 @override_settings(MEDIA_ROOT=TMP_MEDIA)

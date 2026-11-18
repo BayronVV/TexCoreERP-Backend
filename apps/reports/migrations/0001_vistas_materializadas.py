@@ -6,7 +6,7 @@ Migración que crea las vistas SQL materializadas para el tablero de reportes ge
 En PostgreSQL se crean como `MATERIALIZED VIEW` con índices para lecturas rápidas y refresco eficiente.
 En SQLite (entorno local sin servidor o pruebas unitarias) se crean como `VIEW` estándar con el mismo esquema.
 """
-from django.db import migrations
+from django.db import migrations, models
 
 
 PRODUCTION_QUERY = """
@@ -128,5 +128,61 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.CreateModel(
+            name="VistaProduccionOrden",
+            fields=[
+                ("orden_id", models.BigIntegerField(primary_key=True, serialize=False)),
+                ("codigo", models.CharField(max_length=20)),
+                ("fecha_salida", models.DateField()),
+                ("estado_orden", models.CharField(max_length=12)),
+                ("responsable", models.CharField(max_length=120)),
+                ("referencia_id", models.BigIntegerField()),
+                ("referencia_codigo", models.CharField(max_length=20)),
+                ("referencia_nombre", models.CharField(max_length=150)),
+                ("tipo_jean", models.CharField(max_length=15)),
+                ("prendas_planificadas", models.IntegerField()),
+                ("total_lotes", models.IntegerField()),
+                ("prendas_en_lotes", models.IntegerField()),
+                ("prendas_aptas", models.IntegerField()),
+                ("prendas_marras", models.IntegerField()),
+            ],
+            options={
+                "db_table": "reportes_mv_produccion_ordenes",
+                "ordering": ["-fecha_salida", "-orden_id"],
+                "managed": False,
+            },
+        ),
+        migrations.CreateModel(
+            name="VistaVentasReferencia",
+            fields=[
+                ("linea_id", models.BigIntegerField(primary_key=True, serialize=False)),
+                ("factura_id", models.BigIntegerField()),
+                ("numero_factura", models.CharField(max_length=20)),
+                ("fecha", models.DateField()),
+                ("estado_factura", models.CharField(max_length=10)),
+                ("estado_cobro", models.CharField(max_length=12)),
+                ("cliente_tipo", models.CharField(max_length=12)),
+                ("cliente_nombre", models.CharField(max_length=150)),
+                ("transportadora", models.CharField(max_length=16)),
+                ("referencia_id", models.BigIntegerField()),
+                ("referencia_codigo", models.CharField(max_length=20)),
+                ("referencia_nombre", models.CharField(max_length=150)),
+                ("tipo_jean", models.CharField(max_length=15)),
+                ("talla", models.CharField(max_length=10)),
+                ("color", models.CharField(max_length=60)),
+                ("unidades", models.IntegerField()),
+                ("subtotal", models.BigIntegerField()),
+                ("descuento", models.BigIntegerField()),
+                ("base_gravable", models.BigIntegerField()),
+                ("iva", models.BigIntegerField()),
+                ("total", models.BigIntegerField()),
+                ("costo_estimado", models.BigIntegerField()),
+            ],
+            options={
+                "db_table": "reportes_mv_ventas_referencias",
+                "ordering": ["-fecha", "-linea_id"],
+                "managed": False,
+            },
+        ),
         migrations.RunPython(create_materialized_views, drop_materialized_views),
     ]

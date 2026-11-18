@@ -16,7 +16,7 @@ Cómo instalar, configurar y operar TexCore. Para publicar en internet ve a
 cd backend
 python -m venv .venv
 .venv/Scripts/activate            # Linux/macOS: source .venv/bin/activate
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt -c constraints.txt
 cp .env.example .env              # Windows: copy .env.example .env
 ```
 
@@ -34,7 +34,7 @@ fichas técnicas, compras, lavandería, calidad, producto terminado, ventas, env
 [convenciones](convenciones-base-de-datos.md#4-seguridad-en-supabase)). En Render corre solo en cada arranque (ver [despliegue](despliegue-render.md)).
 
 Para trabajar **sin conexión** deja `DATABASE_URL` vacío: el sistema usa un archivo SQLite local (`db.sqlite3`, ignorado por
-git). Así se prueba sin tocar Supabase. Las pruebas automáticas siempre usan SQLite, aunque `DATABASE_URL` esté definida.
+git). Así se prueba sin tocar Supabase. Por defecto, las pruebas automáticas (`manage.py test`) usan SQLite y cifrado rápido (`MD5PasswordHasher` solo en pruebas), salvo que definas `TEST_DATABASE_URL` para probar contra un PostgreSQL dedicado.
 
 ## Instalar el frontend
 
@@ -56,6 +56,7 @@ La variable `VITE_API_URL` apunta al backend (por defecto `http://localhost:8000
 | `DJANGO_DEBUG` | `true` solo en desarrollo. |
 | `DJANGO_ALLOWED_HOSTS` | Hosts permitidos, separados por coma. |
 | `DATABASE_URL` | Cadena de Supabase (*Session pooler*). Vacía = SQLite. |
+| `TEST_DATABASE_URL`, `TEST_DB_SSL_REQUIRE` | Opcional: cadena PostgreSQL dedicada para correr `manage.py test` sin tocar `DATABASE_URL` (p. ej. en CI o en un Postgres local). |
 | `CORS_ALLOWED_ORIGINS` | Orígenes del frontend autorizados. |
 | `NUM_PROXIES` | Proxies delante del backend (1 en Render). |
 | `API_DOCS_ENABLED` | `false` oculta `/api/docs/`. Por defecto `true`. |
@@ -92,8 +93,11 @@ La lista completa y los valores por defecto están en `.env.example` y en el [RE
 | `python manage.py seed_demo_stock` | Entre 12 y 20 unidades en cada talla y color de las referencias activas, por ajuste manual (motivo «Sobrante o hallazgo», con su comprobante `AJT`). Solo sube lo que está por debajo de la meta. |
 | `python manage.py seed_demo_completo` | **Todo en uno**: encadena inventario, producción, recursos, tarifas, compras, calidad, producto terminado, stock por talla y color, ventas y envíos, en su orden; salta los módulos que ya tienen datos y al final imprime cuántos registros tiene cada módulo (falla si alguno quedó vacío). Con `--permitir-produccion` corre también con `DJANGO_DEBUG=false`: es la siembra de los datos **simulados** de la demostración sobre la base compartida; no borra nada ni toca usuarios, roles ni permisos. Es el comando que dispara `SEED_DEMO_ON_DEPLOY`. |
 | `python manage.py generar_erd --salida docs/modelo-de-datos.md` | Regenera el [modelo de datos](modelo-de-datos.md). |
-| `python manage.py test` | Ejecuta la suite de pruebas (928). |
-| `python manage.py spectacular --validate --file schema.yml` | Valida y exporta el esquema OpenAPI (borra después `schema.yml`). |
+| `python manage.py test` | Ejecuta la suite de pruebas (947 en backend). |
+| `python manage.py makemigrations --check --dry-run` | Verifica que no existan migraciones pendientes. |
+| `ruff check apps config` | Ejecuta el linter estático del backend. |
+| `coverage run manage.py test && coverage report` | Mide la cobertura real sobre `apps/`. |
+| `python manage.py spectacular --validate --fail-on-warn --file schema.yml` | Valida y exporta el esquema OpenAPI (borra después `schema.yml`). |
 
 ## Datos de demostración
 
@@ -159,20 +163,29 @@ Para encenderlo en local: pide la clave en Track123 (Developers > API), escríbe
 
 **Las pruebas automáticas jamás llaman a la API real:** al correr `manage.py test` el rastreo queda apagado y el transporte HTTP se reemplaza por respuestas guardadas.
 
-## Pruebas
+## Pruebas y calidad continua
 
 ```bash
-python manage.py test                      # todo
-python manage.py test apps.users           # solo un módulo
-python manage.py test apps.inventory -v 2  # con detalle
-python manage.py test --parallel 4         # en paralelo, más rápido
+python manage.py test                           # suite completa en SQLite (~3,5 min)
+python manage.py test apps.users                # solo un módulo
+python manage.py test apps.core.test_postgres   # verificaciones de PostgreSQL
+ruff check apps config                          # análisis estático del backend
+python manage.py makemigrations --check --dry-run
+coverage run manage.py test && coverage report  # medición de cobertura (96 %)
+pip-audit -r requirements.txt                   # auditoría de dependencias
 ```
 
-La suite cubre `users`, `inventory`, `references`, `production` (con lavandería), `purchasing`, `quality`, `finished`, `sales`, `shipping`, `reports` y `core`. Las pruebas de los comandos de demostración
-(`test_seed*.py`) verifican que sean idempotentes. En el frontend, `npm test` prueba la lógica pura de las pantallas (reparto de
-lotes, tablero, costeo, recursos, compras, calidad, producto terminado...).
+Para correr las pruebas críticas contra una base **PostgreSQL** real (por ejemplo local con Docker o en CI) sin tocar Supabase:
 
-Las pruebas usan siempre SQLite, nunca la base en la nube.
+```bash
+TEST_DATABASE_URL="postgresql://texcore:texcore@localhost:5432/texcore_test" \
+  TEST_DB_SSL_REQUIRE=false \
+  python manage.py test apps.core.test_postgres apps.production apps.quality apps.finished apps.sales apps.shipping apps.reports
+```
+
+La suite cubre `users`, `inventory`, `references`, `production` (con lavandería y concurrencia), `purchasing`, `quality`, `finished`, `sales`, `shipping`, `reports` y `core`. En el frontend, `npm test` valida las funciones puras, la exportación Excel/CSV, el cliente HTTP (`fetch`), las rutas protegidas y la sincronía menú–enrutamiento (`234` pruebas), junto con `npm run lint` (`oxlint`) y `npm run build`.
+
+El detalle de tiempos antes/después, el reporte de cobertura por historia de usuario (H06) y los flujos de GitHub Actions están en [calidad y cobertura de pruebas](calidad-y-cobertura.md).
 
 ## Documentación
 

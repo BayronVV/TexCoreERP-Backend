@@ -7,9 +7,10 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
+from apps.core.testing import client_for, make_user, today
 from apps.inventory import catalog as inventory_catalog
 from apps.inventory.models import Proveedor
-from apps.inventory.tests import InventoryBase, client_for, make_user, today
+from apps.inventory.tests import InventoryBase
 
 from . import catalog
 from .models import LineaCompra, OrdenCompra

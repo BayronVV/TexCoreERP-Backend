@@ -6,7 +6,7 @@ from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 
 from apps.core.management.commands import seed_demo_completo as seed
-from apps.inventory.tests import make_user
+from apps.core.testing import make_user
 from apps.production.models import TarifaManoObra
 from apps.sales.models import FacturaVenta, MovimientoCartera
 from apps.shipping.models import Guia

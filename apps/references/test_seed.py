@@ -5,7 +5,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 
-from apps.inventory.tests import make_user
+from apps.core.testing import make_user
 from apps.references.management.commands.seed_demo_referencias import (
     REFERENCES,
     jean_image,

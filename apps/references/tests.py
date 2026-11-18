@@ -5,7 +5,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
-from apps.inventory.tests import PNG, client_for, make_user
+from apps.core.testing import PNG, client_for, make_user
 from apps.users.models import ModulePermission, Role
 
 from . import catalog

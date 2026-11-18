@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from apps.inventory import catalog as inventory_catalog
 from apps.inventory.models import Consecutivo
-from apps.inventory.tests import client_for, make_user
+from apps.core.testing import client_for, make_user
 from apps.production.models import LoteTalla
 from apps.quality.models import Inspeccion
 from apps.quality.test_calidad import QualityBase

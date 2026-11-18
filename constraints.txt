@@ -59,7 +59,7 @@ python-dotenv==1.2.4
 PyYAML==6.0.3
 pyyaml_env_tag==1.1
 referencing==0.37.0
-reportlab==5.1.0
+reportlab==4.5.1
 requests==2.34.2
 rich==15.0.0
 rpds-py==2026.9.1
@@ -73,3 +73,4 @@ tzdata==2026.4
 uritemplate==4.2.0
 urllib3==2.8.0
 watchdog==6.0.0
+

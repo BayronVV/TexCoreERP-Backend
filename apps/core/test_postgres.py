@@ -109,12 +109,13 @@ class PostgresVerificationTests(TransactionTestCase):
         rl = RemisionLote.objects.create(remision=remision, lote=lote, cantidad=20, receta=None)
 
         if connection.vendor == "postgresql":
-            sql = str(
-                RemisionLote.objects.select_for_update(of=("self",))
-                .select_related("lote", "receta")
-                .filter(pk=rl.pk)
-                .query
-            )
+            with transaction.atomic():
+                sql = str(
+                    RemisionLote.objects.select_for_update(of=("self",))
+                    .select_related("lote", "receta")
+                    .filter(pk=rl.pk)
+                    .query
+                )
             self.assertIn("LEFT OUTER JOIN", sql)
 
         recepcion = create_laundry_reception(

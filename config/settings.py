@@ -139,6 +139,7 @@ REST_FRAMEWORK = {
     # Una vista que no declare required_permissions queda cerrada. Las públicas
     # (login, registro, recuperación, health) declaran AllowAny.
     "DEFAULT_PERMISSION_CLASSES": ["apps.core.permissions.HasPermission"],
+    "EXCEPTION_HANDLER": "apps.core.exceptions.api_exception_handler",
     "UNAUTHENTICATED_USER": None,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     # Proxies delante del backend. 0 = usar la IP de la conexión e ignorar
@@ -205,6 +206,8 @@ SPECTACULAR_SETTINGS = {
         "EstadoCobroEnum": "apps.sales.catalog.COLLECT_STATES",
         "EstadoGuiaEnum": "apps.shipping.catalog.GUIDE_STATES",
         "EstadoOrdenCompraEnum": "apps.purchasing.catalog.ORDER_STATES",
+        "EstadoConciliacionCarteraEnum": "apps.sales.catalog.CONCILIATION_STATES",
+        "TipoMovimientoTerminadoEnum": "apps.finished.catalog.MOVEMENT_TYPES",
     },
     "SWAGGER_UI_SETTINGS": {"persistAuthorization": True, "displayRequestDuration": True},
 }
@@ -289,3 +292,51 @@ TRACK123_QUOTA_RESERVE = int(os.getenv("TRACK123_QUOTA_RESERVE", "10"))  # no se
 # Con SEED_DEMO_ON_DEPLOY=true, el `migrate --noinput` del arranque de Render corre al final `seed_demo_completo --permitir-produccion`
 # (idempotente, no borra nada, nunca bloquea el arranque). Los datos del sistema son simulados. Se apaga solo al correr las pruebas.
 SEED_DEMO_ON_DEPLOY = env_bool("SEED_DEMO_ON_DEPLOY", False) and "test" not in sys.argv
+
+# --- Registro de errores y observabilidad (TE-181) -----------------------------
+# En Render los logs estándar se capturan desde consola (stdout/stderr) incluso con DJANGO_DEBUG=false.
+DJANGO_LOG_LEVEL = os.getenv("DJANGO_LOG_LEVEL", "INFO").upper()
+DJANGO_DB_LOG_LEVEL = os.getenv("DJANGO_DB_LOG_LEVEL", "WARNING").upper()
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "console": {
+            "format": "[{asctime}] {levelname} {name}: {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "console",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": DJANGO_LOG_LEVEL,
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": DJANGO_LOG_LEVEL,
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "django.db.backends": {
+            "handlers": ["console"],
+            "level": DJANGO_DB_LOG_LEVEL,
+            "propagate": False,
+        },
+        "apps": {
+            "handlers": ["console"],
+            "level": DJANGO_LOG_LEVEL,
+            "propagate": False,
+        },
+    },
+}

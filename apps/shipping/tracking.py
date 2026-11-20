@@ -11,6 +11,7 @@ Principios:
 from datetime import datetime, timedelta
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.http import Http404
 from django.utils import timezone
@@ -115,64 +116,109 @@ def _result_for(results, number):
 def refresh_tracking(*, guide_id, user, force=False, client=None):
     """Consulta a Track123 el estado de una guía, lo guarda y lo aplica con las reglas de transición.
 
-    Devuelve `(guía, aviso)`: `aviso` explica lo que se ignoró o no se pudo hacer. La llamada HTTP se hace fuera de la transacción.
+    Evita consultas concurrentes duplicadas sobre la misma guía mediante exclusión mutua y reserva en BD antes de llamar
+    a la API externa fuera de transacción.
     """
-    guide = Guia.objects.select_related("factura").filter(pk=guide_id).first()
-    if guide is None:
-        raise Http404("La guía no existe.")
-    if not guide.vigente or guide.estado == catalog.VOIDED:
-        fail("Esta guía está anulada o fue reemplazada: no se rastrea.", "estado")
-    if not supports_tracking(guide):
-        fail(f"El rastreo automático solo está disponible para Interrapidísimo; los estados de {catalog.CARRIER_NAMES[guide.transportadora]} se cambian a mano.", "transportadora")
-    client = client or track123.get_client()
-    if client is None:
-        raise TrackingUnavailable("El rastreo con Track123 está apagado o sin clave. La guía conserva su último estado.")
-    now = timezone.now()
-    if not force and guide.rastreo_proxima_consulta and guide.rastreo_proxima_consulta > now:
-        seconds = int((guide.rastreo_proxima_consulta - now).total_seconds())
-        raise TrackingCooldown({"detail": [f"Esta guía se consultó hace poco: intenta de nuevo en {max(seconds // 60, 1)} min."], "segundos": seconds})
-    if not force and guide.estado in (catalog.DELIVERED, catalog.RETURNED) and guide.rastreo_respuesta:
-        fail("La guía ya llegó a un estado final y su última respuesta está guardada.", "estado")
+    lock_key = f"track123:inflight:{guide_id}"
+    lease_seconds = max(int(getattr(settings, "TRACK123_TIMEOUT", 10)) * 3, 60)
+    if not cache.add(lock_key, True, timeout=lease_seconds):
+        raise TrackingCooldown(
+            {"detail": ["Esta guía ya se está consultando en este momento: intenta de nuevo en unos segundos."], "segundos": 10}
+        )
 
-    code = catalog.TRACKING_COURIERS[guide.transportadora]
-    item = {"trackNo": guide.numero_guia, "courierCode": code}
-    warning = ""
+    previous_next_check = None
+    lease_until = None
     try:
-        if not guide.rastreo_registrado:
-            quota = client.quota()
-            if quota["restante"] <= settings.TRACK123_QUOTA_RESERVE:
-                fail(f"La cuota de registros de Track123 está en la reserva ({quota['restante']} restantes): no se inscriben guías nuevas.", "rastreo")
-            _, rejected = client.register([item])
-            bad = [r for r in rejected if (r.get("error") or {}).get("code") != catalog.TRACKING_ALREADY_REGISTERED_CODE]
-            if bad:
-                fail("Track123 rechazó la guía: " + str((bad[0].get("error") or {}).get("msg", "motivo desconocido")), "rastreo")
-        results, rejected = client.query([item])
-    except track123.Track123Error as error:
-        raise TrackingUnavailable(f"{error} La guía conserva su último estado.") from error
+        # Fase 1: validar y reservar ventana temporal bajo bloqueo de fila para coordinar workers distintos.
+        with transaction.atomic():
+            guide = Guia.objects.select_for_update(of=("self",)).select_related("factura").filter(pk=guide_id).first()
+            if guide is None:
+                raise Http404("La guía no existe.")
+            if not guide.vigente or guide.estado == catalog.VOIDED:
+                fail("Esta guía está anulada o fue reemplazada: no se rastrea.", "estado")
+            if not supports_tracking(guide):
+                fail(
+                    f"El rastreo automático solo está disponible para Interrapidísimo; los estados de {catalog.CARRIER_NAMES[guide.transportadora]} se cambian a mano.",
+                    "transportadora",
+                )
+            client = client or track123.get_client()
+            if client is None:
+                raise TrackingUnavailable("El rastreo con Track123 está apagado o sin clave. La guía conserva su último estado.")
+            now = timezone.now()
+            if not force and guide.rastreo_proxima_consulta and guide.rastreo_proxima_consulta > now:
+                seconds = int((guide.rastreo_proxima_consulta - now).total_seconds())
+                raise TrackingCooldown(
+                    {"detail": [f"Esta guía se consultó hace poco: intenta de nuevo en {max(seconds // 60, 1)} min."], "segundos": seconds}
+                )
+            if not force and guide.estado in (catalog.DELIVERED, catalog.RETURNED) and guide.rastreo_respuesta:
+                fail("La guía ya llegó a un estado final y su última respuesta está guardada.", "estado")
 
-    result = _result_for(results, guide.numero_guia)
-    not_registered = any(catalog.TRACKING_NOT_REGISTERED in str((r.get("error") or {}).get("msg", "")) for r in rejected)
-    with transaction.atomic():
-        guide = lock_guide(guide.id)
-        guide.rastreo_registrado = not not_registered
-        guide.rastreo_consultado_en = now
-        guide.rastreo_proxima_consulta = now + timedelta(minutes=settings.TRACK123_COOLDOWN_MINUTES)
-        if result is not None:
-            guide.rastreo_estado = str(result.get("transitStatus") or "")
-            guide.rastreo_subestado = str(result.get("transitSubStatus") or "")
-            guide.rastreo_respuesta = result
-            guide.rastreo_sintetico = False
-        guide.save(update_fields=["rastreo_registrado", "rastreo_consultado_en", "rastreo_proxima_consulta", "rastreo_estado", "rastreo_subestado",
-                                  "rastreo_respuesta", "rastreo_sintetico", "updated_at"])
-        if result is None:
-            return guide, "Track123 no devolvió información para esta guía: se conserva el último estado."
-        target = map_status(result.get("transitStatus"), result.get("transitSubStatus"))
-        if target is None:
-            return guide, "Sin información de la transportadora todavía: se conserva el último estado."
-        if target == guide.estado:
-            return guide, warning
-        when = parse_time(result.get("deliveredTime")) if target == catalog.DELIVERED else None
-        if advance_to(guide, target, describe(result) or catalog.STATE_NAMES[target], catalog.ORIGIN_TRACK123, user, when) is None:
-            warning = (f"La transportadora reporta «{catalog.STATE_NAMES[target].lower()}», pero la guía está «{catalog.STATE_NAMES[guide.estado].lower()}» "
-                       "y esa transición no se aplica automáticamente.")
-    return guide, warning
+            previous_next_check = guide.rastreo_proxima_consulta
+            lease_until = now + timedelta(seconds=lease_seconds)
+            guide.rastreo_proxima_consulta = lease_until
+            guide.save(update_fields=["rastreo_proxima_consulta", "updated_at"])
+            guide_number = guide.numero_guia
+            guide_registered = guide.rastreo_registrado
+            code = catalog.TRACKING_COURIERS[guide.transportadora]
+
+        # Fase 2: llamada HTTP externa fuera de la transacción de base de datos.
+        item = {"trackNo": guide_number, "courierCode": code}
+        warning = ""
+        try:
+            if not guide_registered:
+                quota = client.quota()
+                if quota["restante"] <= settings.TRACK123_QUOTA_RESERVE:
+                    fail(
+                        f"La cuota de registros de Track123 está en la reserva ({quota['restante']} restantes): no se inscriben guías nuevas.",
+                        "rastreo",
+                    )
+                _, rejected = client.register([item])
+                bad = [r for r in rejected if (r.get("error") or {}).get("code") != catalog.TRACKING_ALREADY_REGISTERED_CODE]
+                if bad:
+                    fail("Track123 rechazó la guía: " + str((bad[0].get("error") or {}).get("msg", "motivo desconocido")), "rastreo")
+            results, rejected = client.query([item])
+        except track123.Track123Error as error:
+            Guia.objects.filter(pk=guide_id, rastreo_proxima_consulta=lease_until).update(
+                rastreo_proxima_consulta=previous_next_check
+            )
+            raise TrackingUnavailable(f"{error} La guía conserva su último estado.") from error
+        except Exception:
+            Guia.objects.filter(pk=guide_id, rastreo_proxima_consulta=lease_until).update(
+                rastreo_proxima_consulta=previous_next_check
+            )
+            raise
+
+        # Fase 3: guardar resultado y aplicar transición bajo bloqueo de fila.
+        result = _result_for(results, guide_number)
+        not_registered = any(catalog.TRACKING_NOT_REGISTERED in str((r.get("error") or {}).get("msg", "")) for r in rejected)
+        finished_at = timezone.now()
+        with transaction.atomic():
+            guide = lock_guide(guide_id)
+            guide.rastreo_registrado = not not_registered
+            guide.rastreo_consultado_en = finished_at
+            guide.rastreo_proxima_consulta = finished_at + timedelta(minutes=settings.TRACK123_COOLDOWN_MINUTES)
+            if result is not None:
+                guide.rastreo_estado = str(result.get("transitStatus") or "")
+                guide.rastreo_subestado = str(result.get("transitSubStatus") or "")
+                guide.rastreo_respuesta = result
+                guide.rastreo_sintetico = False
+            guide.save(update_fields=[
+                "rastreo_registrado", "rastreo_consultado_en", "rastreo_proxima_consulta", "rastreo_estado",
+                "rastreo_subestado", "rastreo_respuesta", "rastreo_sintetico", "updated_at",
+            ])
+            if result is None:
+                return guide, "Track123 no devolvió información para esta guía: se conserva el último estado."
+            target = map_status(result.get("transitStatus"), result.get("transitSubStatus"))
+            if target is None:
+                return guide, "Sin información de la transportadora todavía: se conserva el último estado."
+            if target == guide.estado:
+                return guide, warning
+            when = parse_time(result.get("deliveredTime")) if target == catalog.DELIVERED else None
+            if advance_to(guide, target, describe(result) or catalog.STATE_NAMES[target], catalog.ORIGIN_TRACK123, user, when) is None:
+                warning = (
+                    f"La transportadora reporta «{catalog.STATE_NAMES[target].lower()}», pero la guía está «{catalog.STATE_NAMES[guide.estado].lower()}» "
+                    "y esa transición no se aplica automáticamente."
+                )
+        return guide, warning
+    finally:
+        cache.delete(lock_key)

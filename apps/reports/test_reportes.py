@@ -1,11 +1,14 @@
 """Pruebas del módulo de reportes gerenciales: vistas SQL materializadas, filtros avanzados y permisos."""
+from unittest import mock
+
+from django.db import DatabaseError
 from django.urls import reverse
 
 from apps.sales import catalog as sales_catalog
 from apps.sales.test_ventas import SalesBase
 
 from .models import VistaProduccionOrden, VistaVentasReferencia
-from .services import refresh_materialized_views
+from .services import clear_views_dirty, mark_views_dirty, refresh_materialized_views
 
 
 class ReportesGerencialesTests(SalesBase):
@@ -102,3 +105,46 @@ class ReportesGerencialesTests(SalesBase):
         res_refresh = self.manager.post(reverse("reportes-refrescar"))
         self.assertEqual(res_refresh.status_code, 200)
         self.assertIn("refreshed", res_refresh.json())
+
+    def test_fechas_y_referencia_invalidas_responden_400_con_mensaje(self):
+        url = reverse("reportes-gerencial")
+        bad_desde = self.manager.get(url, {"desde": "abc"})
+        self.assertEqual(bad_desde.status_code, 400)
+        self.assertIn("desde", bad_desde.json())
+
+        bad_hasta = self.manager.get(url, {"hasta": "2026-99-99"})
+        self.assertEqual(bad_hasta.status_code, 400)
+        self.assertIn("hasta", bad_hasta.json())
+
+        inverted = self.manager.get(url, {"desde": "2026-12-31", "hasta": "2026-01-01"})
+        self.assertEqual(inverted.status_code, 400)
+        self.assertIn("posterior", str(inverted.json()["desde"][0]))
+
+        bad_ref = self.manager.get(url, {"referencia": "no-es-id"})
+        self.assertEqual(bad_ref.status_code, 400)
+        self.assertIn("referencia", bad_ref.json())
+
+    def test_abrir_reporte_dos_veces_seguidas_no_refresca_dos_veces(self):
+        clear_views_dirty()
+        url = reverse("reportes-gerencial")
+        with mock.patch("apps.reports.services.refresh_materialized_views", wraps=refresh_materialized_views) as refresh_spy:
+            first = self.manager.get(url)
+            second = self.manager.get(url)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(refresh_spy.call_count, 0)
+
+        mark_views_dirty()
+        with mock.patch("apps.reports.services.refresh_materialized_views", wraps=refresh_materialized_views) as refresh_spy:
+            after_change = self.manager.get(url)
+            repeated = self.manager.get(url)
+        self.assertEqual(after_change.status_code, 200)
+        self.assertEqual(repeated.status_code, 200)
+        self.assertEqual(refresh_spy.call_count, 1)
+
+    def test_error_al_refrescar_vistas_responde_503_controlado(self):
+        with mock.patch("apps.reports.services.refresh_materialized_views", side_effect=DatabaseError("fallo simulado")):
+            response = self.manager.post(reverse("reportes-refrescar"))
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json()["refreshed"])
+        self.assertIn("No fue posible actualizar", response.json()["detail"])

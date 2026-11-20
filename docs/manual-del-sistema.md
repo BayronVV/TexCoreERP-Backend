@@ -58,8 +58,9 @@ La variable `VITE_API_URL` apunta al backend (por defecto `http://localhost:8000
 | `DATABASE_URL` | Cadena de Supabase (*Session pooler*). Vacía = SQLite. |
 | `TEST_DATABASE_URL`, `TEST_DB_SSL_REQUIRE` | Opcional: cadena PostgreSQL dedicada para correr `manage.py test` sin tocar `DATABASE_URL` (p. ej. en CI o en un Postgres local). |
 | `CORS_ALLOWED_ORIGINS` | Orígenes del frontend autorizados. |
-| `NUM_PROXIES` | Proxies delante del backend (1 en Render). |
-| `API_DOCS_ENABLED` | `false` oculta `/api/docs/`. Por defecto `true`. |
+| `NUM_PROXIES`, `THROTTLE_*` | Proxies delante del backend (1 en Render) y límites de tasa (`login`, `register`, `password_reset`, `password_reset_check`). |
+| `API_DOCS_ENABLED`, `SECURE_HSTS_SECONDS` | Visibilidad de `/api/docs/` (`true` por defecto) y cabecera HSTS cuando `DJANGO_DEBUG=false`. |
+| `DJANGO_LOG_LEVEL`, `DJANGO_DB_LOG_LEVEL` | Niveles del registro en consola (`INFO` para la aplicación y `WARNING` para consultas SQL por defecto). |
 | `APP_ENV` | Nombre del entorno que muestra `/api/health/` (`local`, `dev`, `prod`). |
 | `DB_SSL_REQUIRE`, `DB_CONN_MAX_AGE` | SSL de la base (`true` en Supabase) y segundos que se reutiliza una conexión (`0` para no agotar el pool). |
 | `EMAIL_*`, `DEFAULT_FROM_EMAIL`, `FRONTEND_URL` | Envío de correo para recuperar la contraseña y armar el enlace. |
@@ -163,6 +164,15 @@ Para encenderlo en local: pide la clave en Track123 (Developers > API), escríbe
 
 **Las pruebas automáticas jamás llaman a la API real:** al correr `manage.py test` el rastreo queda apagado y el transporte HTTP se reemplaza por respuestas guardadas.
 
+## Observabilidad y manejo global de errores (TE-181)
+
+- **Registro hacia la consola de Render (`LOGGING`):** todas las trazas de la aplicación (`apps`, `django`, `django.request`) se envían a consola (`StreamHandler`) con marca temporal, nivel y módulo, incluso cuando `DJANGO_DEBUG=false`. Cualquier error `500` deja la traza completa en el logger `django.request`.
+- **Manejador global de excepciones (`apps.core.exceptions.api_exception_handler`):** traduce errores no controlados de validación o base de datos en respuestas JSON legibles:
+  - `ValidationError` de Django y `DataError` de base de datos (campos más largos que `max_length`, fechas mal formadas) → **400 Bad Request**.
+  - `IntegrityError` por unicidad o clave foránea → **409 Conflict** (o **400** en restricciones `CHECK`/`NOT NULL`).
+  - Excepciones no previstas → **500** JSON uniforme con registro en `django.request`.
+- **Casos borde cubiertos:** fechas o filtros inválidos en `GET /api/reportes/gerencial/?desde=abc` responden **400**; descarga de evidencias cuyo archivo fue borrado en un redespliegue responde **404** con mensaje; las consultas simultáneas de rastreo Track123 se serializan para no inscribir ni gastar cuota dos veces; las vistas materializadas de reportes solo se refrescan al cambiar los datos origen (via `on_commit` tras señales) o al invocar `POST /api/reportes/refrescar/` (con **503** si la base falla).
+
 ## Pruebas y calidad continua
 
 ```bash
@@ -206,11 +216,11 @@ El sitio se publica solo en GitHub Pages cuando cambian `docs/` o `mkdocs.yml` e
 | 401 en todas las rutas | El `access` venció (15 min): renueva con `/api/token/refresh/` o vuelve a iniciar sesión. |
 | 403 en una ruta | El rol no tiene el permiso. Se asigna en **Seguridad → Roles y permisos**. |
 | No llega el correo de recuperación | Revisa `EMAIL_*`. En Render gratuito el SMTP de los puertos 25, 465 y 587 está bloqueado: se usa Brevo por el 2525 (ver [despliegue](despliegue-render.md)). |
-| Las evidencias desaparecen tras desplegar | El disco de Render es efímero. Pendiente: almacenamiento persistente. |
+| Las evidencias desaparecen tras desplegar | El disco de Render es efímero: la descarga responde **404** con aviso claro mientras no se conecte almacenamiento persistente. |
 | Un comando `seed_demo_*` dice que solo funciona con `DJANGO_DEBUG=true` | Es a propósito: no se siembran datos de demostración fuera de desarrollo. Para sembrar la demostración en Render usa `seed_demo_completo --permitir-produccion` o `SEED_DEMO_ON_DEPLOY=true`. |
 | `seed_demo_completo` falla con «Quedaron módulos sin datos» | Algún paso no pudo sembrar su módulo. Corre antes los pasos que faltan o revisa el mensaje del paso. |
 | La lista de recetas de lavado o de lavanderías sale vacía | No existe pantalla ni ruta para crear recetas: se cargan con `seed_demo_lavanderia` o con `seed_demo_completo`. Las lavanderías son proveedores de la categoría lavandería. |
-| El tablero de reportes no cambia tras refrescar | En SQLite las vistas de reportes son normales y se leen al instante; en PostgreSQL son materializadas y cada consulta las refresca antes de leer. `POST /api/reportes/refrescar/` fuerza el refresco. |
+| El tablero de reportes no cambia tras refrescar | En SQLite las vistas son normales y siempre están al día; en PostgreSQL se refrescan automáticamente cuando cambian los datos origen o manualmente con `POST /api/reportes/refrescar/` (*Actualizar datos*), sin refrescar repetidamente en cada consulta. |
 | La recepción de mercancía responde que quien creó la orden no puede recibirla | Separación de funciones: la recibe otro usuario con permiso de inventario (Almacenista). |
 | La liquidación muestra *Sin tarifa* o *Sin costo* | Falta registrar la tarifa por minuto de la etapa, o la compra del material no trajo costo unitario. El cálculo se marca como parcial. |
 | Al facturar dice «Falta el precio de venta de: …» | La referencia no tiene fila en *Ventas y Despachos → Precios*. El Gerente registra el costo de fábrica y los precios (o corre `seed_demo_ventas` en desarrollo). |

@@ -3,16 +3,24 @@ Servicios analíticos de reportes gerenciales.
 Consulta las vistas SQL materializadas (`reportes_mv_produccion_ordenes` y `reportes_mv_ventas_referencias`)
 para agrupar, sumar y formatear los indicadores solicitados por la gerencia sin sobrecargar las tablas transaccionales.
 """
-from django.db import connection
+from contextlib import nullcontext
+from datetime import date
+import logging
+
+from django.db import DatabaseError, connection, transaction
 from django.db.models import Count, Sum
 
 from apps.inventory import catalog as inventory_catalog
+from apps.inventory.services import fail
 from apps.references import catalog as reference_catalog
 from apps.references.models import Referencia
 from apps.sales import catalog as sales_catalog
 from apps.sales.models import SaldoFinanciero
 
 from .models import VistaProduccionOrden, VistaVentasReferencia
+
+logger = logging.getLogger(__name__)
+_VIEWS_DIRTY = False
 
 FIT_NAMES = dict(reference_catalog.FITS)
 ORDER_STATE_NAMES = dict(inventory_catalog.ORDER_STATUSES)
@@ -21,19 +29,93 @@ CLIENT_TYPE_NAMES = dict(sales_catalog.CLIENT_TYPES)
 INVOICE_STATE_NAMES = dict(sales_catalog.INVOICE_STATES)
 
 
-def refresh_materialized_views():
+def mark_views_dirty():
+    """Marca las vistas materializadas de reportes como pendientes de refresco."""
+    global _VIEWS_DIRTY
+    _VIEWS_DIRTY = True
+
+
+def clear_views_dirty():
+    """Limpia la marca de pendiente una vez refrescadas o sincronizadas las vistas."""
+    global _VIEWS_DIRTY
+    _VIEWS_DIRTY = False
+
+
+def are_views_dirty():
+    """Indica si hubo cambios en tablas fuente desde el último refresco de vistas."""
+    return _VIEWS_DIRTY
+
+
+def refresh_materialized_views(*, raise_on_error=False):
     """
     Refresca las vistas SQL materializadas en PostgreSQL.
     En SQLite son vistas regulares que se evalúan al instante, por lo que no requieren refresco.
     Dentro de bloques atómicos (por ejemplo TestCase) PostgreSQL exige refrescar sin CONCURRENTLY.
     """
     if connection.vendor != "postgresql":
+        clear_views_dirty()
         return False
     concurrently = "" if connection.in_atomic_block else "CONCURRENTLY "
-    with connection.cursor() as cursor:
-        cursor.execute(f"REFRESH MATERIALIZED VIEW {concurrently}reportes_mv_produccion_ordenes;")
-        cursor.execute(f"REFRESH MATERIALIZED VIEW {concurrently}reportes_mv_ventas_referencias;")
+    ctx = transaction.atomic() if connection.in_atomic_block else nullcontext()
+    try:
+        with ctx, connection.cursor() as cursor:
+            cursor.execute(f"REFRESH MATERIALIZED VIEW {concurrently}reportes_mv_produccion_ordenes;")
+            cursor.execute(f"REFRESH MATERIALIZED VIEW {concurrently}reportes_mv_ventas_referencias;")
+    except DatabaseError:
+        logger.exception("Error al refrescar vistas SQL materializadas de reportes.")
+        if raise_on_error:
+            raise
+        return False
+    clear_views_dirty()
     return True
+
+
+def _run_scheduled_refresh():
+    refresh_materialized_views(raise_on_error=False)
+
+
+def schedule_views_refresh(**kwargs):
+    """Marca las vistas como pendientes y agenda un único refresco al confirmar la transacción en PostgreSQL."""
+    mark_views_dirty()
+    if connection.vendor != "postgresql" or not connection.in_atomic_block:
+        return
+    queued = getattr(connection, "run_on_commit", ())
+    if any(entry[1] is _run_scheduled_refresh for entry in queued):
+        return
+    transaction.on_commit(_run_scheduled_refresh)
+
+
+def _parse_filter_date(raw, field_name):
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        fail(f"La fecha '{field_name}' no es válida. Usa el formato AAAA-MM-DD.", field_name)
+
+
+def validate_report_params(params):
+    """Valida los parámetros de consulta del tablero gerencial antes de ejecutar filtros SQL."""
+    desde = (params.get("desde") or "").strip()
+    hasta = (params.get("hasta") or "").strip()
+    desde_date = _parse_filter_date(desde, "desde")
+    hasta_date = _parse_filter_date(hasta, "hasta")
+    if desde_date and hasta_date and desde_date > hasta_date:
+        fail("La fecha 'desde' no puede ser posterior a la fecha 'hasta'.", "desde")
+
+    referencia_id = (params.get("referencia") or "").strip()
+    if referencia_id and (not referencia_id.isdigit() or int(referencia_id) < 1):
+        fail("El filtro 'referencia' debe ser un número entero positivo.", "referencia")
+
+    return {
+        "desde": desde,
+        "hasta": hasta,
+        "tipo_jean": (params.get("tipo_jean") or "").strip(),
+        "referencia_id": int(referencia_id) if referencia_id else None,
+        "estado_orden": (params.get("estado_orden") or "").strip(),
+        "estado_cobro": (params.get("estado_cobro") or "").strip(),
+        "tipo_cliente": (params.get("tipo_cliente") or "").strip(),
+    }
 
 
 def get_filter_metadata():
@@ -53,7 +135,7 @@ def get_filter_metadata():
     }
 
 
-def build_management_report(params, auto_refresh=True):
+def build_management_report(params, auto_refresh=False):
     """
     Construye el reporte analítico consolidado aplicando los filtros avanzados:
     - `desde` / `hasta`: rango de fechas (AAAA-MM-DD)
@@ -63,16 +145,19 @@ def build_management_report(params, auto_refresh=True):
     - `estado_cobro`: estado de cartera de las ventas (POR_COBRAR, PAGADO, DEVOLUCION)
     - `tipo_cliente`: tipo de cliente en ventas (DETAL, MAYORISTA, DISTRIBUIDOR)
     """
-    if auto_refresh and connection.vendor == "postgresql":
-        refresh_materialized_views()
+    filters = validate_report_params(params)
 
-    desde = (params.get("desde") or "").strip()
-    hasta = (params.get("hasta") or "").strip()
-    tipo_jean = (params.get("tipo_jean") or "").strip()
-    referencia_id = (params.get("referencia") or "").strip()
-    estado_orden = (params.get("estado_orden") or "").strip()
-    estado_cobro = (params.get("estado_cobro") or "").strip()
-    tipo_cliente = (params.get("tipo_cliente") or "").strip()
+    if auto_refresh or are_views_dirty():
+        refresh_materialized_views(raise_on_error=False)
+        clear_views_dirty()
+
+    desde = filters["desde"]
+    hasta = filters["hasta"]
+    tipo_jean = filters["tipo_jean"]
+    referencia_id = filters["referencia_id"]
+    estado_orden = filters["estado_orden"]
+    estado_cobro = filters["estado_cobro"]
+    tipo_cliente = filters["tipo_cliente"]
 
     # 1. Filtrado sobre la vista materializada de Producción
     prod_qs = VistaProduccionOrden.objects.all()
@@ -82,8 +167,8 @@ def build_management_report(params, auto_refresh=True):
         prod_qs = prod_qs.filter(fecha_salida__lte=hasta)
     if tipo_jean:
         prod_qs = prod_qs.filter(tipo_jean=tipo_jean)
-    if referencia_id and referencia_id.isdigit():
-        prod_qs = prod_qs.filter(referencia_id=int(referencia_id))
+    if referencia_id is not None:
+        prod_qs = prod_qs.filter(referencia_id=referencia_id)
     if estado_orden:
         prod_qs = prod_qs.filter(estado_orden=estado_orden)
 
@@ -95,8 +180,8 @@ def build_management_report(params, auto_refresh=True):
         sales_qs = sales_qs.filter(fecha__lte=hasta)
     if tipo_jean:
         sales_qs = sales_qs.filter(tipo_jean=tipo_jean)
-    if referencia_id and referencia_id.isdigit():
-        sales_qs = sales_qs.filter(referencia_id=int(referencia_id))
+    if referencia_id is not None:
+        sales_qs = sales_qs.filter(referencia_id=referencia_id)
     if estado_cobro:
         sales_qs = sales_qs.filter(estado_cobro=estado_cobro)
     if tipo_cliente:
@@ -299,7 +384,7 @@ def build_management_report(params, auto_refresh=True):
             "desde": desde,
             "hasta": hasta,
             "tipo_jean": tipo_jean,
-            "referencia": int(referencia_id) if referencia_id.isdigit() else None,
+            "referencia": referencia_id,
             "estado_orden": estado_orden,
             "estado_cobro": estado_cobro,
             "tipo_cliente": tipo_cliente,

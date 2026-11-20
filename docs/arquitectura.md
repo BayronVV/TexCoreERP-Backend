@@ -64,7 +64,7 @@ backend/
 |---|---|---|
 | `core` | — | `BaseModel` (borrado lógico), `HasPermission`, endpoints de salud, RLS de Supabase |
 | `users` | `core` | Usuarios, roles y permisos (catálogo y migraciones con la matriz inicial) |
-| `inventory` | `core`, `references` | Existencias, kardex, consecutivos (`OP`, `LV`, `TEL`...), costo promedio y foto de costo |
+| `inventory` | `core`, `references` | Existencias, kardex, consecutivos (`OP`, `LV` histórico, `TEL`...), costo promedio y foto de costo |
 | `references` | `core`, `inventory` | Referencias, variantes, ficha técnica (lee el catálogo de inventario) |
 | `production` | `core`, `inventory`, `references` | Órdenes y lotes (descuentan stock vía `inventory.services`), etapas, recursos, monitor, costeo y lavandería: recetas de lavado, remisiones de salida `REM-LAV` y recepciones `REC-LAV` (usan el proveedor y el consecutivo de `inventory`; el lote lleva su `estado_inventario`: planta, en tránsito o retornado) |
 | `purchasing` | `core`, `inventory` | Órdenes de compra; recibir mercancía reutiliza `inventory.services.register_entry` |

@@ -33,10 +33,10 @@ class OrderReferenceTests(InventoryBase):
         self.assertEqual(order.referencia_id, self.referencia.id)
         self.assertEqual({m.lote for m in Movimiento.objects.filter(orden=order)}, {"REF-0001"})
 
-    def test_la_lavanderia_tambien_se_hace_sobre_una_referencia(self):
+    def test_la_lavanderia_provisional_se_rechaza_aunque_tenga_referencia_valida(self):
         response = self.laundry_order()
-        self.assertEqual(response.status_code, 201, response.content)
-        self.assertEqual(response.json()["referencia_codigo"], "REF-0001")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Producción → Lavandería", str(response.json()["tipo"][0]))
 
     def test_el_texto_libre_de_ficha_tecnica_ya_no_se_usa(self):
         response = self.production_order(ficha_tecnica="FT-ESCRITA-A-MANO")
@@ -44,10 +44,9 @@ class OrderReferenceTests(InventoryBase):
         self.assertEqual(response.json()["ficha_tecnica"], "REF-0001")
 
     def test_la_referencia_es_obligatoria(self):
-        for make in (self.production_order, self.laundry_order):
-            body = make(referencia=None)
-            self.assertEqual(body.status_code, 400)
-            self.assertIn("referencia", body.json())
+        body = self.production_order(referencia=None)
+        self.assertEqual(body.status_code, 400)
+        self.assertIn("referencia", body.json())
         self.assertEqual(OrdenSalida.objects.count(), 0)
 
     def test_la_referencia_debe_existir(self):
@@ -58,10 +57,9 @@ class OrderReferenceTests(InventoryBase):
     def test_solo_referencias_activas(self):
         for state in (reference_catalog.DRAFT, reference_catalog.DISCONTINUED):
             other = self.other_reference(state=state, codigo=f"REF-1{state[:2]}", nombre=f"En {state}")
-            for make in (self.production_order, self.laundry_order):
-                response = make(referencia=other.id)
-                self.assertEqual(response.status_code, 400, (state, response.content))
-                self.assertIn("referencia", response.json())
+            response = self.production_order(referencia=other.id)
+            self.assertEqual(response.status_code, 400, (state, response.content))
+            self.assertIn("referencia", response.json())
         self.assertEqual(OrdenSalida.objects.count(), 0)
 
     def test_una_referencia_archivada_no_sirve(self):
@@ -75,7 +73,7 @@ class OrderReferenceTests(InventoryBase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("no tiene ficha técnica", response.json()["referencia"][0])
         self.assertEqual(OrdenSalida.objects.count(), 0)
-        self.assertEqual(self.laundry_order(referencia=sin_ficha.id).status_code, 201)  # lavandería no la necesita
+        self.assertEqual(self.laundry_order(referencia=sin_ficha.id).status_code, 400)
 
     def test_produccion_exige_la_cantidad_de_prendas(self):
         for bad in (None, "", 0, "-5", "1.5", "abc"):
@@ -95,7 +93,10 @@ class OrderReferenceTests(InventoryBase):
     def test_filtra_las_ordenes_por_referencia(self):
         self.production_order()
         other = self.other_reference()
-        self.laundry_order(referencia=other.id)
+        OrdenSalida.objects.create(
+            codigo="LV-0001", tipo="LAVANDERIA", fecha_salida="2026-09-20", responsable="Lavandería Sol",
+            referencia=other, ficha_tecnica=other.codigo, producto_resultado=self.skinny,
+        )
         listed = self.api.get(reverse("inventario_ordenes"), {"referencia": self.referencia.id}).json()
         self.assertEqual([o["tipo"] for o in listed], ["PRODUCCION"])
         self.assertEqual(self.api.get(reverse("inventario_ordenes"), {"referencia": "abc"}).status_code, 400)

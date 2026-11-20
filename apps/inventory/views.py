@@ -337,12 +337,13 @@ class MovimientoListView(generics.ListAPIView):
 @extend_schema(
     tags=["movimientos"], summary="Registrar un ingreso (HU 2.3)",
     description="**Materias primas e insumos:** compra con proveedor de la lista y lote obligatorios. "
-    "**Pantalón genérico o terminado:** solo entra cerrando la orden (`orden`) que lo fabricó; "
-    "la orden pasa a COMPLETADA. `proveedor` y `orden` vacíos se tratan como ausentes (TE-168).",
+    "**Pantalón genérico:** solo entra cerrando la orden de producción (`orden` OP) que lo fabricó; "
+    "la orden pasa a COMPLETADA. El ingreso de producto terminado se registra desde Producto Terminado tras calidad "
+    "(HU 5.3 / TE-171). `proveedor` y `orden` vacíos se tratan como ausentes (TE-168).",
     request=IngresoInputSerializer, responses={201: MovimientoSerializer},
 )
 class IngresoCreateView(APIView):
-    """Registra un ingreso al almacén (compra a proveedor o retorno de una orden)."""
+    """Registra un ingreso al almacén (compra a proveedor o retorno de una orden de producción)."""
     required_permissions = catalog.INVENTORY_MANAGE
 
     def post(self, request):
@@ -359,15 +360,17 @@ class IngresoCreateView(APIView):
 
 @extend_schema_view(
     get=extend_schema(tags=["ordenes"], summary="Listar órdenes de salida",
-        parameters=[LIMIT_PARAM, OpenApiParameter("tipo", str, description="PRODUCCION (OP) o LAVANDERIA (LV)"),
+        parameters=[LIMIT_PARAM, OpenApiParameter("tipo", str, description="PRODUCCION (OP) o LAVANDERIA (LV, solo consulta histórica de órdenes anteriores)"),
                     OpenApiParameter("estado", str, description="EN_PROCESO, COMPLETADA o ANULADA"),
                     OpenApiParameter("producto_resultado", int, description="Id del producto que se obtiene")]),
-    post=extend_schema(tags=["ordenes"], summary="Crear una orden con su cesta de materiales",
-        description="Valida el stock de cada línea; si falta material responde 400 con `faltantes`.",
+    post=extend_schema(tags=["ordenes"], summary="Crear una orden de producción con su cesta de materiales",
+        description="Solo admite órdenes `PRODUCCION` (OP). Intentar crear una orden `LAVANDERIA` (LV) responde `400` "
+                    "indicando que el envío a lavandería se hace desde Producción → Lavandería (HU 5.3 / TE-171). "
+                    "Valida el stock de cada línea; si falta material responde 400 con `faltantes`.",
         request=OrdenInputSerializer, responses={201: OrdenSerializer}),
 )
 class OrdenListCreateView(generics.ListAPIView):
-    """Lista las órdenes de salida (producción y lavandería) y crea una, descontando el stock."""
+    """Lista las órdenes de salida (OP e historial LV de solo lectura) y crea órdenes de producción (OP)."""
     required_permissions = READ_WRITE
     serializer_class = OrdenSerializer
     pagination_class = None

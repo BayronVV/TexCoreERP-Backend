@@ -80,7 +80,7 @@ La lista completa y los valores por defecto están en `.env.example` y en el [RE
 |---|---|
 | `python manage.py seed_admin` | Crea (o actualiza) la cuenta administradora. Idempotente. |
 | `python manage.py seed_inventario` | Carga los proveedores y productos base del inventario (solo con `DJANGO_DEBUG=true`). |
-| `python manage.py seed_demo_inventario` | Catálogo completo, compras con costo y órdenes de salida (incluye `seed_inventario` y `seed_demo_referencias`). |
+| `python manage.py seed_demo_inventario` | Catálogo completo, compras con costo y órdenes de producción de ejemplo (incluye `seed_inventario` y `seed_demo_referencias`; ya no siembra órdenes provisionales `LV` desde TE-171). |
 | `python manage.py seed_demo_referencias` | Referencias de jean en sus tres estados, con fotos y fichas técnicas. |
 | `python manage.py seed_demo_produccion` | Órdenes de producción con lotes, tallas y tiempos de ejemplo. |
 | `python manage.py seed_demo_recursos` | Operarios y máquinas, asignados a las etapas en curso. |
@@ -94,7 +94,7 @@ La lista completa y los valores por defecto están en `.env.example` y en el [RE
 | `python manage.py seed_demo_stock` | Entre 12 y 20 unidades en cada talla y color de las referencias activas, por ajuste manual (motivo «Sobrante o hallazgo», con su comprobante `AJT`). Solo sube lo que está por debajo de la meta. |
 | `python manage.py seed_demo_completo` | **Todo en uno**: encadena inventario, producción, recursos, tarifas, compras, calidad, producto terminado, stock por talla y color, ventas y envíos, en su orden; salta los módulos que ya tienen datos y al final imprime cuántos registros tiene cada módulo (falla si alguno quedó vacío). Con `--permitir-produccion` corre también con `DJANGO_DEBUG=false`: es la siembra de los datos **simulados** de la demostración sobre la base compartida; no borra nada ni toca usuarios, roles ni permisos. Es el comando que dispara `SEED_DEMO_ON_DEPLOY`. |
 | `python manage.py generar_erd --salida docs/modelo-de-datos.md` | Regenera el [modelo de datos](modelo-de-datos.md). |
-| `python manage.py test` | Ejecuta la suite de pruebas (947 en backend). |
+| `python manage.py test` | Ejecuta la suite de pruebas (965 en backend). |
 | `python manage.py makemigrations --check --dry-run` | Verifica que no existan migraciones pendientes. |
 | `ruff check apps config` | Ejecuta el linter estático del backend. |
 | `coverage run manage.py test && coverage report` | Mide la cobertura real sobre `apps/`. |
@@ -114,7 +114,7 @@ que la aplicación, así que el kardex, los saldos y los códigos quedan coheren
 
 ```bash
 python manage.py seed_admin               # 1. un usuario para entrar y quien firma lo sembrado
-python manage.py seed_demo_inventario     # 2. proveedores, catálogo, compras con costo, referencias con ficha y salidas
+python manage.py seed_demo_inventario     # 2. proveedores, catálogo, compras con costo, referencias con ficha y órdenes OP
 python manage.py seed_demo_produccion     # 3. órdenes con lotes, tallas y tiempos (incluye un lote detenido con alerta)
 python manage.py seed_demo_recursos       # 4. operarios y máquinas asignados a las etapas en curso
 python manage.py seed_demo_compras        # 5. órdenes de compra en borrador, aprobada y con recepción parcial

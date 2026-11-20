@@ -54,8 +54,8 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | `proveedores` | `/api/inventario/proveedores/…` (listar, crear, editar, archivar) y `/api/inventario/proveedores/<id>/restaurar/` | TE-45 |
 | `catalogo` | `/api/inventario/catalogo/…`, `/api/inventario/catalogo/<id>/imagen/`, `/api/inventario/metadatos/` | TE-46 |
 | `inventario` | `/api/inventario/productos/` (con existencias y costo promedio), `/api/inventario/alertas/` | TE-47, TE-48 |
-| `movimientos` | `/api/inventario/movimientos/` (kardex), `/api/inventario/ingresos/` (las compras aceptan `costo_unitario`: actualiza el costo promedio ponderado del producto) | TE-47, TE-56 |
-| `ordenes` | `/api/inventario/ordenes/…` (crear, consultar, anular). La pantalla solo crea salidas a lavandería; las de producción nacen desde `/api/produccion/ordenes/` | TE-47 |
+| `movimientos` | `/api/inventario/movimientos/` (kardex), `/api/inventario/ingresos/` (compras con `costo_unitario` o ingreso de pantalón genérico desde una orden `OP`. Ingresar producto terminado o cerrar órdenes `LV` responde `400` desde TE-171) | TE-47, TE-56, TE-171 |
+| `ordenes` | `/api/inventario/ordenes/…` (crear `PRODUCCION`, consultar historial `OP` y `LV` histórico en solo lectura, anular `OP`). Crear órdenes `LAVANDERIA` (`LV`) responde `400` redirigiendo a `/api/lavanderia/remisiones/` (HU 5.3 / TE-171) | TE-47, TE-171 |
 | `evidencias` | `/api/inventario/movimientos/<id>/evidencias/`, `/api/inventario/ordenes/<id>/evidencias/`, `/api/inventario/evidencias/<id>/archivo/` | TE-47 |
 | `referencias` | `/api/referencias/` y `/api/referencias/<id>/` (catálogo de jeans con variantes), `…/<id>/estado/` (borrador, activa, descontinuada), `…/<id>/imagenes/`, `/api/referencias/imagenes/<id>/archivo/` y `…/principal/`, `/api/referencias/metadatos/` | TE-49 |
 | `fichas` | `/api/referencias/<id>/ficha/` (consumo por unidad: consultar, guardar, quitar), `/api/referencias/<id>/ficha/documento/` (PDF extenso), `/api/inventario/fichas-tecnicas/` (referencias activas para elegir en una orden) y `…/<id>/consumo/?cantidad=N` (consumo contra el stock) | TE-50 |

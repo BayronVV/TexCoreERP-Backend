@@ -6,7 +6,7 @@ Lo que ves en el menú depende de tu rol: solo aparecen los módulos que tienes 
 | Rol | Qué suele hacer en el sistema | Sección |
 |---|---|---|
 | Administrador | Aprobar solicitudes de cuenta, asignar roles y ajustar permisos; tiene acceso a todo | [4](#4-administrador-usuarios-y-roles) |
-| Almacenista | Inventario, proveedores, ingresos, salidas a lavandería y recepción de mercancía; en envíos, relaciones de despacho, estados de las guías y devoluciones | [5](#5-almacenista-inventario) y [11](#11-envios-guias-y-despachos-vendedor-almacenista-secretaria-y-gerente) |
+| Almacenista | Inventario, proveedores, ingresos (compras y retorno de órdenes `OP`) y recepción de mercancía; en envíos, relaciones de despacho, estados de las guías y devoluciones | [5](#5-almacenista-inventario) y [11](#11-envios-guias-y-despachos-vendedor-almacenista-secretaria-y-gerente) |
 | Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo, **remisión y recepción de lavandería**, órdenes de compra y defectos de calidad | [6](#6-jefe-de-produccion-referencias-fichas-tecnicas-y-produccion) y [lavandería](#lavanderia-remision-y-recepcion) |
 | Personal de Terminación | Definir los defectos e inspeccionar los lotes que vuelven de lavandería (aptas y marras) | [7](#7-personal-de-terminacion-control-de-calidad) |
 | Secretaria | Ingresar al inventario final las prendas aptas de cada inspección, y consultar existencias y movimientos; en envíos, anotar guías y armar relaciones de despacho | [8](#8-secretaria-y-vendedor-producto-terminado) y [11](#11-envios-guias-y-despachos-vendedor-almacenista-secretaria-y-gerente) |
@@ -82,7 +82,7 @@ En el **Inicio** aparecen los productos con existencias en el mínimo o por deba
 
 ### Movimientos
 
-Cuatro pestañas:
+Tres pestañas:
 
 **Existencias**
 : Consulta cuánto hay de cada producto y su **Costo promedio** (lo que cuesta cada unidad, calculado con el promedio ponderado de las compras). Un guion
@@ -92,7 +92,7 @@ Cuatro pestañas:
 : Registra lo que entra al almacén.
 
     - *Telas, hilos e insumos (compra)*: elige el **Producto**, el **Proveedor** de la lista (los de la misma categoría aparecen primero), la **Cantidad**, la **Fecha**, el **Lote** y, si quieres, la referencia de la compra.
-    - *Pantalones genéricos o terminados*: solo entran al terminar una orden. Elige la **Orden de origen**; al recibirlo la orden se cierra.
+    - *Pantalones genéricos*: solo entran cerrando la **Orden de producción (OP)** que los fabricó; al recibirlos la orden pasa a completada. El ingreso de **producto terminado** ya no se hace desde Inventario (TE-171): ingresa desde **Producto Terminado → Ingreso** tras la inspección de calidad.
     - **Costo unitario (COP, opcional)**: lo que costó cada unidad en esa compra, mayor que cero y con hasta 4 decimales (punto para los decimales). El formulario
       muestra el costo promedio actual y el valor de la compra (cantidad × costo). Con él el sistema recalcula el **costo promedio ponderado** del producto:
       `(existencias × promedio + compra × costo) / (existencias + compra)`. Si lo que había no tenía costo, el de la compra manda. Una compra sin costo no cambia
@@ -100,20 +100,14 @@ Cuatro pestañas:
     - Puedes adjuntar **Evidencias (foto o PDF)**. Pulsa **Guardar ingreso**.
     - Una cantidad de cero o negativa se rechaza con *«La cantidad debe ser mayor que cero.»*
 
-**Salida a lavandería**
-: Envía pantalones genéricos a lavar. Las órdenes de producción no se crean aquí: se crean en **Producción → Órdenes de producción**.
-
-    1. Indica el responsable de la lavandería y, si quieres, el taller. Elige la **Referencia de jean** de la lista (solo salen las
-       referencias activas). El código de la referencia (REF-0001) queda como lote con el que volverá al inventario.
-    2. Elige el **Modelo a crear**, que es el jean que se obtendrá al volver de lavandería.
-    3. En **Pantalones que se envían** agrega el pantalón genérico y la cantidad. Solo viajan las prendas cosidas: los botones y remaches
-       se colocan después, en terminación, y los químicos los pone la lavandería. Una orden envía un solo tipo de pantalón genérico.
-    4. Adjunta evidencias si lo necesitas y guarda. Se descuenta el stock y se genera el código de la orden (LV-0001...).
+!!! note "¿Dónde se envían prendas a lavandería?"
+    La antigua pestaña provisional *Salida a lavandería* fue retirada en la **HU 5.3 (TE-171)**. Todo envío a lavandería externa se registra desde
+    **Procesos Externos (Lavandería) → Remisión a Lavado** y **Recepción de Lavandería**.
 
 **Historial**
 : El **Kardex de movimientos** (ingresos y salidas con el costo unitario de cada compra, saldo, quién registró y evidencias) y la lista de **Órdenes**
-  (En proceso, Completadas, Anuladas). Para corregir una orden en proceso usa **Anular orden**: escribe el motivo y
-  **Anular y devolver stock**; las cantidades vuelven al inventario.
+  (En proceso, Completadas, Anuladas). Las órdenes provisionales `LV` creadas antes del retiro permanecen visibles en solo lectura para trazabilidad histórica;
+  las órdenes `OP` en proceso pueden anularse desde su detalle devolviendo el stock.
 
 ### Catálogo
 

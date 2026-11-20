@@ -5,9 +5,10 @@
 
 Todo pasa por las mismas reglas que usa la aplicación (`services`), así que el kardex, los
 saldos, las alertas y las órdenes quedan coherentes entre sí: cada producto nuevo recibe
-compras de uno o varios proveedores de su categoría, y varias órdenes de producción y
-lavandería consumen esos insumos y devuelven pantalones al inventario. Es idempotente: lo que
-ya existe no se vuelve a crear. Solo funciona con DJANGO_DEBUG=true.
+compras de uno o varios proveedores de su categoría, y las órdenes de producción de ejemplo
+consumen esos insumos y devuelven pantalones genéricos al inventario (las órdenes provisionales
+de lavandería LV fueron retiradas en la HU 5.3 / TE-171). Es idempotente: lo que ya existe no
+se vuelve a crear. Solo funciona con DJANGO_DEBUG=true.
 """
 import struct
 import zlib
@@ -217,18 +218,6 @@ ORDERS = [
                    ("Cierre metálico 15 cm latón antiguo", 90)],
     },
     {
-        "key": "REF-1427-LV1", "referencia": "Clásico 5 bolsillos frosteado", "tipo": catalog.ORDER_LAUNDRY, "dias": 6, "responsable": "Lavandería Sol del Norte",
-        "destino": "Lavandería Sol del Norte", "resultado": "REF-1427 Clásico 5 bolsillos frosteado", "recibe": (97, 1),
-        "lineas": [("Pantalón genérico rígido", 100), ("Suavizante enzimático", 12), ("Permanganato de potasio", 4),
-                   ("Etiqueta tejida de marca", 100)],
-    },
-    {
-        "key": "REF-N22-LV2", "referencia": "Skinny negro stretch", "tipo": catalog.ORDER_LAUNDRY, "dias": 2, "responsable": "Lavandería Sol del Norte",
-        "destino": "Lavandería Sol del Norte", "resultado": "REF-N22 Skinny negro stretch", "recibe": None,
-        "lineas": [("Pantalón genérico stretch", 120), ("Hipoclorito de sodio", 25), ("Etiqueta tejida de marca", 120),
-                   ("Hang tag de cartón", 120)],
-    },
-    {
         "key": "FT-1440-X", "referencia": "Clásico 5 bolsillos frosteado", "tipo": catalog.ORDER_PRODUCTION, "dias": 1, "responsable": "Jorge Santos (corte)",
         "resultado": "Pantalón genérico rígido", "prendas": 20, "anular": "Orden duplicada: se registró dos veces por error",
         "lineas": [("Drill caqui 8 oz", 40), ("Cierre metálico 15 cm latón antiguo", 20)],
@@ -244,12 +233,6 @@ ORDERS = [
         "key": "OP-DEMO-MOM", "referencia": "Mom vintage tiro alto", "tipo": catalog.ORDER_PRODUCTION, "dias": 2,
         "responsable": "Jorge Santos (corte)", "resultado": "Pantalón genérico stretch", "prendas": 50,
         "desde_ficha": True, "opcional": True,  # queda en proceso
-    },
-    {
-        "key": "LV-DEMO-CLASICO", "referencia": "Clásico 5 bolsillos frosteado", "tipo": catalog.ORDER_LAUNDRY, "dias": 1,
-        "responsable": "Lavandería Sol del Norte", "destino": "Lavandería Sol del Norte",
-        "resultado": "REF-1427 Clásico 5 bolsillos frosteado", "opcional": True,  # queda en proceso
-        "lineas": [("Pantalón genérico rígido", 40), ("Etiqueta tejida de marca", 40), ("Hang tag de cartón", 40)],
     },
 ]
 

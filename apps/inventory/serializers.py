@@ -271,7 +271,13 @@ class LineaInputSerializer(serializers.Serializer):
 
 class OrdenInputSerializer(serializers.Serializer):
     """Datos para crear una orden con su cesta de materiales."""
-    tipo = serializers.ChoiceField(choices=catalog.ORDER_TYPES)
+    tipo = serializers.ChoiceField(
+        choices=catalog.ORDER_TYPES,
+        help_text=(
+            "Solo PRODUCCION (OP). LAVANDERIA (LV) fue retirada (HU 5.3 / TE-171): "
+            "el envío a lavandería se hace desde Producción → Lavandería."
+        ),
+    )
     fecha_salida = serializers.DateField()
     responsable = serializers.CharField(max_length=120)
     destino = serializers.CharField(max_length=120, required=False, allow_blank=True, default="")
@@ -282,6 +288,11 @@ class OrdenInputSerializer(serializers.Serializer):
     )
     observaciones = serializers.CharField(max_length=1000, required=False, allow_blank=True, default="")
     lineas = LineaInputSerializer(many=True, allow_empty=False, max_length=50)
+
+    def validate_tipo(self, value):
+        if value == catalog.ORDER_LAUNDRY:
+            raise serializers.ValidationError(catalog.LAUNDRY_REDIRECT_MSG)
+        return value
 
     def validate_responsable(self, value):
         if not value.strip():

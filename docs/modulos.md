@@ -20,6 +20,7 @@ cuerpos y respuestas) están en Swagger (`/api/docs/`); cómo se usa cada pantal
 | HU 4.6 (TE-56) | Costeo y liquidación de órdenes | `production`, `inventory` | Liquidación de Órdenes |
 | HU 5.1 (TE-57) | Remisión de salida a lavandería | `production` | Lavandería → Remisión a Lavado |
 | HU 5.2 (TE-58) | Recepción de lavandería con cotejo y pérdidas | `production` | Lavandería → Recepción de Lavandería |
+| HU 5.3 (TE-171) | Retiro de la salida a lavandería provisional de Inventario | `inventory` | Inventario → Movimientos de almacén |
 | HU 6.1 (TE-59) | Registro de marras y calidad | `quality` | Control de Calidad → Inspecciones y Defectos |
 | HU 6.2 (TE-60) | Ingreso a inventario final (producto terminado) | `finished` | Producto Terminado → Ingreso, Existencias y Movimientos |
 | HU 6.3 (TE-61) | Ajuste manual de inventario de producto terminado | `finished` | Producto Terminado → Ajuste manual |
@@ -78,8 +79,7 @@ App `apps/inventory`. Toda la lógica de stock está en `services.py` y todas la
   Código automático por categoría (`TEL-0001`).
 - **Kardex:** el stock solo cambia con movimientos (`Movimiento`), cada uno con saldo antes y después, usuario y fecha.
   Los saldos se bloquean por fila al escribir, así dos salidas simultáneas no dejan el stock en negativo.
-- **Órdenes de salida:** `OP-0001` (producción) y `LV-0001` (lavandería), con varias líneas. Una salida con stock
-  insuficiente se rechaza completa y devuelve `faltantes`. Anular una orden en proceso devuelve las cantidades.
+- **Órdenes de salida:** `OP-0001` (producción), con varias líneas. Una salida con stock insuficiente se rechaza completa y devuelve `faltantes`. Anular una orden `OP` en proceso devuelve las cantidades. La creación de órdenes provisionales de lavandería (`LV`) y el ingreso de producto terminado desde Inventario fueron retirados en la HU 5.3 (`TE-171`): los envíos a lavandería se hacen desde **Producción → Lavandería**, el backend responde `400` si se intenta crear una orden `LV`, y las `LV` anteriores permanecen visibles en el historial solo para consulta.
 - **Costo promedio ponderado:** cada compra puede traer `costo_unitario`; el costo del producto se recalcula como
   `(existencias × promedio + compra × costo) / (existencias + compra)`. Si lo que había no tenía costo, manda el de la
   compra; una compra sin costo no cambia el promedio. Al salir material por una orden, la línea guarda una **foto del
@@ -216,9 +216,9 @@ una app propia: el código vive en `apps/production/`. La salida está en `remis
 `recepcion_services.py` y `recepcion_views.py`; las constantes (permisos, estados, motivos), en `catalog.py`; las rutas, en `urls.py` bajo `/api/lavanderia/`.
 Todas las respuestas de error usan el formato `{campo: [mensaje]}` con `400`.
 
-!!! info "No es la «Salida a lavandería» de Inventario"
-    Esta es la remisión de **lotes ensamblados** de producción. Es distinta de la orden de salida provisional `LV-0001` del módulo de Inventario
-    (ver [Inventario](#inventario-hu-21-a-24)), que se retirará con la HU 5.3 (TE-171).
+!!! info "No es la «Salida a lavandería» provisional"
+    Esta es la remisión de **lotes ensamblados** de producción (`REM-LAV-AAAA-0001`). La orden de salida provisional `LV-0001` del
+    módulo de Inventario fue retirada en la **HU 5.3 (`TE-171`)**: cualquier envío a lavandería pasa obligatoriamente por este flujo.
 
 ### Modelos
 

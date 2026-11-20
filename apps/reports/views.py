@@ -1,11 +1,12 @@
 """Endpoints analíticos del tablero de reportes gerenciales."""
-from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
-from rest_framework import serializers
+from django.db import DatabaseError
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
+from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from . import catalog, services
-from .serializers import MetadatosReporteSerializer, ReporteGerencialSerializer
+from .serializers import MetadatosReporteSerializer, ReporteGerencialSerializer, ReporteRefrescoSerializer
 
 VIEW_PERMISSIONS = {"GET": catalog.REPORTS_VIEW}
 REFRESH_PERMISSIONS = {"POST": catalog.REPORTS_VIEW}
@@ -40,7 +41,11 @@ class ReporteGerencialView(APIView):
             OpenApiParameter("estado_cobro", str, description="Estado de cartera en ventas (POR_COBRAR, PAGADO, DEVOLUCION)"),
             OpenApiParameter("tipo_cliente", str, description="Tipo de cliente (DETAL, MAYORISTA, DISTRIBUIDOR)"),
         ],
-        responses={200: ReporteGerencialSerializer},
+        responses={
+            200: ReporteGerencialSerializer,
+            400: OpenApiResponse(description="Filtros con fecha o identificador inválido"),
+            403: OpenApiResponse(description="El rol no tiene permiso para ver reportes"),
+        },
     )
     def get(self, request):
         data = services.build_management_report(request.query_params)
@@ -58,18 +63,19 @@ class ReporteRefrescarVistasView(APIView):
                     "(`refreshed` es falso) porque allí son vistas normales.",
         request=None,
         responses={
-            200: inline_serializer(
-                "ReporteRefrescoRespuesta",
-                {
-                    "refreshed": serializers.BooleanField(help_text="Verdadero si se refrescaron vistas materializadas"),
-                    "detail": serializers.CharField(),
-                },
-            ),
+            200: ReporteRefrescoSerializer,
             403: OpenApiResponse(description="El rol no tiene permiso para ver reportes"),
+            503: ReporteRefrescoSerializer,
         },
     )
     def post(self, request):
         """Refresca las vistas materializadas y devuelve si hubo refresco."""
-        refreshed = services.refresh_materialized_views()
+        try:
+            refreshed = services.refresh_materialized_views(raise_on_error=True)
+        except DatabaseError:
+            return Response(
+                {"refreshed": False, "detail": "No fue posible actualizar las vistas analíticas en este momento."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return Response({"refreshed": refreshed, "detail": "Vistas analíticas actualizadas correctamente."})
 

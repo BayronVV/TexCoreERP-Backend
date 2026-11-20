@@ -122,3 +122,9 @@ class ReporteGerencialSerializer(serializers.Serializer):
     ventas_por_referencia = VentaReferenciaReporteSerializer(many=True)
     ventas_detalle = VentaDetalleReporteSerializer(many=True)
 
+
+class ReporteRefrescoSerializer(serializers.Serializer):
+    """Resultado de la solicitud explícita de refresco de vistas SQL materializadas."""
+    refreshed = serializers.BooleanField(help_text="Verdadero si se refrescaron vistas materializadas")
+    detail = serializers.CharField()
+

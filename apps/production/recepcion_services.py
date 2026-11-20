@@ -9,6 +9,7 @@ Reglas de negocio:
 """
 from decimal import Decimal
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 
 from apps.inventory.models import Consecutivo
@@ -40,8 +41,14 @@ def serialize_reception_detail(recepcion):
     rem = recepcion.remision
     prov = rem.lavanderia
 
+    prefetched = getattr(recepcion, "_prefetched_objects_cache", {})
+    details = (
+        recepcion.lotes_detalle.all()
+        if "lotes_detalle" in prefetched
+        else recepcion.lotes_detalle.select_related("lote__orden__referencia", "remision_lote__receta").all()
+    )
     lotes_detalle = []
-    for dl in recepcion.lotes_detalle.select_related("lote__orden__referencia", "remision_lote__receta").all():
+    for dl in details:
         lote = dl.lote
         ref = lote.orden.referencia if lote.orden and lote.orden.referencia else None
         receta = dl.remision_lote.receta if dl.remision_lote else None
@@ -374,8 +381,10 @@ def list_laundry_receptions():
         RecepcionLavanderia.objects.filter(deleted_at__isnull=True)
         .select_related("remision__lavanderia", "responsable")
         .prefetch_related(
-            "lotes_detalle__lote__orden__referencia",
-            "lotes_detalle__remision_lote__receta",
+            Prefetch(
+                "lotes_detalle",
+                queryset=RecepcionLote.objects.select_related("lote__orden__referencia", "remision_lote__receta"),
+            )
         )
         .order_by("-fecha_recepcion", "-id")
     )
@@ -388,8 +397,10 @@ def get_laundry_reception_detail(pk):
         RecepcionLavanderia.objects.filter(pk=pk, deleted_at__isnull=True)
         .select_related("remision__lavanderia", "responsable")
         .prefetch_related(
-            "lotes_detalle__lote__orden__referencia",
-            "lotes_detalle__remision_lote__receta",
+            Prefetch(
+                "lotes_detalle",
+                queryset=RecepcionLote.objects.select_related("lote__orden__referencia", "remision_lote__receta"),
+            )
         )
         .first()
     )

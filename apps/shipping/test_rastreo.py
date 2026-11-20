@@ -1,5 +1,9 @@
 """Rastreo de guías con Track123 (HU 7.2). Ninguna prueba llama a la API real: el transporte HTTP es falso y el real se bloquea."""
 import json
+import threading
+import time
+import unittest
+import uuid
 from datetime import timedelta
 from io import StringIO
 from pathlib import Path
@@ -7,10 +11,12 @@ from unittest import mock
 
 from django.conf import settings
 from django.core.management import call_command
-from django.test import SimpleTestCase, override_settings
+from django.db import connection, connections
+from django.test import SimpleTestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from apps.core.testing import make_user
 from apps.sales import catalog as sales_catalog
 from apps.sales.models import MovimientoCartera, SaldoFinanciero
 
@@ -332,6 +338,147 @@ class RefreshTests(ShippingBase):
                 response = self.refresh()
         self.assertEqual(response.status_code, 503)
         self.assertEqual(self.fake.calls, [])
+
+    def test_consultas_simultaneas_no_registran_ni_gastan_cuota_dos_veces(self):
+        self.deliver()
+        nested_responses = []
+        base_client = track123.get_client()
+
+        def concurrent_transport(method, url, headers, body):
+            if url.endswith("/track/import"):
+                # Simula una segunda petición HTTP concurrente que llega mientras /track/import sigue en vuelo.
+                nested_responses.append(self.refresh())
+            return self.fake(method, url, headers, body)
+
+        concurrent_client = track123.Track123Client(
+            base_client.api_key,
+            base_url=base_client.base_url,
+            transport=concurrent_transport,
+        )
+        with mock.patch.object(track123, "get_client", return_value=concurrent_client):
+            response = self.refresh()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([item.status_code for item in nested_responses], [429])
+        self.assertEqual(self.fake.paths().count("POST /track/import"), 1)
+        self.assertEqual(self.fake.paths().count("POST /track/query"), 1)
+
+
+@unittest.skipUnless(connection.vendor == "postgresql", "La carrera real entre hilos requiere PostgreSQL")
+@override_settings(TRACK123_ENABLED=True, TRACK123_API_KEY="fake-test-key")
+class ConcurrencyTrackingTests(TransactionTestCase):
+    serialized_rollback = True
+
+    def test_hilos_simultaneos_no_registran_ni_gastan_cuota_dos_veces(self):
+        from django.core.cache import cache
+
+        from apps.sales.models import Cliente, FacturaVenta
+        from apps.shipping import catalog as shipping_catalog
+        from apps.shipping.models import Guia
+
+        cache.clear()
+        seller = make_user("track_conc_v@t.co", "VENDEDOR")
+        actor = make_user("track_conc_a@t.co", "ALMACENISTA")
+        customer = Cliente.objects.create(
+            codigo="CLI-TRK-CONC",
+            tipo_documento="NIT",
+            documento="901999888",
+            nombre="Cliente Concurrencia Rastreo",
+            tipo=sales_catalog.CLIENT_WHOLESALE,
+            ciudad="Medellín",
+            direccion="Calle 10 # 20-30",
+            telefono="3100000000",
+        )
+        invoice = FacturaVenta.objects.create(
+            numero="FV-TRK-CONC-1",
+            cliente=customer,
+            cliente_nombre=customer.nombre,
+            cliente_documento=customer.documento,
+            cliente_tipo=customer.tipo,
+            cliente_ciudad=customer.ciudad,
+            cliente_direccion=customer.direccion,
+            cliente_telefono=customer.telefono,
+            vendedor=seller,
+            fecha=timezone.localdate(),
+            subtotal=100_000,
+            descuento_total=0,
+            base_gravable=100_000,
+            iva_tarifa=19,
+            iva_total=19_000,
+            total=119_000,
+            valor_a_recaudar=119_000,
+            token=uuid.uuid4(),
+        )
+        guide = Guia.objects.create(
+            factura=invoice,
+            transportadora="INTERRAPIDISIMO",
+            numero_guia="700199998888",
+            estado=shipping_catalog.IN_TRANSIT,
+            vigente=True,
+        )
+
+        paths = []
+        calls_lock = threading.Lock()
+
+        def slow_transport(method, url, headers, body):
+            path = "/" + url.split("/tk/v2.1/", 1)[-1]
+            with calls_lock:
+                paths.append(f"{method} {path}")
+            if url.endswith("/account/quota"):
+                return 200, {"code": "00000", "data": {"quotaTotal": 50, "quotaRemain": 40}}
+            if url.endswith("/track/import"):
+                time.sleep(0.15)
+                return 200, {"code": "00000", "data": {"accepted": [{"trackNo": guide.numero_guia}], "rejected": []}}
+            if url.endswith("/track/query"):
+                return 200, {
+                    "code": "00000",
+                    "data": {
+                        "accepted": {"content": [{"trackNo": guide.numero_guia, "transitStatus": "INIT", "transitSubStatus": ""}]},
+                        "rejected": [],
+                    },
+                }
+            raise AssertionError(f"Ruta inesperada en fake transport: {method} {url}")
+
+        barrier = threading.Barrier(2)
+        results = []
+        errors = []
+        results_lock = threading.Lock()
+
+        def worker():
+            try:
+                barrier.wait(timeout=3)
+                try:
+                    guide_obj, _ = tracking.refresh_tracking(guide_id=guide.id, user=actor)
+                    code = 200 if guide_obj else 500
+                except tracking.TrackingCooldown:
+                    code = 429
+                with results_lock:
+                    results.append(code)
+            except BaseException as exc:  # pragma: no cover - diagnostica fallas inesperadas del hilo
+                with results_lock:
+                    errors.append(repr(exc))
+            finally:
+                connections.close_all()
+
+        try:
+            with mock.patch.object(
+                track123,
+                "get_client",
+                side_effect=lambda: track123.Track123Client("fake-test-key", transport=slow_transport),
+            ):
+                t1 = threading.Thread(target=worker)
+                t2 = threading.Thread(target=worker)
+                t1.start()
+                t2.start()
+                t1.join(timeout=5)
+                t2.join(timeout=5)
+        finally:
+            cache.clear()
+
+        self.assertEqual(errors, [])
+        self.assertEqual(sorted(results), [200, 429])
+        self.assertEqual(paths.count("POST /track/import"), 1)
+        self.assertEqual(paths.count("POST /track/query"), 1)
 
 
 @override_settings(DEBUG=True)

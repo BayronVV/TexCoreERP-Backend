@@ -32,6 +32,9 @@ despliegan la rama `main` y se redespliegan solos con cada merge.
 | `CORS_ALLOWED_ORIGINS` | `https://texcore-web.onrender.com` | Sin barra final y sin `localhost`. |
 | `FRONTEND_URL` | `https://texcore-web.onrender.com` | Arma el enlace del correo de recuperación. |
 | `NUM_PROXIES` | `1` | Ver "Proxies". |
+| `DJANGO_LOG_LEVEL` | `INFO` (por defecto) | Opcional. Nivel del registro hacia la consola de Render (`INFO`, `WARNING`, `ERROR`). |
+| `DJANGO_DB_LOG_LEVEL` | `WARNING` (por defecto) | Opcional. Nivel para logs de consultas SQL de Django. |
+| `API_DOCS_ENABLED` | `true` (por defecto) | Opcional. Con `false` oculta `/api/docs/`, `/api/redoc/` y `/api/schema/`. |
 | `EMAIL_BACKEND` y `EMAIL_*` | ver `.env.example` | Solo si se envían correos reales. |
 | `DEFAULT_FROM_EMAIL` | `TexCore ERP <tu-correo>` | Debe coincidir con la cuenta SMTP. |
 | `TRACK123_API_KEY` | `<tu-clave>` | Clave de la API de Track123 (rastreo de guías, HU 7.2). **Secreto: solo se escribe en Render**, nunca en el repositorio ni en el `.env.example`. Sin ella el rastreo queda apagado. |
@@ -59,6 +62,10 @@ Además corre el endurecimiento de la base (RLS) al final de cada `migrate`.
 - `seed_demo_envios` (guías de demostración de la HU 7.2) tampoco corre en Render, por la misma razón. En producción las guías se anotan al facturar o desde **Por despachar / sin guía**.
 - Una migración que cambia el esquema se aplica a la base compartida: la versión anterior del código, si sigue desplegada, debe
   tolerarlo (la 0002 de inventario ya lo advertía).
+
+### Observabilidad y registro de errores en Render
+
+El diccionario `LOGGING` en `config/settings.py` envía los registros a la salida estándar/error (`StreamHandler`), por lo que todos los eventos de `apps`, `django` y las trazas de error `500` de `django.request` aparecen en la pestaña **Logs** del servicio en Render aunque `DJANGO_DEBUG=false`. Asimismo, el manejador global de excepciones (`apps.core.exceptions.api_exception_handler`) evita respuestas `500` sin formato ante fallos de longitud, fechas o integridad de PostgreSQL y garantiza respuesta JSON uniforme.
 
 ### Proxies
 

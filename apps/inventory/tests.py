@@ -365,3 +365,16 @@ class EvidenceTests(InventoryBase):
         self.assertEqual(len(rows), 2)
         for row in rows:
             self.assertEqual([e["nombre_original"] for e in row["evidencias"]], ["guia.png"])
+
+    def test_descarga_evidencia_sin_archivo_fisico_responde_404(self):
+        evidence = self.upload("efimero.png", PNG).json()[0]
+        from pathlib import Path
+
+        from .models import Evidencia
+
+        record = Evidencia.objects.get(pk=evidence["id"])
+        Path(record.archivo.path).unlink(missing_ok=True)
+        with self.assertLogs("apps.inventory.views", level="WARNING"):
+            download = self.api.get(reverse("inventario_evidencia", args=[evidence["id"]]))
+        self.assertEqual(download.status_code, 404)
+        self.assertIn("no está disponible", download.json()["detail"])

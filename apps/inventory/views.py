@@ -1,10 +1,12 @@
 """Vistas de inventario: catálogo, proveedores, ingresos, kardex, órdenes de salida, evidencias y alertas (HU 2.1 a 2.4)."""
+import logging
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, Q
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view, inline_serializer
 from rest_framework import generics, serializers, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import MultiPartParser
@@ -28,6 +30,7 @@ from .serializers import (
 LIMIT_PARAM = OpenApiParameter("limit", int, description="Máximo de filas (1 a 200, por defecto 100)")
 READ_WRITE = {"GET": catalog.INVENTORY_VIEW, "POST": catalog.INVENTORY_MANAGE}
 LIST_LIMIT = 200
+logger = logging.getLogger(__name__)
 
 
 def limited(queryset, request):
@@ -453,8 +456,14 @@ class OrdenEvidenciaView(EvidenciaUploadView):
         return {"order": get_object_or_404(OrdenSalida, pk=pk)}
 
 
-@extend_schema(tags=["evidencias"], summary="Descargar una evidencia",
-    responses={(200, "application/octet-stream"): OpenApiTypes.BINARY})
+@extend_schema(
+    tags=["evidencias"],
+    summary="Descargar una evidencia",
+    responses={
+        (200, "application/octet-stream"): OpenApiTypes.BINARY,
+        404: OpenApiResponse(description="La evidencia o su archivo físico no está disponible en el servidor"),
+    },
+)
 class EvidenciaArchivoView(APIView):
     """Descarga autenticada: los archivos no cuelgan de una URL pública."""
 
@@ -462,7 +471,20 @@ class EvidenciaArchivoView(APIView):
 
     def get(self, request, pk):
         evidence = get_object_or_404(Evidencia, pk=pk)
-        response = FileResponse(evidence.archivo.open("rb"), content_type=evidence.content_type)
+        if not evidence.archivo:
+            return Response(
+                {"detail": "El archivo de la evidencia ya no está disponible en el servidor."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            file_handle = evidence.archivo.open("rb")
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            logger.warning("Archivo de evidencia %s (%s) no encontrado en disco: %s", evidence.pk, evidence.archivo.name, exc)
+            return Response(
+                {"detail": "El archivo de la evidencia ya no está disponible en el servidor."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        response = FileResponse(file_handle, content_type=evidence.content_type)
         response["Content-Disposition"] = "inline"
         response["Cache-Control"] = "private, no-store"
         return response

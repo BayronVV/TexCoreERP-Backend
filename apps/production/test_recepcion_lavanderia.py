@@ -9,6 +9,8 @@ Verifica:
 6. Cálculo y registro financiero de pérdidas por procesos de terceros.
 """
 from decimal import Decimal
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -234,3 +236,41 @@ class RecepcionLavanderiaTests(ModelBase):
                     }
                 ],
             )
+
+    def test_listado_de_recepciones_no_dispara_consultas_por_fila(self):
+        create_laundry_reception(
+            user=self.boss,
+            remision_id=self.remision.id,
+            fecha_recepcion=self.today,
+            lotes_recibidos=[
+                {
+                    "remision_lote_id": self.remision_lote.id,
+                    "cantidad_recibida_conforme": 60,
+                    "cantidad_merma": 0,
+                    "cantidad_danada": 0,
+                }
+            ],
+        )
+        with CaptureQueriesContext(connection) as first_ctx:
+            self.assertEqual(len(list_laundry_receptions()), 1)
+
+        # Creamos dos remisiones y recepciones más: el total de queries debe permanecer constante (sin N+1).
+        for idx in (2, 3):
+            extra_lot = self.make_lot(self.order, number=idx + 5, quantity=10)
+            rem = create_laundry_remission(
+                user=self.boss,
+                lavanderia_id=self.prov.id,
+                lotes_seleccionados=[{"lote_id": extra_lot.id, "cantidad": 10, "receta_id": "REC-DENIM-01"}],
+                fecha_emision=self.today,
+            )
+            rem_lote = RemisionLavanderia.objects.get(pk=rem["id"]).lotes_detalle.first()
+            create_laundry_reception(
+                user=self.boss,
+                remision_id=rem["id"],
+                fecha_recepcion=self.today,
+                lotes_recibidos=[{"remision_lote_id": rem_lote.id, "cantidad_recibida_conforme": 10}],
+            )
+
+        with CaptureQueriesContext(connection) as second_ctx:
+            self.assertEqual(len(list_laundry_receptions()), 3)
+        self.assertEqual(len(second_ctx), len(first_ctx))

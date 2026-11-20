@@ -42,6 +42,10 @@ COLLECT_STATES = [
     (COLLECT_PAID, "Pagado"),
     (COLLECT_RETURNED, "Devolución"),
 ]
+CONCILIATION_STATES = [
+    (COLLECT_PAID, "Pagado"),
+    (COLLECT_RETURNED, "Devolución"),
+]
 COLLECT_STATE_NAMES = dict(COLLECT_STATES)
 
 # Movimientos del saldo financiero y cartera (HU 7.3)

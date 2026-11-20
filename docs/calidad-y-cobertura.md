@@ -20,12 +20,12 @@ compatibilidad con PostgreSQL, validación de transiciones y cliente/rutas del f
 | Subconjunto `apps.reports` (antes) | `PBKDF2PasswordHasher` | 6 | 54,26 s totales (43,26 s en pruebas) |
 | Subconjunto `apps.reports` (después) | `MD5PasswordHasher` solo en test | 6 | **11,95 s** totales (**1,51 s** en pruebas · ~29× más rápido) |
 | Suite completa backend (auditoría 08/11) | `PBKDF2PasswordHasher` (SQLite) | 922 | ~28 min |
-| Suite completa backend con `coverage` (después) | `MD5PasswordHasher` (SQLite + cobertura) | **947** | **233,88 s** (3 min 54 s · 220,99 s en pruebas) |
-| Suite completa frontend (`npm test`) | `node --test` | **234** | **1,68 s** |
+| Suite completa backend con `coverage` (después) | `MD5PasswordHasher` (SQLite + cobertura) | **965** | **227,83 s** (3 min 48 s) |
+| Suite completa frontend (`npm test`) | `node --test` | **236** | **1,68 s** |
 
 !!! tip "Por debajo del límite de 5 minutos"
-    Incluso ejecutando **947 pruebas** secuenciales con instrumentación de `coverage` y tres `TransactionTestCase`
-    (`serialized_rollback = True`), la suite completa del backend finaliza por debajo de los 4 minutos en máquina local.
+    Incluso ejecutando **965 pruebas** secuenciales con instrumentación de `coverage` y pruebas de concurrencia con
+    `TransactionTestCase` (`serialized_rollback = True`), la suite completa del backend finaliza por debajo de los 4 minutos en máquina local.
 
 ---
 
@@ -36,18 +36,18 @@ Medición obtenida sobre `apps/` (excluyendo migraciones, archivos de prueba y c
 
 | Módulo | Sentencias cubiertas / totales | Cobertura |
 |---|---|---|
-| `apps/core` | 107 / 126 | **84,9 %** |
+| `apps/core` | 148 / 177 | **83,6 %** |
 | `apps/users` | 576 / 616 | **93,5 %** |
-| `apps/inventory` | 886 / 912 | **97,1 %** |
-| `apps/purchasing` | 485 / 491 | **98,8 %** |
+| `apps/inventory` | 910 / 936 | **97,2 %** |
+| `apps/purchasing` | 549 / 556 | **98,7 %** |
 | `apps/references` | 668 / 679 | **98,4 %** |
-| `apps/production` | 1935 / 1994 | **97,0 %** |
+| `apps/production` | 1938 / 1997 | **97,0 %** |
 | `apps/quality` | 319 / 333 | **95,8 %** |
 | `apps/finished` | 550 / 573 | **96,0 %** |
-| `apps/sales` | 690 / 717 | **96,2 %** |
-| `apps/shipping` | 821 / 857 | **95,8 %** |
-| `apps/reports` | 284 / 293 | **96,9 %** |
-| **Total backend** | **7321 / 7591** | **96 %** |
+| `apps/sales` | 691 / 718 | **96,2 %** |
+| `apps/shipping` | 842 / 878 | **95,9 %** |
+| `apps/reports` | 337 / 357 | **94,4 %** |
+| **Total backend** | **7528 / 7820** | **96 %** |
 
 ---
 
@@ -81,9 +81,10 @@ Convención de tipos de prueba en la tabla:
 | Cartera y conciliación contraentrega | TE-64 | 8 / 6 | 4 *(`cartera` en `sales.test.js`)* | Lógica pura + Servicios + E2E API | Ejecutada en job PostgreSQL (`apps.sales`) |
 | Tablero de reportes gerenciales | TE-65 | 6 / 1 | 7 *(`reports.test.js`)* | Lógica pura + Exportación XLSX/CSV + E2E API | **Sí (crítico):** `CREATE MATERIALIZED VIEW` y `REFRESH MATERIALIZED VIEW` dentro y fuera de bloque atómico |
 | Núcleo, PostgreSQL transversal, ERD/MER y seeds | TE-180 / Sprint 1–3 | 26 / 6 | — | Servicios + Migraciones + PostgreSQL | **Sí:** `apps.core.test_postgres` |
-| **Total sistema** | **TE-42 a TE-180** | **953** *(~449 casos negativos)* | **236** | **Lógica + Servicios/UI + E2E API** | **7 suites completas + `core.test_postgres` sobre PostgreSQL 16** |
+| Observabilidad, manejo de errores, OpenAPI y robustez API | TE-181 | +12 *(incl. en suites)* | — | Manejador global + Logging + E2E API + N+1 | Concurrencia multihilo Track123 (`ConcurrencyTrackingTests`) en `apps.shipping` |
+| **Total sistema** | **TE-42 a TE-181** | **965** | **236** | **Lógica + Servicios/UI + E2E API** | **7 suites completas + `core.test_postgres` sobre PostgreSQL 16** |
 
-> Nota sobre el conteo por archivo vs ejecución Django: en `apps/*/test*.py` existen 951 métodos `def test_*` directos y 953 casos ejecutados por el corredor de Django (por herencia de clases base), todos en estado `OK` (con 1 prueba multi-hilo condicional en SQLite que corre obligatoriamente en el job PostgreSQL).
+> Nota sobre el conteo de ejecución: el corredor de Django ejecuta **965** casos (`OK`, con 2 pruebas multi-hilo condicionales en SQLite — `ConcurrencyOrderTests` y `ConcurrencyTrackingTests` — que corren obligatoriamente en el job PostgreSQL).
 
 ---
 

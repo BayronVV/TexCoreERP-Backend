@@ -226,7 +226,7 @@ class AnularInputSerializer(serializers.Serializer):
 
 class ConciliarInputSerializer(serializers.Serializer):
     """Acción rápida para cambiar el estado de cartera: PAGADO o DEVOLUCION (HU 7.3)."""
-    estado_cobro = serializers.ChoiceField(choices=[catalog.COLLECT_PAID, catalog.COLLECT_RETURNED])
+    estado_cobro = serializers.ChoiceField(choices=catalog.CONCILIATION_STATES)
     motivo = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
     observaciones = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
 

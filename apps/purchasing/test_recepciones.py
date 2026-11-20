@@ -71,6 +71,29 @@ class RecibirContraOrdenTests(ReceiveBase):
         link = RecepcionLinea.objects.get()
         self.assertEqual((link.movimiento_id, link.costo_unitario, link.lote), (movement.id, Decimal("20000"), "L-A"))
 
+    def test_enlace_bidireccional_entre_orden_de_compra_e_ingresos_de_inventario(self):
+        order = self.approved()
+        receipt = self.received(self.receipt_body(order, [self.row(order, 0, 50, "L-ENL", costo_unitario="19500")]))
+
+        # Desde la orden se ven sus ingresos con el id del movimiento del kardex y quién recibió.
+        detail = self.producer.get(self.order_url(order["id"])).json()
+        self.assertEqual(len(detail["ingresos"]), 1)
+        ingreso = detail["ingresos"][0]
+        self.assertEqual(ingreso["recepcion_codigo"], receipt["codigo"])
+        self.assertEqual(ingreso["producto"], self.tela.id)
+        self.assertEqual(ingreso["lote"], "L-ENL")
+        self.assertTrue(ingreso["movimiento"])
+        self.assertTrue(ingreso["recibido_por_nombre"])
+
+        # Desde el kardex de inventario se filtra por código de orden y cada ingreso enlaza de vuelta a la OC y recepción.
+        kardex = self.store.get(reverse("inventario_movimientos"), {"orden_compra": order["codigo"]}).json()
+        self.assertEqual(len(kardex), 1)
+        self.assertEqual(kardex[0]["id"], ingreso["movimiento"])
+        self.assertEqual(kardex[0]["orden_compra"], order["codigo"])
+        self.assertEqual(kardex[0]["orden_compra_id"], order["id"])
+        self.assertEqual(kardex[0]["recepcion_id"], receipt["id"])
+        self.assertEqual(kardex[0]["recepcion_codigo"], receipt["codigo"])
+
     def test_sin_costo_el_promedio_no_cambia(self):
         order = self.approved()
         self.received(self.receipt_body(order, [self.row(order, 1, 10)]))

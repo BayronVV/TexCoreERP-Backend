@@ -9,7 +9,7 @@ cuerpos y respuestas) están en Swagger (`/api/docs/`); cómo se usa cada pantal
 |---|---|---|---|
 | HU 1.x | Seguridad, usuarios, roles y permisos | `users` | Seguridad y Usuarios |
 | HU 2.1 a 2.4 | Inventario: proveedores, catálogo, movimientos, alertas | `inventory` | Inventario de Materias Primas |
-| Compras | Órdenes de compra y recepción de mercancía | `purchasing` | Compras |
+| HU 2.5 (TE-178) | Órdenes de compra con aprobación independiente | `purchasing` | Compras |
 | HU 3.1 (TE-49) | Referencias de jean | `references` | Referencias de Jean |
 | HU 3.2 (TE-50) | Ficha técnica de consumo por unidad | `references` | Botón *Ficha técnica* del catálogo de jeans |
 | HU 4.1 (TE-51) | Validación de material y planificación | `production` | Órdenes de producción |
@@ -86,14 +86,14 @@ App `apps/inventory`. Toda la lógica de stock está en `services.py` y todas la
   costo** vigente (`OrdenLinea.costo_unitario`), que es la que usa el costeo.
 - **Evidencias:** foto o PDF (5 MB, hasta 10 por movimiento u orden), validadas por su contenido.
 
-## Compras: órdenes de compra y recepción de mercancía
+## Órdenes de compra con aprobación independiente (HU 2.5, TE-178)
 
 App `apps/purchasing`, rutas bajo `/api/compras/`, tablas `compras_*`.
 
 ```mermaid
 stateDiagram-v2
     [*] --> Borrador: Producción crea (OC-0001)
-    Borrador --> Aprobada: Gerente aprueba
+    Borrador --> Aprobada: Gerente aprueba (persona distinta)
     Borrador --> Cancelada: cancelar (motivo)
     Aprobada --> Cancelada: cancelar, sin recepciones
     Aprobada --> RecibidaParcial: recepción incompleta
@@ -105,14 +105,17 @@ stateDiagram-v2
 
 | Regla | Detalle |
 |---|---|
-| Quién hace qué | Producción crea, edita (solo en borrador), cancela y cierra (`compras.gestionar`); el Gerente aprueba (`compras.aprobar`); el Almacenista recibe (`inventario.gestionar`). |
+| Quién hace qué | Producción crea, edita (solo en borrador), cancela y cierra (`compras.gestionar`); el Gerente aprueba (`compras.aprobar`); el Almacenista recibe (`inventario.gestionar`, no crea ni aprueba). |
+| Aprobación independiente | Quien creó la orden **no puede aprobarla** aunque tenga `compras.aprobar`; la API responde `400` indicando que debe aprobarla otra persona. |
 | Contenido de la orden | Solo materia prima e insumos, sin repetir producto, hasta 100 líneas. El precio pactado por unidad es opcional. |
+| Enlace con producción (HU 4.1) | Desde la validación de material con faltantes en producción se puede generar una orden en borrador precargada con esos materiales y cantidades (`POST /api/compras/ordenes/desde-faltantes/` o el botón *Solicitar compra de los faltantes*). |
+| Historial en detalle | El detalle incluye el cronológico `historial` (creación, aprobación, cada recepción y cancelación/cierre con usuario, fecha y motivo) y los `ingresos` generados en el almacén. |
 | Recepción | Varias filas en una sola transacción: si una falla, no se guarda ninguna. Cada fila lleva cantidad, lote y costo real (opcional). Código `RC-0001`. |
 | Tolerancia | Se puede recibir hasta un **5 %** más de lo pendiente de cada línea (`OVERAGE_TOLERANCE`, fijo en el código). |
 | Estados | Se guardan: borrador, aprobada, recibida parcial, recibida, cerrada y cancelada. La cantidad recibida de cada línea **no** se guarda: se suma de las recepciones. |
-| Separación de funciones | Quien creó la orden no puede registrar su recepción. |
+| Separación de funciones | Quien creó la orden tampoco puede registrar su recepción. |
 | Entrega sin orden | La recepción sin `orden` registra varios productos de un proveedor (remisión o factura, lote y costo). |
-| Efecto en el inventario | Cada fila se registra con la misma regla del ingreso: suma al stock, recalcula el costo promedio y deja su fila en el kardex con el código de la orden y de la recepción. |
+| Enlace bidireccional con inventario | Cada fila recibida entra al kardex con el código de la orden (`orden_compra`); el kardex (`/api/inventario/movimientos/?orden_compra=OC-...`) expone `orden_compra_id`, `recepcion_id` y `recepcion_codigo` para navegar directo entre la orden y sus ingresos. |
 
 ## Referencias de jean (HU 3.1, TE-49)
 

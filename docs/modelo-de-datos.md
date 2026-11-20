@@ -579,6 +579,7 @@ Relaciones con otros módulos (solo clave): `Proveedor` (Inventario), `Producto`
             bigint creado_por FK
             bigint aprobado_por FK
             timestamp aprobada_at
+            bigint cerrado_por FK
             varchar_255 motivo_cierre
             timestamp cerrada_at
         }
@@ -1640,6 +1641,7 @@ erDiagram
         bigint creado_por FK
         bigint aprobado_por FK
         timestamp aprobada_at
+        bigint cerrado_por FK
         varchar_255 motivo_cierre
         timestamp cerrada_at
     }
@@ -1908,6 +1910,7 @@ erDiagram
     CustomUser |o--o{ MovimientoTerminado : "usuario"
     CustomUser |o--o{ Operario : "usuario"
     CustomUser |o--o{ OrdenCompra : "aprobado_por"
+    CustomUser |o--o{ OrdenCompra : "cerrado_por"
     CustomUser |o--o{ OrdenCompra : "creado_por"
     CustomUser |o--o{ OrdenProduccion : "creado_por"
     CustomUser |o--o{ OrdenSalida : "registrado_por"
@@ -2579,6 +2582,7 @@ Pedido de materiales a un proveedor. No es factura ni remisión: confirma lo ped
 | `creado_por` | bigint | FK, nulo | → `CustomUser` |
 | `aprobado_por` | bigint | FK, nulo | → `CustomUser` |
 | `aprobada_at` | timestamp | nulo |  |
+| `cerrado_por` | bigint | FK, nulo | → `CustomUser` |
 | `motivo_cierre` | varchar(255) |  |  |
 | `cerrada_at` | timestamp | nulo |  |
 

@@ -27,6 +27,7 @@ class OrdenCompra(BaseModel):
     creado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True)
     aprobado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True, blank=True)
     aprobada_at = models.DateTimeField(null=True, blank=True)
+    cerrado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True, blank=True)
     # Al cancelarla o cerrarla a mano se exige el motivo.
     motivo_cierre = models.CharField(max_length=255, blank=True)
     cerrada_at = models.DateTimeField(null=True, blank=True)

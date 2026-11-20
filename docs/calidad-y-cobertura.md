@@ -65,7 +65,7 @@ Convención de tipos de prueba en la tabla:
 | Gestión de usuarios, roles y permisos | TE-44 | 32 / 18 | 2 *(`modules.test.js`)* | Servicios + E2E API + Contrato rutas | Semilla inicial (`0003`) y `serialized_rollback` en `TransactionTestCase` |
 | Proveedores y catálogo de materias primas | TE-45, TE-46 | 46 / 28 | 7 *(`money.test.js`)* | Lógica pura + Servicios + E2E API | Bloqueo de producto en actualizaciones y límites `varchar` (`400` vs `DataError`) |
 | Movimientos, órdenes de salida, kardex, alertas y costos | TE-47, TE-48 | 86 / 48 | 11 *(`orderLines.test.js`)* | Lógica pura + Servicios + E2E API | `SELECT ... FOR UPDATE` ordenado en `lock_products` |
-| Compras: órdenes, aprobación y recepción | — *(Sprint 2)* | 67 / 39 | 13 *(`purchasing.test.js`)* | Lógica pura + Servicios + E2E API | Transacciones y separación de funciones en recepción |
+| Compras: órdenes, aprobación independiente y recepción | TE-178 *(HU 2.5)* | 73 / 42 | 15 *(`purchasing.test.js`)* | Lógica pura + Servicios + E2E API | Transacciones, aprobación independiente y separación de funciones |
 | Referencias de jean y ficha técnica | TE-49, TE-50 | 121 / 60 | 28 *(`variants` + `fichaRows`)* | Lógica pura + Servicios + E2E API | Restricciones de unicidad e integridad referencial |
 | Simulación de material (producción) | TE-51 | 43 / 21 | — | Lógica pura + E2E API | Incluida en job `apps.production` en PostgreSQL |
 | Órdenes de producción, lotes, concurrencia (H01) y modelos | TE-52 | 88 / 31 | 37 *(`lotSplit` + `lotSizes`)* | Lógica pura + Concurrencia multihilo + E2E API | **Sí (crítico):** concurrencia `H01` con 2 hilos + `Barrier(2)` sobre 500 m de tela |
@@ -81,9 +81,9 @@ Convención de tipos de prueba en la tabla:
 | Cartera y conciliación contraentrega | TE-64 | 8 / 6 | 4 *(`cartera` en `sales.test.js`)* | Lógica pura + Servicios + E2E API | Ejecutada en job PostgreSQL (`apps.sales`) |
 | Tablero de reportes gerenciales | TE-65 | 6 / 1 | 7 *(`reports.test.js`)* | Lógica pura + Exportación XLSX/CSV + E2E API | **Sí (crítico):** `CREATE MATERIALIZED VIEW` y `REFRESH MATERIALIZED VIEW` dentro y fuera de bloque atómico |
 | Núcleo, PostgreSQL transversal, ERD/MER y seeds | TE-180 / Sprint 1–3 | 26 / 6 | — | Servicios + Migraciones + PostgreSQL | **Sí:** `apps.core.test_postgres` |
-| **Total sistema** | **TE-42 a TE-180** | **947** *(~446 casos negativos)* | **234** | **Lógica + Servicios/UI + E2E API** | **7 suites completas + `core.test_postgres` sobre PostgreSQL 16** |
+| **Total sistema** | **TE-42 a TE-180** | **953** *(~449 casos negativos)* | **236** | **Lógica + Servicios/UI + E2E API** | **7 suites completas + `core.test_postgres` sobre PostgreSQL 16** |
 
-> Nota sobre el conteo por archivo vs ejecución Django: en `apps/*/test*.py` existen 945 métodos `def test_*` directos y 947 casos ejecutados por el corredor de Django (por herencia de clases base), todos en estado `OK` (con 1 prueba multi-hilo condicional en SQLite que corre obligatoriamente en el job PostgreSQL).
+> Nota sobre el conteo por archivo vs ejecución Django: en `apps/*/test*.py` existen 951 métodos `def test_*` directos y 953 casos ejecutados por el corredor de Django (por herencia de clases base), todos en estado `OK` (con 1 prueba multi-hilo condicional en SQLite que corre obligatoriamente en el job PostgreSQL).
 
 ---
 

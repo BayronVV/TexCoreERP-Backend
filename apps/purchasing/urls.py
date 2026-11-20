@@ -6,6 +6,7 @@ from . import views
 urlpatterns = [
     path("compras/metadatos/", views.ComprasMetadatosView.as_view(), name="compras_metadatos"),
     path("compras/ordenes/", views.OrdenCompraListCreateView.as_view(), name="compras_ordenes"),
+    path("compras/ordenes/desde-faltantes/", views.OrdenCompraDesdeFaltantesView.as_view(), name="compras_ordenes_desde_faltantes"),
     path("compras/ordenes/<int:pk>/", views.OrdenCompraDetailView.as_view(), name="compras_orden"),
     path("compras/ordenes/<int:pk>/aprobar/", views.OrdenCompraAprobarView.as_view(), name="compras_orden_aprobar"),
     path("compras/ordenes/<int:pk>/cancelar/", views.OrdenCompraCancelarView.as_view(), name="compras_orden_cancelar"),

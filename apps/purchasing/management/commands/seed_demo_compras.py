@@ -47,7 +47,7 @@ class Command(BaseCommand):
             raise CommandError("Este comando solo se permite con DJANGO_DEBUG=true.")
         users = get_user_model().objects.filter(is_active=True)
         creator = users.filter(role_id="PRODUCCION").first() or users.first()
-        approver = users.filter(role_id__in=["GERENTE", "ADMIN"]).first() or creator
+        approver = users.filter(role_id__in=["GERENTE", "ADMIN"]).exclude(pk=creator.pk if creator else None).first()
         receiver = users.filter(role_id="ALMACENISTA").exclude(pk=creator.pk if creator else None).first()
         if creator is None:
             raise CommandError("No hay usuarios: crea uno primero (por ejemplo con seed_admin).")
@@ -77,6 +77,9 @@ class Command(BaseCommand):
                 user=creator, data={"proveedor": supplier.id, "lineas": lines, "condiciones_pago": spec["condiciones"], "notas": marker},
             )
             if spec["estado"] != "BORRADOR":
+                if approver is None:
+                    self.stdout.write(f"{order.codigo} queda en borrador: no hay otro aprobador distinto de quien la creó.")
+                    return 1
                 services.approve_order(user=approver, order_id=order.id)
             if spec.get("recibir"):
                 self._receive(order, spec, receiver)

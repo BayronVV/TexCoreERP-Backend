@@ -152,6 +152,9 @@ class MovimientoSerializer(serializers.ModelSerializer):
     producto_codigo = serializers.CharField(source="producto.codigo", read_only=True)
     unidad = serializers.CharField(source="producto.unidad", read_only=True)
     orden_codigo = serializers.CharField(source="orden.codigo", read_only=True, default=None)
+    orden_compra_id = serializers.SerializerMethodField()
+    recepcion_id = serializers.SerializerMethodField()
+    recepcion_codigo = serializers.SerializerMethodField()
     registrado_por_nombre = serializers.SerializerMethodField()
     evidencias = serializers.SerializerMethodField()
 
@@ -160,9 +163,24 @@ class MovimientoSerializer(serializers.ModelSerializer):
         fields = [
             "id", "producto", "producto_codigo", "producto_nombre", "unidad", "tipo", "motivo",
             "cantidad", "costo_unitario", "stock_antes", "stock_despues", "fecha", "proveedor", "proveedor_nombre",
-            "orden_compra", "lote", "orden", "orden_codigo", "observaciones", "registrado_por_nombre",
-            "evidencias", "created_at",
+            "orden_compra", "orden_compra_id", "recepcion_id", "recepcion_codigo", "lote", "orden", "orden_codigo",
+            "observaciones", "registrado_por_nombre", "evidencias", "created_at",
         ]
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_orden_compra_id(self, obj):
+        link = obj.recepcion_linea if hasattr(obj, "recepcion_linea") else None
+        return link.recepcion.orden_id if link else None
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_recepcion_id(self, obj):
+        link = obj.recepcion_linea if hasattr(obj, "recepcion_linea") else None
+        return link.recepcion_id if link else None
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_recepcion_codigo(self, obj):
+        link = obj.recepcion_linea if hasattr(obj, "recepcion_linea") else None
+        return link.recepcion.codigo if link else None
 
     def get_registrado_por_nombre(self, obj) -> str:
         return (obj.registrado_por.get_full_name() or obj.registrado_por.email) if obj.registrado_por else ""

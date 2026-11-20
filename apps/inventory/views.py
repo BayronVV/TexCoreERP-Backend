@@ -305,7 +305,9 @@ class ProveedorRestaurarView(APIView):
 @extend_schema_view(get=extend_schema(
     tags=["movimientos"], summary="Historial de movimientos (kardex)",
     parameters=[LIMIT_PARAM, OpenApiParameter("tipo", str, description="INGRESO o SALIDA"), OpenApiParameter("producto", int, description="Id del producto"),
-                OpenApiParameter("orden", int, description="Id de la orden"), OpenApiParameter("desde", OpenApiTypes.DATE, description="Fecha mínima"),
+                OpenApiParameter("orden", int, description="Id de la orden"),
+                OpenApiParameter("orden_compra", str, description="Código de la orden de compra (p. ej. OC-0001)"),
+                OpenApiParameter("desde", OpenApiTypes.DATE, description="Fecha mínima"),
                 OpenApiParameter("hasta", OpenApiTypes.DATE, description="Fecha máxima")],
 ))
 class MovimientoListView(generics.ListAPIView):
@@ -315,14 +317,16 @@ class MovimientoListView(generics.ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        queryset = Movimiento.objects.select_related("producto", "orden", "registrado_por").prefetch_related(
+        queryset = Movimiento.objects.select_related(
+            "producto", "orden", "registrado_por", "recepcion_linea__recepcion"
+        ).prefetch_related(
             "evidencias", "orden__evidencias"
         )
         queryset = apply_filters(
             queryset,
             self.request.query_params,
             (("tipo", "tipo"), ("producto", "producto_id"), ("orden", "orden_id"),
-             ("desde", "fecha__gte"), ("hasta", "fecha__lte")),
+             ("orden_compra", "orden_compra"), ("desde", "fecha__gte"), ("hasta", "fecha__lte")),
         )
         return limited(queryset, self.request)
 
@@ -346,7 +350,7 @@ class IngresoCreateView(APIView):
             user=request.user, producto_id=values.pop("producto"), orden_id=values.pop("orden"),
             proveedor_id=values.pop("proveedor"), **values
         )
-        movement = Movimiento.objects.select_related("producto", "orden", "registrado_por").get(pk=movement.pk)
+        movement = Movimiento.objects.select_related("producto", "orden", "registrado_por", "recepcion_linea__recepcion").get(pk=movement.pk)
         return Response(MovimientoSerializer(movement).data, status=status.HTTP_201_CREATED)
 
 

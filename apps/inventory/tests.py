@@ -201,25 +201,76 @@ class OrderTests(InventoryBase):
     def test_orden_sin_lineas(self):
         self.assertEqual(self.production_order(lineas=[]).status_code, 400)
 
-    def test_lavanderia_exige_un_solo_generico_y_verifica_stock(self):
-        self.generico.stock_actual = 10
+    def test_crear_orden_lavanderia_se_rechaza_con_400_y_no_descuenta_insumos(self):
+        self.generico.stock_actual = Decimal("50")
         self.generico.save()
-        response = self.laundry_order(quantity="20")
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("Pantalón genérico", response.json()["faltantes"][0]["nombre"])
-        no_generic = self.laundry_order(lineas=[{"producto": self.boton.id, "cantidad": "10"}])
-        self.assertEqual(no_generic.status_code, 400)
+        before_generic = self.generico.stock_actual
+        before_button = self.boton.stock_actual
 
-    def test_lavanderia_envia_genericos_y_botones(self):
-        self.generico.stock_actual = 50
-        self.generico.save()
         response = self.laundry_order()
-        self.assertEqual(response.status_code, 201, response.content)
-        self.assertEqual(response.json()["codigo"], "LV-0001")
-        self.assertEqual(Decimal(response.json()["cantidad_prendas"]), Decimal("20"))
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["tipo"][0], catalog.LAUNDRY_REDIRECT_MSG)
+
         self.refresh(self.generico, self.boton)
-        self.assertEqual(self.generico.stock_actual, Decimal("30"))
-        self.assertEqual(self.boton.stock_actual, Decimal("200"))
+        self.assertEqual(self.generico.stock_actual, before_generic)
+        self.assertEqual(self.boton.stock_actual, before_button)
+        self.assertEqual(OrdenSalida.objects.count(), 0)
+        self.assertEqual(Movimiento.objects.count(), 0)
+        self.assertFalse(Consecutivo.objects.filter(clave="LV").exists())
+
+        from rest_framework.exceptions import ValidationError
+
+        from . import services
+
+        with self.assertRaises(ValidationError) as ctx:
+            services.create_order(
+                user=self.storekeeper,
+                tipo=catalog.ORDER_LAUNDRY,
+                fecha_salida=timezone.localdate(),
+                responsable="Lavandería Sol",
+                referencia_id=self.referencia.id,
+                producto_resultado_id=self.skinny.id,
+                lineas=[{"producto": self.generico.id, "cantidad": "20"}],
+            )
+        self.assertIn(catalog.LAUNDRY_REDIRECT_MSG, str(ctx.exception.detail["tipo"][0]))
+
+    def test_ordenes_lv_historicas_siguen_visibles_en_solo_lectura(self):
+        legacy = OrdenSalida.objects.create(
+            codigo="LV-0001",
+            tipo=catalog.ORDER_LAUNDRY,
+            estado=catalog.STATUS_OPEN,
+            fecha_salida=today(),
+            responsable="Lavandería Sol",
+            referencia=self.referencia,
+            ficha_tecnica=self.referencia.codigo,
+            producto_resultado=self.skinny,
+            cantidad_prendas=Decimal("20"),
+            registrado_por=self.storekeeper,
+        )
+        Movimiento.objects.create(
+            producto=self.generico,
+            tipo=catalog.EXIT,
+            motivo=catalog.REASON_ORDER_EXIT,
+            cantidad=Decimal("20"),
+            stock_antes=Decimal("20"),
+            stock_despues=Decimal("0"),
+            fecha=today(),
+            orden=legacy,
+            lote=self.referencia.codigo,
+            registrado_por=self.storekeeper,
+        )
+
+        listed = self.api.get(reverse("inventario_ordenes"), {"tipo": catalog.ORDER_LAUNDRY})
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual([o["codigo"] for o in listed.json()], ["LV-0001"])
+
+        detail = self.api.get(reverse("inventario_orden", args=[legacy.id]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual((detail.json()["tipo"], detail.json()["codigo"]), (catalog.ORDER_LAUNDRY, "LV-0001"))
+
+        kardex = self.api.get(reverse("inventario_movimientos"), {"orden": legacy.id})
+        self.assertEqual(kardex.status_code, 200)
+        self.assertEqual([m["orden_codigo"] for m in kardex.json()], ["LV-0001"])
 
 
 class OrderReturnTests(InventoryBase):
@@ -258,14 +309,43 @@ class OrderReturnTests(InventoryBase):
     def test_generico_exige_orden(self):
         self.assertEqual(self.entry(self.generico, None, "5").status_code, 400)
 
-    def test_lavanderia_no_devuelve_mas_de_lo_enviado(self):
-        self.generico.stock_actual = 50
-        self.generico.save()
-        order = self.laundry_order().json()
-        self.assertEqual(self.entry(self.skinny, order["id"], "21").status_code, 400)
-        self.assertEqual(self.entry(self.skinny, order["id"], "19").status_code, 201)
-        self.refresh(self.skinny)
-        self.assertEqual(self.skinny.stock_actual, Decimal("19"))
+    def test_ingreso_desde_orden_lv_o_producto_terminado_se_rechaza_y_op_no_cambia(self):
+        legacy = OrdenSalida.objects.create(
+            codigo="LV-0099",
+            tipo=catalog.ORDER_LAUNDRY,
+            estado=catalog.STATUS_OPEN,
+            fecha_salida=today(),
+            responsable="Lavandería Sol",
+            referencia=self.referencia,
+            ficha_tecnica=self.referencia.codigo,
+            producto_resultado=self.skinny,
+            cantidad_prendas=Decimal("20"),
+            registrado_por=self.storekeeper,
+        )
+        # Intentar ingresar producto terminado desde Inventario (con o sin orden LV) falla con 400.
+        direct = self.entry(self.skinny, None, "5")
+        self.assertEqual(direct.status_code, 400)
+        self.assertIn("Producción → Lavandería", str(direct.json()["producto"][0]))
+
+        with_lv = self.entry(self.skinny, legacy.id, "15")
+        self.assertEqual(with_lv.status_code, 400)
+        self.assertIn("Producción → Lavandería", str(with_lv.json()["producto"][0]))
+
+        # Tampoco permite usar una orden LV en el ingreso de otro producto.
+        cross = self.entry(self.generico, legacy.id, "10")
+        self.assertEqual(cross.status_code, 400)
+        self.assertIn("Producción → Lavandería", str(cross.json()["orden"][0]))
+
+        legacy.refresh_from_db()
+        self.assertEqual(legacy.estado, catalog.STATUS_OPEN)
+        self.refresh(self.skinny, self.generico)
+        self.assertEqual((self.skinny.stock_actual, self.generico.stock_actual), (Decimal("0"), Decimal("0")))
+
+        # Las órdenes OP de pantalones genéricos siguen cerrando normalmente.
+        op = self.production_order().json()
+        ok = self.entry(self.generico, op["id"], "95")
+        self.assertEqual(ok.status_code, 201, ok.content)
+        self.assertEqual(OrdenSalida.objects.get(pk=op["id"]).estado, catalog.STATUS_DONE)
 
     def test_ingreso_no_puede_ser_anterior_a_la_salida(self):
         order = self.production_order().json()

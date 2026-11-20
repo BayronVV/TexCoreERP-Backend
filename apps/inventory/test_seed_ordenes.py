@@ -10,7 +10,7 @@ from apps.references import fichas
 from .models import Movimiento, OrdenSalida
 from .tests import InventoryBase
 
-KEYS = ("OP-DEMO-CLASICO", "OP-DEMO-MOM", "LV-DEMO-CLASICO")
+KEYS = ("OP-DEMO-CLASICO", "OP-DEMO-MOM")
 
 
 def demo(key):
@@ -22,17 +22,16 @@ class DemoOrdersOnReferencesTests(InventoryBase):
     def seed(self):
         call_command("seed_demo_inventario", verbosity=0)
 
-    def test_crea_las_tres_ordenes_en_su_estado_y_ligadas_a_su_referencia(self):
+    def test_crea_las_ordenes_op_en_su_estado_sin_crear_ordenes_lv(self):
         self.seed()
-        clasico, mom, laundry = (demo(key) for key in KEYS)
+        clasico, mom = (demo(key) for key in KEYS)
         self.assertEqual((clasico.tipo, clasico.estado), ("PRODUCCION", "COMPLETADA"))
         self.assertEqual((mom.tipo, mom.estado), ("PRODUCCION", "EN_PROCESO"))
-        self.assertEqual((laundry.tipo, laundry.estado), ("LAVANDERIA", "EN_PROCESO"))
         self.assertEqual(clasico.referencia.nombre, "Clásico 5 bolsillos frosteado")
         self.assertEqual(mom.referencia.nombre, "Mom vintage tiro alto")
-        self.assertEqual(laundry.referencia_id, clasico.referencia_id)
         self.assertEqual(clasico.cantidad_prendas, 60)
-        self.assertEqual(laundry.cantidad_prendas, 40)  # lo que se envía a lavar
+        self.assertEqual(mom.cantidad_prendas, 50)
+        self.assertEqual(OrdenSalida.objects.filter(tipo="LAVANDERIA").count(), 0)
 
     def test_los_materiales_de_produccion_son_los_que_calcula_la_ficha(self):
         self.seed()
@@ -82,9 +81,9 @@ class DemoOrdersOnReferencesTests(InventoryBase):
             self.seed()
         self.assertFalse(OrdenSalida.objects.filter(observaciones__contains="OP-DEMO").exists())
 
-    def test_las_seis_ordenes_anteriores_tambien_quedan_ligadas_a_una_referencia(self):
+    def test_las_cuatro_ordenes_op_anteriores_tambien_quedan_ligadas_a_una_referencia(self):
         self.seed()
-        old = ("FT-1427-A", "FT-1431-B", "FT-1436-C", "REF-1427-LV1", "REF-N22-LV2", "FT-1440-X")
+        old = ("FT-1427-A", "FT-1431-B", "FT-1436-C", "FT-1440-X")
         for key in old:
             self.assertIsNotNone(demo(key).referencia_id, key)
         self.assertEqual(OrdenSalida.objects.filter(referencia__isnull=False).count(), len(old) + len(KEYS))

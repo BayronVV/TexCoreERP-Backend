@@ -340,7 +340,8 @@ def register_entry(*, user, producto_id, cantidad, fecha, proveedor_id=None, ord
 
     - Materia prima e insumos: compra con proveedor de la lista y lote obligatorios. Puede traer el costo unitario: queda
       en el movimiento y actualiza el costo promedio ponderado del producto.
-    - Pantalón genérico o terminado: solo entra cerrando la orden que lo fabricó; la orden pasa a COMPLETADA. No lleva costo.
+    - Pantalón genérico: solo entra cerrando la orden de producción (OP) que lo fabricó; la orden pasa a COMPLETADA.
+      No lleva costo. El producto terminado ingresa desde Producto Terminado tras inspección de calidad (HU 5.3 / TE-171).
     """
     check_date(fecha)
     product = lock_products([producto_id])[producto_id]
@@ -368,22 +369,24 @@ def register_entry(*, user, producto_id, cantidad, fecha, proveedor_id=None, ord
             lote=lote.strip(), observaciones=observaciones.strip(), registrado_por=user, costo_unitario=cost,
         )
 
-    # Pantalón genérico o terminado: solo entra cerrando la orden que lo fabricó.
+    # Producto terminado ya no ingresa desde Inventario (HU 5.3 / TE-171); pantalón genérico solo entra por orden OP.
+    if product.tipo == catalog.FINISHED_PANTS:
+        fail(
+            f"{catalog.LAUNDRY_REDIRECT_MSG} El ingreso de producto terminado se registra desde Producto Terminado.",
+            "producto",
+        )
     if not orden_id:
         fail("Selecciona la orden de la que viene este producto.", "orden")
     try:
         order = OrdenSalida.objects.select_for_update().get(pk=orden_id)
     except OrdenSalida.DoesNotExist:
         fail("La orden no existe.", "orden")
+    if order.tipo == catalog.ORDER_LAUNDRY:
+        fail(catalog.LAUNDRY_REDIRECT_MSG, "orden")
     if order.estado != catalog.STATUS_OPEN:
         fail(f"La orden {order.codigo} ya no está en proceso.", "orden")
     if order.producto_resultado_id != product.id:
         fail(f"La orden {order.codigo} produce {order.producto_resultado.nombre}, no este producto.", "producto")
-    if order.tipo == catalog.ORDER_LAUNDRY and quantity > order.cantidad_prendas:
-        fail(
-            f"No pueden volver más prendas de las enviadas ({format_quantity(order.cantidad_prendas, product.unidad)}).",
-            "cantidad",
-        )
     if fecha < order.fecha_salida:
         fail("El ingreso no puede ser anterior a la salida de la orden.", "fecha")
 
@@ -403,13 +406,13 @@ def register_entry(*, user, producto_id, cantidad, fecha, proveedor_id=None, ord
 @transaction.atomic
 def create_order(*, user, tipo, fecha_salida, responsable, referencia_id, producto_resultado_id, lineas,
                  destino="", cantidad_prendas=None, observaciones=""):
-    """Crea una orden OP (producción) o LV (lavandería) de una referencia de jean, con su cesta de materiales.
+    """Crea una orden OP (producción) de una referencia de jean, con su cesta de materiales.
 
-    La referencia debe estar activa; en producción además necesita ficha técnica y la cantidad de prendas es
-    obligatoria. Valida el tipo de cada producto y su stock (si falta material el error trae `faltantes`),
-    genera el código consecutivo y descuenta el stock registrando una salida por línea. El código de la
-    referencia queda como lote de esas salidas.
+    Las órdenes provisionales LV (lavandería) fueron retiradas (HU 5.3 / TE-171) y responden error de validación
+    redirigiendo a Producción → Lavandería sin descontar existencias ni avanzar consecutivos.
     """
+    if tipo == catalog.ORDER_LAUNDRY:
+        fail(catalog.LAUNDRY_REDIRECT_MSG, "tipo")
     rules = catalog.ORDER_RULES[tipo]
     check_date(fecha_salida, "fecha_salida")
     reference = Referencia.objects.filter(pk=referencia_id, estado=reference_catalog.ACTIVE).first()

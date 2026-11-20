@@ -20,12 +20,12 @@ compatibilidad con PostgreSQL, validación de transiciones y cliente/rutas del f
 | Subconjunto `apps.reports` (antes) | `PBKDF2PasswordHasher` | 6 | 54,26 s totales (43,26 s en pruebas) |
 | Subconjunto `apps.reports` (después) | `MD5PasswordHasher` solo en test | 6 | **11,95 s** totales (**1,51 s** en pruebas · ~29× más rápido) |
 | Suite completa backend (auditoría 08/11) | `PBKDF2PasswordHasher` (SQLite) | 922 | ~28 min |
-| Suite completa backend con `coverage` (después) | `MD5PasswordHasher` (SQLite + cobertura) | **965** | **227,83 s** (3 min 48 s) |
-| Suite completa frontend (`npm test`) | `node --test` | **236** | **1,68 s** |
+| Suite completa backend con `coverage` (después) | `MD5PasswordHasher` (SQLite + cobertura) | **965** | **252,76 s** (4 min 13 s) |
+| Suite completa frontend (`npm test`) | `node --test` | **237** | **1,81 s** |
 
 !!! tip "Por debajo del límite de 5 minutos"
     Incluso ejecutando **965 pruebas** secuenciales con instrumentación de `coverage` y pruebas de concurrencia con
-    `TransactionTestCase` (`serialized_rollback = True`), la suite completa del backend finaliza por debajo de los 4 minutos en máquina local.
+    `TransactionTestCase` (`serialized_rollback = True`), la suite completa del backend finaliza por debajo de los 5 minutos en máquina local.
 
 ---
 
@@ -38,7 +38,7 @@ Medición obtenida sobre `apps/` (excluyendo migraciones, archivos de prueba y c
 |---|---|---|
 | `apps/core` | 148 / 177 | **83,6 %** |
 | `apps/users` | 576 / 616 | **93,5 %** |
-| `apps/inventory` | 910 / 936 | **97,2 %** |
+| `apps/inventory` | 914 / 945 | **96,7 %** |
 | `apps/purchasing` | 549 / 556 | **98,7 %** |
 | `apps/references` | 668 / 679 | **98,4 %** |
 | `apps/production` | 1938 / 1997 | **97,0 %** |
@@ -46,8 +46,8 @@ Medición obtenida sobre `apps/` (excluyendo migraciones, archivos de prueba y c
 | `apps/finished` | 550 / 573 | **96,0 %** |
 | `apps/sales` | 691 / 718 | **96,2 %** |
 | `apps/shipping` | 842 / 878 | **95,9 %** |
-| `apps/reports` | 337 / 357 | **94,4 %** |
-| **Total backend** | **7528 / 7820** | **96 %** |
+| `apps/reports` | 339 / 360 | **94,2 %** |
+| **Total backend** | **7534 / 7832** | **96 %** |
 
 ---
 
@@ -82,7 +82,8 @@ Convención de tipos de prueba en la tabla:
 | Tablero de reportes gerenciales | TE-65 | 6 / 1 | 7 *(`reports.test.js`)* | Lógica pura + Exportación XLSX/CSV + E2E API | **Sí (crítico):** `CREATE MATERIALIZED VIEW` y `REFRESH MATERIALIZED VIEW` dentro y fuera de bloque atómico |
 | Núcleo, PostgreSQL transversal, ERD/MER y seeds | TE-180 / Sprint 1–3 | 26 / 6 | — | Servicios + Migraciones + PostgreSQL | **Sí:** `apps.core.test_postgres` |
 | Observabilidad, manejo de errores, OpenAPI y robustez API | TE-181 | +12 *(incl. en suites)* | — | Manejador global + Logging + E2E API + N+1 | Concurrencia multihilo Track123 (`ConcurrencyTrackingTests`) en `apps.shipping` |
-| **Total sistema** | **TE-42 a TE-181** | **965** | **236** | **Lógica + Servicios/UI + E2E API** | **7 suites completas + `core.test_postgres` sobre PostgreSQL 16** |
+| Retiro de salida a lavandería provisional de Inventario | TE-171 *(HU 5.3)* | Incl. en `inventory` *(rechazo 400 + historial LV)* | +1 contrato UI *(`orderLines.test.js`)* | Servicios + Serializers + Contrato UI + E2E API | Validada en `apps.inventory` y flujo real lavandería (`apps.production`) |
+| **Total sistema** | **TE-42 a TE-181 + TE-171** | **965** | **237** | **Lógica + Servicios/UI + E2E API** | **7 suites completas + `core.test_postgres` sobre PostgreSQL 16** |
 
 > Nota sobre el conteo de ejecución: el corredor de Django ejecuta **965** casos (`OK`, con 2 pruebas multi-hilo condicionales en SQLite — `ConcurrencyOrderTests` y `ConcurrencyTrackingTests` — que corren obligatoriamente en el job PostgreSQL).
 

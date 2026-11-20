@@ -86,7 +86,7 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 | Ver y gestionar usuarios | `seguridad.ver` / `seguridad.gestionar` |
 | Crear, editar y eliminar roles | `seguridad.roles` |
 | Consultar existencias, catálogo, proveedores, kardex, órdenes de salida y alertas | `inventario.ver` |
-| Registrar ingresos, crear o anular salidas, editar catálogo y proveedores, adjuntar evidencias | `inventario.gestionar` |
+| Registrar ingresos de materias primas/insumos o retorno de órdenes `OP`, anular órdenes de salida `OP`, editar catálogo y proveedores, adjuntar evidencias | `inventario.gestionar` |
 | **Recibir mercancía** (`/api/compras/recepciones/`) | `inventario.gestionar` (es un ingreso al almacén) |
 | Consultar órdenes de compra, recepciones y metadatos | `compras.ver` |
 | Crear, editar, cancelar y cerrar órdenes de compra | `compras.gestionar` |

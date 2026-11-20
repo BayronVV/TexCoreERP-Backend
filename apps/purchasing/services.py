@@ -131,13 +131,42 @@ def create_order(*, user, data):
     lines = clean_order_lines(data.get("lineas"))
     order = OrdenCompra.objects.create(
         codigo=next_code(catalog.ORDER_PREFIX), proveedor=supplier, fecha=date, fecha_esperada=data.get("fecha_esperada"),
-        condiciones_pago=data.get("condiciones_pago", "").strip(), notas=data.get("notas", "").strip(),
+        condiciones_pago=(data.get("condiciones_pago") or "").strip(), notas=(data.get("notas") or "").strip(),
         estado=catalog.DRAFT, creado_por=user,
     )
     LineaCompra.objects.bulk_create(
         [LineaCompra(orden=order, producto=product, cantidad_pedida=quantity, precio_pactado=price) for product, quantity, price in lines]
     )
     return order
+
+
+@transaction.atomic
+def create_order_from_shortages(*, user, data):
+    """Crea una orden de compra en borrador a partir de los faltantes calculados para una referencia."""
+    from apps.production import services as production_services
+    from apps.references import fichas
+
+    reference = production_services.get_reference(data.get("referencia"))
+    garments = fichas.parse_garments(data.get("cantidad"))
+    requirements = fichas.compute_requirements(reference, garments)
+    shortages = requirements["faltantes"]
+    if not shortages:
+        fail("Hay material suficiente en el almacén: no hay faltantes para comprar.", "lineas")
+
+    if data.get("proveedor") is not None:
+        supplier = _supplier(data.get("proveedor"))
+    else:
+        first_category = Producto.objects.filter(pk=shortages[0]["producto"]).values_list("categoria", flat=True).first()
+        supplier = (
+            (Proveedor.objects.filter(categoria=first_category).order_by("razon_social", "id").first() if first_category else None)
+            or Proveedor.objects.order_by("razon_social", "id").first()
+        )
+        if supplier is None:
+            fail("El proveedor no existe o está archivado.", "proveedor")
+
+    lines = [{"producto": row["producto"], "cantidad": str(row["falta"])} for row in shortages]
+    notes = (data.get("notas") or "").strip() or f"Faltantes para producir {garments} prendas de {reference.codigo} ({reference.nombre})"
+    return create_order(user=user, data={**data, "proveedor": supplier.id, "lineas": lines, "notas": notes})
 
 
 def _locked_order(order_id):
@@ -161,7 +190,7 @@ def update_order(*, order_id, data):
     order.fecha, order.fecha_esperada = date, expected
     for field in ("condiciones_pago", "notas"):
         if field in data:
-            setattr(order, field, data[field].strip())
+            setattr(order, field, (data[field] or "").strip())
     lines = clean_order_lines(data["lineas"]) if "lineas" in data else None
     order.save()
     if lines is not None:
@@ -180,6 +209,8 @@ def approve_order(*, user, order_id):
         fail(f"La orden {order.codigo} está {catalog.ORDER_STATE_NAMES[order.estado].lower()}: solo se aprueba un borrador.", "orden")
     if not order.lineas.exists():
         fail("La orden no tiene líneas.", "orden")
+    if order.creado_por_id == user.id:
+        fail("Quien creó la orden no puede aprobarla: debe aprobarla otra persona.", "orden")
     order.estado, order.aprobado_por, order.aprobada_at = catalog.APPROVED, user, timezone.now()
     order.save(update_fields=["estado", "aprobado_por", "aprobada_at", "updated_at"])
     return order
@@ -193,25 +224,25 @@ def _reason(motivo):
 
 
 @transaction.atomic
-def cancel_order(*, order_id, motivo):
+def cancel_order(*, order_id, motivo, user=None):
     """Cancela una orden en borrador o aprobada que todavía no tiene recepciones."""
     order = _locked_order(order_id)
     if order.estado not in {catalog.DRAFT, catalog.APPROVED}:
         hint = " Si lo pendiente ya no llegará, ciérrala con un motivo." if order.estado == catalog.PARTIAL else ""
         fail(f"La orden {order.codigo} está {catalog.ORDER_STATE_NAMES[order.estado].lower()}: no se puede cancelar.{hint}", "orden")
-    order.estado, order.motivo_cierre, order.cerrada_at = catalog.CANCELLED, _reason(motivo), timezone.now()
-    order.save(update_fields=["estado", "motivo_cierre", "cerrada_at", "updated_at"])
+    order.estado, order.cerrado_por, order.motivo_cierre, order.cerrada_at = catalog.CANCELLED, user, _reason(motivo), timezone.now()
+    order.save(update_fields=["estado", "cerrado_por", "motivo_cierre", "cerrada_at", "updated_at"])
     return order
 
 
 @transaction.atomic
-def close_order(*, order_id, motivo):
+def close_order(*, order_id, motivo, user=None):
     """Cierra a mano una orden con recepciones parciales cuando lo pendiente ya no va a llegar."""
     order = _locked_order(order_id)
     if order.estado != catalog.PARTIAL:
         fail(f"Solo se cierra una orden con recepciones parciales; la {order.codigo} está {catalog.ORDER_STATE_NAMES[order.estado].lower()}.", "orden")
-    order.estado, order.motivo_cierre, order.cerrada_at = catalog.CLOSED, _reason(motivo), timezone.now()
-    order.save(update_fields=["estado", "motivo_cierre", "cerrada_at", "updated_at"])
+    order.estado, order.cerrado_por, order.motivo_cierre, order.cerrada_at = catalog.CLOSED, user, _reason(motivo), timezone.now()
+    order.save(update_fields=["estado", "cerrado_por", "motivo_cierre", "cerrada_at", "updated_at"])
     return order
 
 

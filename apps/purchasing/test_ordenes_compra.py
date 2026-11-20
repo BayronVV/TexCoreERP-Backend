@@ -9,8 +9,10 @@ from django.utils import timezone
 
 from apps.core.testing import client_for, make_user, today
 from apps.inventory import catalog as inventory_catalog
-from apps.inventory.models import Proveedor
+from apps.inventory.models import Producto, Proveedor
 from apps.inventory.tests import InventoryBase
+from apps.references import catalog as reference_catalog
+from apps.references.models import FichaLinea, FichaTecnica, Referencia
 
 from . import catalog
 from .models import LineaCompra, OrdenCompra
@@ -240,6 +242,61 @@ class AprobarCancelarCerrarTests(PurchasingBase):
         self.assertTrue(order["aprobado_por_nombre"])
         self.assertIsNotNone(order["aprobada_at"])
 
+    def test_quien_creo_la_orden_no_puede_aprobarla(self):
+        # Escenario 1: Producción con permiso compras.aprobar (o ADMIN con todos los permisos) crea una orden e intenta aprobarla.
+        from apps.users.models import ModulePermission, Role, RolePermission
+
+        prod_role = Role.objects.get(code="PRODUCCION")
+        approve_perm = ModulePermission.objects.get(code="compras.aprobar")
+        RolePermission.objects.get_or_create(role=prod_role, permission=approve_perm)
+
+        hybrid_producer = client_for(make_user("prod_aprobador@t.co", "PRODUCCION"))
+        order = self.placed(client=hybrid_producer)
+        response = self.approve(order["id"], client=hybrid_producer)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("debe aprobarla otra persona", str(response.json()["orden"]))
+        self.assertEqual(OrdenCompra.objects.get(pk=order["id"]).estado, "BORRADOR")
+
+        admin = client_for(make_user("admin_aprobar@t.co", "ADMIN"))
+        admin_order = self.placed(client=admin)
+        admin_self = self.approve(admin_order["id"], client=admin)
+        self.assertEqual(admin_self.status_code, 400)
+        self.assertIn("debe aprobarla otra persona", str(admin_self.json()["orden"]))
+
+        # Otro usuario con compras.aprobar sí puede aprobarla.
+        ok = self.approve(order["id"], client=self.manager)
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.json()["estado"], "APROBADA")
+
+    def test_historial_completo_en_detalle_de_la_orden(self):
+        order = self.placed()
+        self.assertEqual([item["evento"] for item in order["historial"]], ["CREADA"])
+        self.assertEqual(order["historial"][0]["usuario"], order["creado_por_nombre"])
+
+        approved = self.approve(order["id"]).json()
+        self.assertEqual([item["evento"] for item in approved["historial"]], ["CREADA", "APROBADA"])
+        self.assertEqual(approved["historial"][1]["usuario"], approved["aprobado_por_nombre"])
+
+        self.store.post(
+            reverse("compras_recepciones"),
+            {
+                "orden": order["id"],
+                "documento": "REM-700",
+                "lineas": [{"linea": approved["lineas"][0]["id"], "cantidad": "40", "lote": "L-HIST"}],
+            },
+            format="json",
+        )
+        closed = self.close(order["id"], "Proveedor sin más saldo").json()
+        self.assertEqual(
+            [item["evento"] for item in closed["historial"]],
+            ["CREADA", "APROBADA", "RECEPCION", "CERRADA"],
+        )
+        self.assertTrue(closed["cerrado_por_nombre"])
+        self.assertEqual(closed["historial"][2]["detalle"], "Documento REM-700")
+        self.assertEqual(closed["historial"][3]["usuario"], closed["cerrado_por_nombre"])
+        self.assertEqual(closed["historial"][3]["detalle"], "Proveedor sin más saldo")
+        self.assertTrue(all(item["fecha"] for item in closed["historial"]))
+
     def test_aprobar_dos_veces_o_una_cancelada(self):
         order = self.approved()
         self.assertEqual(self.approve(order["id"]).status_code, 400)
@@ -329,3 +386,61 @@ class ConsultasTests(PurchasingBase):
         for _ in range(4):
             self.placed()
         self.assertEqual(count(), baseline)
+
+
+class CreateFromShortagesTests(PurchasingBase):
+    """Escenario 3: generar una orden de compra en borrador desde los faltantes de producción."""
+
+    def setUp(self):
+        super().setUp()
+        self.from_shortages_url = reverse("compras_ordenes_desde_faltantes")
+        self.reference = Referencia.objects.create(
+            codigo="REF-9001", nombre="Jean Cargo", ajuste="RECTO", estado=reference_catalog.ACTIVE
+        )
+        ficha = FichaTecnica.objects.create(referencia=self.reference)
+        # Con 1000 m de tela y 500 cierres: producir 1000 prendas pide 1500 m de tela (faltan 500 m) y 1000 cierres (faltan 500).
+        FichaLinea.objects.create(ficha=ficha, producto=self.tela, cantidad=Decimal("1.500"), merma=Decimal("0"))
+        FichaLinea.objects.create(ficha=ficha, producto=self.cierre, cantidad=Decimal("1.000"), merma=Decimal("0"))
+
+    def test_crea_orden_borrador_con_los_faltantes_de_produccion(self):
+        response = self.producer.post(
+            self.from_shortages_url,
+            {"referencia": self.reference.id, "cantidad": 1000},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.content)
+        order = response.json()
+        self.assertEqual(order["estado"], "BORRADOR")
+        self.assertEqual(order["proveedor"], self.supplier.id)
+        self.assertIn("REF-9001", order["notas"])
+        by_product = {line["producto"]: line["cantidad_pedida"] for line in order["lineas"]}
+        self.assertEqual(by_product, {self.tela.id: "500.00", self.cierre.id: "500.00"})
+
+    def test_acepta_solo_los_materiales_que_faltan_y_rechaza_si_alcanza_el_stock(self):
+        # Con 400 prendas pide 600 m (alcanza de 1000 m) y 400 cierres (alcanza de 500 und) -> sin faltantes.
+        sufficient = self.producer.post(
+            self.from_shortages_url,
+            {"referencia": self.reference.id, "cantidad": 400},
+            format="json",
+        )
+        self.assertEqual(sufficient.status_code, 400)
+        self.assertIn("no hay faltantes", str(sufficient.json()["lineas"]))
+
+        # Si el producto solo falta en tela (ej. subimos stock de cierres):
+        Producto.objects.filter(pk=self.cierre.id).update(stock_actual=Decimal("2000"))
+        partial_shortage = self.producer.post(
+            self.from_shortages_url,
+            {"referencia": self.reference.id, "cantidad": 1000, "proveedor": self.supplier.id},
+            format="json",
+        )
+        self.assertEqual(partial_shortage.status_code, 201)
+        self.assertEqual([line["producto"] for line in partial_shortage.json()["lineas"]], [self.tela.id])
+
+    def test_solo_quien_gestiona_compras_puede_generar_desde_faltantes(self):
+        for client in (self.store, self.manager):
+            response = client.post(
+                self.from_shortages_url,
+                {"referencia": self.reference.id, "cantidad": 1000},
+                format="json",
+            )
+            self.assertEqual(response.status_code, 403)

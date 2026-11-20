@@ -130,29 +130,27 @@ pero conserva su historial) y **Restaurar**.
 
 ### Compras: órdenes de compra y recepción de mercancía
 
-Menú **Compras**. Cubre el camino completo de un pedido de materia prima o insumos: **la orden la crea Producción, la aprueba el Gerente y la recibe
-el almacenista**. Así quien pide no es quien recibe.
+Menú **Compras**. Cubre el camino completo de un pedido de materia prima o insumos (**HU 2.5**): **la orden la crea Producción, la aprueba una persona distinta (el Gerente) y la recibe el Almacenista**. Así quien pide no es quien aprueba ni quien recibe.
 
-1. **Crear la orden** (Jefe de Producción, en **Compras → Órdenes de compra → Nueva orden**): elige el proveedor, la fecha esperada y las condiciones de
+1. **Crear la orden** (Jefe de Producción, en **Compras → Órdenes de compra → Nueva orden**, o directamente desde **Órdenes de producción** con el botón **Solicitar compra de los faltantes** cuando falta material): elige el proveedor, la fecha esperada y las condiciones de
    pago, y agrega los materiales con su cantidad y, si ya lo acordaron, el **precio pactado** por unidad (es opcional). Un producto no se repite en la
    misma orden. La orden nace en **borrador** con un código `OC-0001`; mientras es borrador se puede **editar**.
-2. **Aprobar** (Gerente): revisa la orden y pulsa **Aprobar**. Desde ese momento ya no se edita y el almacén puede recibir contra ella. Si no procede,
+2. **Aprobar** (Gerente): revisa la orden y pulsa **Aprobar**. **Quien creó la orden no puede aprobarla** (aunque su rol tenga permiso de aprobar): el sistema exige que la apruebe otra persona. Desde ese momento ya no se edita y el almacén puede recibir contra ella. Si no procede,
    Producción puede **cancelarla** indicando el motivo (solo mientras no tenga recepciones).
-3. **Recibir la mercancía** (Almacenista, en **Compras → Recepción de mercancía**): elige la orden aprobada y la pantalla lista sus productos con lo
+3. **Detalle, historial e ingresos vinculados:** al pulsar **Ver** en una orden aparece su **Historial de la orden** (quién la creó, aprobó, recibió, cerró o canceló y en qué fecha) y la tabla de **Recepciones e ingresos de inventario**, con enlace directo al Kardex filtrado por esa orden.
+4. **Recibir la mercancía** (Almacenista, en **Compras → Recepción de mercancía**): elige la orden aprobada y la pantalla lista sus productos con lo
    **pedido, lo ya recibido y lo pendiente**. Escribe cuánto llegó de cada uno, el **lote** y el **costo real** (se sugiere el precio pactado) y el número
    de la remisión o la factura del proveedor. Todo se guarda **de una sola vez**: si una fila tiene un error, no se registra ninguna.
    - Se puede recibir **hasta un 5 % más** de lo pendiente de cada línea, porque a veces el proveedor envía de más.
    - Si llega solo una parte, la orden queda **Recibida parcial** y se puede hacer otra recepción después. Al completarse todo, pasa a **Recibida**.
    - Si lo pendiente ya no va a llegar, Producción **cierra la orden** indicando el motivo.
    - **Quien creó la orden no puede recibirla**, aunque tenga permiso de inventario.
-4. **Entrega sin orden de compra:** en la misma pantalla de recepción, la opción **Sin orden de compra** permite registrar de una vez varios productos
+5. **Entrega sin orden de compra:** en la misma pantalla de recepción, la opción **Sin orden de compra** permite registrar de una vez varios productos
    de un proveedor (con su remisión o factura, lote y costo).
-5. **Qué pasa en el inventario:** cada producto recibido entra como una compra normal: suma al stock, actualiza el **costo promedio ponderado** si se
-   anotó el costo y deja su fila en el **Kardex**, con el código de la orden y de la recepción. El ingreso suelto de **Movimientos → Ingreso** sigue
-   funcionando igual para un producto a la vez.
+6. **Qué pasa en el inventario:** cada producto recibido entra como una compra normal: suma al stock, actualiza el **costo promedio ponderado** si se
+   anotó el costo y deja su fila en el **Kardex**, enlazada directamente con la orden de compra y el número de recepción para abrirla con un clic. El ingreso suelto de **Movimientos → Ingreso** sigue funcionando igual para un producto a la vez.
 
-**Quién puede qué:** el Jefe de Producción crea, edita, cancela y cierra órdenes; el Gerente las aprueba; el Almacenista las consulta y las recibe; el
-Administrador puede todo. Estos permisos se pueden ajustar en **Roles y permisos**.
+**Quién puede qué:** el Jefe de Producción crea, edita, cancela y cierra órdenes; el Gerente las aprueba (sin poder aprobar sus propias órdenes); el Almacenista las consulta y las recibe (no las crea ni las aprueba); el Administrador puede todo salvo aprobar o recibir sus propias órdenes. Estos permisos se pueden ajustar en **Roles y permisos**.
 
 ## 6. Jefe de producción: referencias, fichas técnicas y producción
 
@@ -200,7 +198,7 @@ dirección antigua `/produccion/planificar` te lleva a esta.)*
    El **Resumen por talla** suma todos los lotes. Si cambias el reparto de lotes, las tallas se reinician para evitar datos que ya no cuadran.
 4. **Disponibilidad de material** aparece sola mientras escribes (con una breve espera): muestra, por material, lo que pide la ficha (con la merma),
    lo que hay y lo que falta, y dice cuántas prendas se pueden fabricar con el stock actual y qué material lo limita. **Usar N** lleva el total a
-   ese máximo. Con lotes, **Cobertura por lote** indica hasta qué lote alcanza el material: los lotes comparten el mismo stock, así que un lote se
+   ese máximo. Cuando falta material y tienes permiso de compras, el botón **Solicitar compra de los faltantes** abre **Órdenes de compra** con un borrador ya diligenciado con esos materiales y cantidades. Con lotes, **Cobertura por lote** indica hasta qué lote alcanza el material: los lotes comparten el mismo stock, así que un lote se
    cubre si alcanza para él y los anteriores juntos. La simulación no reserva ni descuenta stock.
 5. **Crear orden** solo se habilita cuando hay material y los lotes están bien repartidos; al lado se lee el motivo cuando está bloqueado. Al crearla,
    el sistema vuelve a verificar el material, genera el código (`OP-0001`) y el de cada lote (`OP-0001-L01`, `-L02`…) y **descuenta del almacén** el

@@ -118,8 +118,7 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 
 ### Reglas que no dependen del permiso
 
-- **Separación de funciones en compras:** quien creó una orden de compra **no puede recibirla**, aunque tenga
-  `inventario.gestionar`. Aprobar tampoco exige ser distinto de quien la creó, pero lo normal es que sea el Gerente.
+- **Separación de funciones en compras (HU 2.5, TE-178):** quien creó una orden de compra **no puede aprobarla** (aunque tenga `compras.aprobar`) **ni recibirla** (aunque tenga `inventario.gestionar`). El Almacenista puede consultar y recibir mercancía, pero no crear ni aprobar órdenes sin los permisos correspondientes.
 - **Delegación segura:** alguien con `seguridad.gestionar` o `seguridad.roles` que no es administrador no puede crear
   administradores, asignar roles con permisos de Seguridad, dar o quitar esos permisos ni editar los de su propio rol.
 - **Nadie sobre sí mismo:** no se cambia el propio rol ni se desactiva o elimina la propia cuenta, y siempre queda al

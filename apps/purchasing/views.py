@@ -13,6 +13,7 @@ from . import catalog, services
 from .models import LineaCompra, OrdenCompra, Recepcion, RecepcionLinea
 from .serializers import (
     MotivoSerializer,
+    OrdenCompraFaltantesInputSerializer,
     OrdenCompraInputSerializer,
     OrdenCompraSerializer,
     RecepcionInputSerializer,
@@ -27,8 +28,12 @@ LIMIT_PARAM = OpenApiParameter("limit", int, description="Máximo de registros (
 
 def order_queryset():
     lines = LineaCompra.objects.select_related("producto")
-    receipts = Recepcion.objects.order_by("created_at", "id")  # en orden cronológico
-    return OrdenCompra.objects.select_related("proveedor", "creado_por", "aprobado_por").prefetch_related(
+    receipts = (
+        Recepcion.objects.select_related("recibido_por")
+        .prefetch_related(Prefetch("lineas", queryset=RecepcionLinea.objects.select_related("producto")))
+        .order_by("created_at", "id")  # en orden cronológico
+    )
+    return OrdenCompra.objects.select_related("proveedor", "creado_por", "aprobado_por", "cerrado_por").prefetch_related(
         Prefetch("lineas", queryset=lines), Prefetch("recepciones", queryset=receipts)
     )
 
@@ -87,6 +92,24 @@ class OrdenCompraListCreateView(APIView):
         return Response(serialize_orders(get_order(order.pk)), status=status.HTTP_201_CREATED)
 
 
+@extend_schema(
+    tags=["compras"],
+    summary="Crear una orden de compra en borrador desde faltantes de producción (HU 2.5 / HU 4.1)",
+    request=OrdenCompraFaltantesInputSerializer,
+    responses={201: OrdenCompraSerializer},
+    description="Calcula los materiales faltantes para producir `cantidad` prendas de `referencia` y genera una orden de compra en borrador con ellos.",
+)
+class OrdenCompraDesdeFaltantesView(APIView):
+    """Crea una orden de compra en borrador con los materiales faltantes de una simulación de producción."""
+    required_permissions = catalog.PURCHASING_MANAGE
+
+    def post(self, request):
+        data = OrdenCompraFaltantesInputSerializer(data=request.data)
+        data.is_valid(raise_exception=True)
+        order = services.create_order_from_shortages(user=request.user, data=data.validated_data)
+        return Response(serialize_orders(get_order(order.pk)), status=status.HTTP_201_CREATED)
+
+
 @extend_schema(tags=["compras"])
 class OrdenCompraDetailView(APIView):
     """Consulta una orden de compra y la edita mientras es borrador."""
@@ -131,7 +154,7 @@ class OrdenCompraCancelarView(APIView):
     def post(self, request, pk):
         data = MotivoSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        services.cancel_order(order_id=pk, motivo=data.validated_data["motivo"])
+        services.cancel_order(order_id=pk, motivo=data.validated_data["motivo"], user=request.user)
         return Response(serialize_orders(get_order(pk)))
 
 
@@ -147,7 +170,7 @@ class OrdenCompraCerrarView(APIView):
     def post(self, request, pk):
         data = MotivoSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        services.close_order(order_id=pk, motivo=data.validated_data["motivo"])
+        services.close_order(order_id=pk, motivo=data.validated_data["motivo"], user=request.user)
         return Response(serialize_orders(get_order(pk)))
 
 

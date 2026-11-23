@@ -1,6 +1,6 @@
 """Rutas de seguridad: registro, token, recuperación de contraseña, usuarios, roles y permisos."""
 from django.urls import path
-from . import views
+from . import accesos, views
 
 urlpatterns = [
     # Autenticación
@@ -25,6 +25,7 @@ urlpatterns = [
     path("users/<int:pk>/", views.UserDetailView.as_view(), name="user_detail"),
     path("users/<int:pk>/invite/", views.UserResendInviteView.as_view(), name="user_invite"),
     path("users/<int:pk>/unlock/", views.UserUnlockView.as_view(), name="user_unlock"),
+    path("seguridad/accesos/", accesos.AccessLogListView.as_view(), name="access_list"),
     path("roles/", views.RoleListCreateView.as_view(), name="role_list"),
     path("roles/<int:pk>/", views.RoleDetailView.as_view(), name="role_detail"),
     path("permissions/", views.ModulePermissionListView.as_view(), name="permission_list"),

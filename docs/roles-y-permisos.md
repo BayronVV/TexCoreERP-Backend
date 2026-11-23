@@ -26,7 +26,7 @@ Cada módulo tiene `ver` (consultar) y `gestionar` (registrar y modificar). Marc
 
 | Módulo | Permisos | Estado |
 |---|---|---|
-| Seguridad y Usuarios | `seguridad.ver`, `seguridad.gestionar`, `seguridad.roles` | Activo |
+| Seguridad y Usuarios | `seguridad.ver`, `seguridad.gestionar`, `seguridad.roles`, `seguridad.accesos`, `seguridad.auditoria` | Activo |
 | Inventario de Materias Primas | `inventario.ver`, `inventario.gestionar` | Activo |
 | Compras | `compras.ver`, `compras.gestionar`, `compras.aprobar` | Activo |
 | Referencias de Jean | `referencias.ver`, `referencias.gestionar` | Activo |
@@ -75,7 +75,7 @@ roles, así que la matriz real de un despliegue puede diferir. `ADMIN` no aparec
 | `reportes.ver` | ✔ | | | | | |
 | `reportes.gestionar` | ✔ | | | | | |
 
-`seguridad.*` solo lo tiene `ADMIN` por defecto. `PENDING` no tiene ninguno.
+`seguridad.*` solo lo tiene `ADMIN` por defecto, salvo `seguridad.auditoria`, que también tiene el `GERENTE`. `PENDING` no tiene ninguno.
 
 ## Qué exige cada operación
 
@@ -85,6 +85,9 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 |---|---|
 | Ver y gestionar usuarios | `seguridad.ver` / `seguridad.gestionar` |
 | Crear, editar y eliminar roles | `seguridad.roles` |
+| Desbloquear una cuenta bloqueada por intentos fallidos | `seguridad.gestionar` |
+| Consultar los accesos al sistema (inicios de sesión, fallos, bloqueos) | `seguridad.accesos` |
+| Consultar la auditoría de operaciones críticas | `seguridad.auditoria` |
 | Consultar existencias, catálogo, proveedores, kardex, órdenes de salida y alertas | `inventario.ver` |
 | Registrar ingresos de materias primas/insumos o retorno de órdenes `OP`, anular órdenes de salida `OP`, editar catálogo y proveedores, adjuntar evidencias | `inventario.gestionar` |
 | **Recibir mercancía** (`/api/compras/recepciones/`) | `inventario.gestionar` (es un ingreso al almacén) |

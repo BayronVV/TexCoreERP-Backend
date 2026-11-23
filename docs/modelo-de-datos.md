@@ -3,7 +3,7 @@
 > Generado automáticamente con `python manage.py generar_erd --salida docs/modelo-de-datos.md`.
 > No lo edites a mano: vuelve a generarlo cuando cambie un modelo.
 
-El modelo tiene **54 tablas** de negocio en 9 módulos, más dos vistas materializadas de reportes. Todas las tablas de negocio heredan de `BaseModel` y por eso incluyen además `created_at`, `updated_at` y `deleted_at` (borrado lógico; ver [convenciones de base de datos](convenciones-base-de-datos.md)). Esas columnas no se repiten abajo.
+El modelo tiene **55 tablas** de negocio en 9 módulos, más dos vistas materializadas de reportes. Todas las tablas de negocio heredan de `BaseModel` y por eso incluyen además `created_at`, `updated_at` y `deleted_at` (borrado lógico; ver [convenciones de base de datos](convenciones-base-de-datos.md)). Esas columnas no se repiten abajo.
 
 ## Cómo leer este modelo
 
@@ -26,7 +26,7 @@ python manage.py generar_erd --salida docs/modelo-de-datos.md --mermaid-dir <car
 
 ## Modelo entidad-relación (notación de Chen)
 
-Es el modelo **conceptual** del sistema, dibujado con la notación de Peter Chen. Se parte de las 54 tablas reales, pero se leen como entidades y relaciones del negocio, no como tablas.
+Es el modelo **conceptual** del sistema, dibujado con la notación de Peter Chen. Se parte de las 55 tablas reales, pero se leen como entidades y relaciones del negocio, no como tablas.
 
 | Símbolo | Significado |
 |---|---|
@@ -148,7 +148,7 @@ Un nodo por módulo y una flecha por cada par de módulos con dependencia por cl
 
     ```mermaid
     flowchart TB
-        m_seguridad["Usuarios y seguridad<br/>(6 tablas)"]
+        m_seguridad["Usuarios y seguridad<br/>(7 tablas)"]
         m_inventario["Inventario<br/>(7 tablas)"]
         m_compras["Compras<br/>(4 tablas)"]
         m_referencias["Referencias<br/>(5 tablas)"]
@@ -189,6 +189,7 @@ Cada flecha va de la tabla referenciada a la tabla que guarda la clave foránea.
             RolePermission
             CustomUser
             AccessLog
+            AuditRecord
             PasswordResetToken
         end
         subgraph sg_inventario["Inventario"]
@@ -259,6 +260,7 @@ Cada flecha va de la tabla referenciada a la tabla que guarda la clave foránea.
         AjusteTerminado --> MovimientoTerminado
         Cliente --> FacturaVenta
         CustomUser --> AccessLog
+        CustomUser --> AuditRecord
         CustomUser --> PasswordResetToken
         CustomUser --> RolePermission
         EtapaLote --> AsignacionEtapa
@@ -334,7 +336,7 @@ Esquema relacional de la base: las tablas de cada módulo con sus columnas y lla
 
 ### Usuarios y seguridad
 
-Tablas: `ModulePermission`, `Role`, `RolePermission`, `CustomUser`, `AccessLog`, `PasswordResetToken`.
+Tablas: `ModulePermission`, `Role`, `RolePermission`, `CustomUser`, `AccessLog`, `AuditRecord`, `PasswordResetToken`.
 
 [![Esquema físico del módulo Usuarios y seguridad (pata de gallo)](img/modulo-seguridad.svg)](img/modulo-seguridad.svg){ target=_blank }
 
@@ -380,6 +382,8 @@ Tablas: `ModulePermission`, `Role`, `RolePermission`, `CustomUser`, `AccessLog`,
             varchar_20 role FK
             varchar_20 requested_area FK
             varchar_20 document_id
+            positivesmallinteger failed_login_count
+            timestamp locked_until
         }
         AccessLog {
             bigint id PK
@@ -389,6 +393,17 @@ Tablas: `ModulePermission`, `Role`, `RolePermission`, `CustomUser`, `AccessLog`,
             inet ip
             varchar_300 forwarded
             varchar_255 user_agent
+        }
+        AuditRecord {
+            bigint id PK
+            bigint user FK
+            varchar_254 user_email
+            varchar_60 action
+            varchar_40 entity
+            varchar_40 entity_id
+            varchar_10 result
+            inet ip
+            json detail
         }
         PasswordResetToken {
             bigint id PK
@@ -400,6 +415,7 @@ Tablas: `ModulePermission`, `Role`, `RolePermission`, `CustomUser`, `AccessLog`,
             inet requested_ip
         }
         CustomUser |o--o{ AccessLog : "user"
+        CustomUser |o--o{ AuditRecord : "user"
         CustomUser |o--o{ RolePermission : "granted_by"
         CustomUser ||--o{ PasswordResetToken : "user"
         ModulePermission ||--o{ RolePermission : "permission"
@@ -1329,6 +1345,8 @@ erDiagram
         varchar_20 role FK
         varchar_20 requested_area FK
         varchar_20 document_id
+        positivesmallinteger failed_login_count
+        timestamp locked_until
     }
     AccessLog {
         bigint id PK
@@ -1338,6 +1356,17 @@ erDiagram
         inet ip
         varchar_300 forwarded
         varchar_255 user_agent
+    }
+    AuditRecord {
+        bigint id PK
+        bigint user FK
+        varchar_254 user_email
+        varchar_60 action
+        varchar_40 entity
+        varchar_40 entity_id
+        varchar_10 result
+        inet ip
+        json detail
     }
     PasswordResetToken {
         bigint id PK
@@ -1896,6 +1925,7 @@ erDiagram
     CustomUser |o--o{ AccessLog : "user"
     CustomUser |o--o{ AjusteTerminado : "realizado_por"
     CustomUser |o--o{ AsignacionEtapa : "asignada_por"
+    CustomUser |o--o{ AuditRecord : "user"
     CustomUser |o--o{ EtapaLote : "responsable"
     CustomUser |o--o{ EventoEtapa : "usuario"
     CustomUser |o--o{ EventoGuia : "usuario"
@@ -2125,6 +2155,8 @@ Usuario del sistema. El correo es también el `username`; el rol decide los perm
 | `role` | varchar(20) | FK | → `Role` |
 | `requested_area` | varchar(20) | FK, nulo | → `Role` |
 | `document_id` | varchar(20) | nulo |  |
+| `failed_login_count` | positivesmallinteger |  |  |
+| `locked_until` | timestamp | nulo |  |
 
 ### AccessLog (`seguridad_acceso`)
 
@@ -2139,6 +2171,22 @@ Rastro de registros e inicios de sesión (éxitos y fallos) para revisar accesos
 | `ip` | inet | nulo |  |
 | `forwarded` | varchar(300) |  |  |
 | `user_agent` | varchar(255) |  |  |
+
+### AuditRecord (`seguridad_auditoria`)
+
+Auditoría de operaciones críticas (HU 1.5, RNF02): quién hizo qué, sobre qué y con qué resultado.
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `user` | bigint | FK, nulo | → `CustomUser` |
+| `user_email` | varchar(254) |  |  |
+| `action` | varchar(60) |  |  |
+| `entity` | varchar(40) |  |  |
+| `entity_id` | varchar(40) |  |  |
+| `result` | varchar(10) |  |  |
+| `ip` | inet | nulo |  |
+| `detail` | json |  |  |
 
 ### PasswordResetToken (`seguridad_token_recuperacion`)
 

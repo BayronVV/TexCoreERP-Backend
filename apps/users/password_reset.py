@@ -79,7 +79,10 @@ def consume_token(token, new_password):
     """Cambia la contraseña con el token, lo marca como usado e invalida los demás enlaces vigentes del usuario."""
     user = token.user
     user.set_password(new_password)
-    user.save(update_fields=["password", "updated_at"])
+    # Con la contraseña nueva también se levanta el bloqueo por intentos fallidos (HU 1.5).
+    user.failed_login_count = 0
+    user.locked_until = None
+    user.save(update_fields=["password", "failed_login_count", "locked_until", "updated_at"])
     now = timezone.now()
     token.used_at = now
     token.save(update_fields=["used_at"])

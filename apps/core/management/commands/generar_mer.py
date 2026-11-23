@@ -52,6 +52,7 @@ RELATION_NAMES = {
     ("CustomUser", "role"): "Agrupa",
     ("CustomUser", "requested_area"): "Es solicitado por",
     ("AccessLog", "user"): "Genera",
+    ("AuditRecord", "user"): "Realiza",
     ("PasswordResetToken", "user"): "Solicita",
     ("OrdenSalida", "referencia"): "Se prepara para",
     ("OrdenSalida", "producto_resultado"): "Resulta en",

@@ -188,7 +188,8 @@ Las reglas de negocio fallan con un error 400 `{campo: [mensaje]}` que la interf
 
 !!! warning "Limitaciones conocidas"
     - Las evidencias (foto o PDF) se guardan en el disco del servicio y se pierden al redesplegar en Render (plan gratuito).
-    - El bloqueo de cuenta al tercer intento fallido (RF01) y un registro de auditoría general (RNF02) están pendientes.
+    - El registro de accesos y la auditoría se conservan 12 meses y la purga (`purgar_registros`) hay que programarla (cron de Render); mientras no se programe, las tablas solo crecen.
+    - El límite por IP del login usa la caché de cada proceso (el bloqueo de la cuenta sí está en la base y lo comparten todas las instancias).
     - Desarrollo y producción comparten hoy la misma base de datos.
     - Lavandería: algunos valores salen fijos del código y no de la base (tarifa base de 3.500 por prenda cuando la receta no la trae, costo por prenda de 35.000 en la liquidación de pérdidas si no se envía, y tarifa, tiempo y calificación que muestra el listado de lavanderías). La historia TE-172 del Sprint 4 (lavandería confiable, sin datos simulados) apunta a eliminarlos.
     - Reportes: el tablero filtra por fecha, tipo de jean, referencia y estados, pero no por vendedor ni cliente concreto (RF27, TE-177), y el detalle de ventas se limita a las 250 líneas más recientes.

@@ -74,6 +74,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Auditoría de operaciones críticas (HU 1.5): mira la respuesta ya armada, por eso va al final.
+    "apps.users.audit.AuditMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -244,6 +246,9 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "TexCore ERP <no-reply@texc
 # URL pública del frontend: se usa para armar el enlace del correo.
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 PASSWORD_RESET_TOKEN_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_MINUTES", "15"))  # RF02
+# RF01 (HU 1.5): intentos fallidos seguidos antes de bloquear la cuenta y minutos que dura el bloqueo.
+LOGIN_MAX_ATTEMPTS = int(os.getenv("LOGIN_MAX_ATTEMPTS", "3"))
+LOGIN_LOCK_MINUTES = int(os.getenv("LOGIN_LOCK_MINUTES", "15"))
 ACCOUNT_INVITE_TOKEN_HOURS = int(os.getenv("ACCOUNT_INVITE_TOKEN_HOURS", "48"))
 
 # --- Internacionalización -----------------------------------------------------

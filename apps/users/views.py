@@ -8,11 +8,11 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema
 from rest_framework import generics, permissions, serializers, status
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
+from .throttling import ClientIPScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from . import catalog, password_reset, trace
+from . import catalog, lockout, password_reset, trace
 from .models import ModulePermission, PasswordResetToken, Role
 from .serializers import (
     CustomTokenObtainPairSerializer,
@@ -49,7 +49,7 @@ class UserRegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = [permissions.AllowAny]
     serializer_class = UserRegistrationSerializer
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIPScopedRateThrottle]
     throttle_scope = "register"
 
     def perform_create(self, serializer):
@@ -65,7 +65,7 @@ class UserRegisterView(generics.CreateAPIView):
 class CustomTokenObtainPairView(TokenObtainPairView):
     """Inicio de sesión: entrega los tokens `access` y `refresh` (límite de intentos por IP)."""
     serializer_class = CustomTokenObtainPairSerializer
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIPScopedRateThrottle]
     throttle_scope = "login"
 
 
@@ -192,6 +192,23 @@ class UserResendInviteView(APIView):
         return Response({"detail": f"Enviamos un enlace de activación a {user.email}."})
 
 
+@extend_schema(
+    tags=["users"], summary="Desbloquear una cuenta (HU 1.5)", request=None,
+    description="Quita el bloqueo por intentos fallidos y reinicia el contador. Queda registrado en los accesos.",
+    responses=inline_serializer("CuentaDesbloqueada", {"detail": serializers.CharField()}),
+)
+class UserUnlockView(APIView):
+    """El administrador levanta el bloqueo de una cuenta sin esperar a que venza."""
+
+    required_permissions = catalog.USERS_MANAGE
+
+    def post(self, request, pk):
+        user = generics.get_object_or_404(User.objects.all(), pk=pk)
+        lockout.unlock(user)
+        trace.record(request, trace.UNLOCK, user=user, email=user.email)
+        return Response({"detail": f"La cuenta de {user.email} quedó desbloqueada."})
+
+
 # Roles y permisos
 
 
@@ -280,7 +297,7 @@ class PasswordResetRequestView(APIView):
     revelar qué cuentas existen."""
 
     permission_classes = [permissions.AllowAny]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIPScopedRateThrottle]
     throttle_scope = "password_reset"
 
     def post(self, request):
@@ -308,7 +325,7 @@ class PasswordResetValidateView(APIView):
     Es POST para que el token no quede en los logs de acceso."""
 
     permission_classes = [permissions.AllowAny]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIPScopedRateThrottle]
     throttle_scope = "password_reset_check"
 
     def post(self, request):
@@ -330,7 +347,7 @@ class PasswordResetValidateView(APIView):
 class PasswordResetConfirmView(APIView):
     """Guarda la nueva contraseña con el token de un solo uso y cierra las sesiones abiertas."""
     permission_classes = [permissions.AllowAny]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientIPScopedRateThrottle]
     throttle_scope = "password_reset_check"
 
     def post(self, request):

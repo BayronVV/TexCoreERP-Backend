@@ -4,8 +4,10 @@ from unittest import mock
 from django.db import DatabaseError
 from django.urls import reverse
 
+from apps.core.testing import client_for, make_user
 from apps.sales import catalog as sales_catalog
 from apps.sales.test_ventas import SalesBase
+from apps.users.models import ModulePermission, Role
 
 from .models import VistaProduccionOrden, VistaVentasReferencia
 from .services import clear_views_dirty, mark_views_dirty, refresh_materialized_views
@@ -105,6 +107,15 @@ class ReportesGerencialesTests(SalesBase):
         res_refresh = self.manager.post(reverse("reportes-refrescar"))
         self.assertEqual(res_refresh.status_code, 200)
         self.assertIn("refreshed", res_refresh.json())
+
+    def test_refrescar_las_vistas_exige_gestion_y_no_basta_con_consultar(self):
+        role = Role.objects.create(code="CONSULTOR", name="Consultor")
+        role.permissions.set(ModulePermission.objects.filter(code="reportes.ver"))
+        reader = client_for(make_user("consultor@t.co", "CONSULTOR"))
+        self.assertEqual(reader.get(reverse("reportes-gerencial")).status_code, 200)  # consulta: sí
+        denied = reader.post(reverse("reportes-refrescar"))
+        self.assertEqual(denied.status_code, 403)  # refrescar: no, solo con reportes.gestionar
+        self.assertEqual(self.manager.post(reverse("reportes-refrescar")).status_code, 200)
 
     def test_fechas_y_referencia_invalidas_responden_400_con_mensaje(self):
         url = reverse("reportes-gerencial")

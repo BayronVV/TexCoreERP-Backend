@@ -23,16 +23,15 @@ def _email_taken(email):
 
 
 def other_working_admins(user):
-    """¿Queda algún otro ADMIN que de verdad pueda entrar? Bloquea las filas para
-    que dos cambios simultáneos no dejen el sistema sin administrador.
-    Llamar dentro de transaction.atomic."""
-    admins = (
-        User.objects.select_for_update()
-        .filter(role_id=catalog.ADMIN, is_active=True)
-        .exclude(pk=user.pk)
-        .exclude(password__startswith="!")  # cuenta invitada que nunca definió su contraseña
+    """¿Queda algún otro ADMIN que de verdad pueda entrar? Bloquea las filas de TODOS los
+    administradores (en orden de id, para no provocar interbloqueos) para que dos cambios simultáneos
+    se serialicen y no dejen el sistema sin administrador. Un `.exists()` solo bloquearía una fila
+    (`LIMIT 1`). Llamar dentro de transaction.atomic."""
+    locked = list(User.objects.select_for_update().filter(role_id=catalog.ADMIN, is_active=True).order_by("pk"))
+    return any(
+        admin.pk != user.pk and not admin.password.startswith("!")  # "!": cuenta invitada que nunca definió su contraseña
+        for admin in locked
     )
-    return admins.exists()
 
 
 def _is_admin(user):

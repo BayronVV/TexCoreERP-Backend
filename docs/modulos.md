@@ -929,10 +929,10 @@ ajuste y estado).
 |---|---|---|
 | `/api/reportes/metadatos/` | `GET`: opciones de los filtros | `reportes.ver` |
 | `/api/reportes/gerencial/` | `GET` con los filtros anteriores | `reportes.ver` |
-| `/api/reportes/refrescar/` | `POST`: refresca las vistas; responde `{"refreshed": true\|false, "detail": …}` (`false` en SQLite) | `reportes.ver` |
+| `/api/reportes/refrescar/` | `POST`: refresca las vistas; responde `{"refreshed": true\|false, "detail": …}` (`false` en SQLite) | `reportes.gestionar` |
 
 **Permisos:** `reportes.ver` y `reportes.gestionar` los crea la migración `users/0003_roles_y_permisos` y los otorga al **Gerente**; el Administrador los tiene de forma implícita.
-Hoy las tres rutas piden solo `reportes.ver`; `reportes.gestionar` no se usa. Un Vendedor, por ejemplo, recibe `403`. Ver [roles y permisos](roles-y-permisos.md).
+Las rutas de consulta piden `reportes.ver` y refrescar las vistas pide `reportes.gestionar` (TE-179): con solo consultar no se puede disparar el refresco. Un Vendedor, por ejemplo, recibe `403`. El botón **Actualizar datos** solo se muestra a quien tiene `reportes.gestionar`. Ver [roles y permisos](roles-y-permisos.md).
 
 ### Pantalla y exportación
 
@@ -956,7 +956,7 @@ rango de fechas, el filtro de estado de cobro tras una conciliación y los permi
 
     - **Filtros avanzados e impresión:** el tablero ya filtra por fecha, tipo de jean, referencia, estados y tipo de cliente, pero los filtros avanzados de otras pantallas (facturas, guías, producción, inventario, calidad) y la **paginación** son la HU 7.7 (TE-177). El flete de las devoluciones al vendedor tampoco está en el tablero todavía (TE-177).
     - **Fechas inválidas:** una fecha mal escrita (`?desde=abc`) llega sin validar a la consulta y la auditoría la reporta como error `500` en vez de `400`; la robustez de la API está en TE-181 (subtarea de TE-184).
-    - **Refresco en cada consulta y sin manejo de fallos:** en PostgreSQL cada carga del tablero refresca las dos vistas y no atrapa un error del refresco; cualquier usuario con `reportes.ver` puede dispararlo. Quién puede refrescar se revisa en TE-179; sacar el refresco de la lectura está en la deuda del Sprint 4 y todavía no tiene historia propia.
+    - **Refresco en cada consulta y sin manejo de fallos:** en PostgreSQL cada carga del tablero refresca las dos vistas y no atrapa un error del refresco; solo quien tiene `reportes.gestionar` puede dispararlo a mano (TE-179); sacar el refresco de la lectura está en la deuda del Sprint 4 y todavía no tiene historia propia.
     - **Estado de los modelos:** `makemigrations --check` quiere crear una migración inicial para los modelos no gestionados de `reports`; se corregirá junto a la integración continua (TE-180).
     - **Pruebas solo en SQLite:** como allí son vistas comunes, ninguna prueba ejercita `REFRESH MATERIALIZED VIEW` ni el comportamiento propio de PostgreSQL (TE-180).
     - **Cifras que dependen de otros módulos:** `prendas_en_lotes` suma `Lote.cantidad`, que la recepción de lavandería sobrescribe con los conformes (ver [Lavandería](#lavanderia-remision-de-salida-y-recepcion-con-cotejo-hu-51-y-52-te-57-y-te-58), TE-172); `costo_estimado` usa el costo de fábrica que el Gerente digita a mano en Precios, hasta que la HU 4.7 lo calcule desde la producción (TE-174).

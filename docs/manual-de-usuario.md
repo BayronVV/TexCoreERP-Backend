@@ -543,8 +543,8 @@ Si ningún registro cumple los filtros, la tabla dice *«No se encontraron regis
 **solo consulta**: no cambia nada de la operación.
 
 !!! note "Permisos del tablero"
-    El módulo **Reportes** tiene dos permisos, **Ver** y **Registrar y modificar** (*reportes.ver* y *reportes.gestionar*), y el Gerente trae ambos. Hoy basta con **Ver** para consultar, filtrar,
-    actualizar y exportar. Si un rol personalizado necesita el tablero, márcale **Ver** en *Roles y permisos*.
+    El módulo **Reportes** tiene dos permisos, **Ver** y **Registrar y modificar** (*reportes.ver* y *reportes.gestionar*), y el Gerente trae ambos. Con **Ver** se consulta, se filtra y se exporta; el botón **Actualizar datos** exige además **Registrar y modificar**
+    y a los demás roles no se les muestra. Si un rol personalizado necesita el tablero, márcale **Ver** en *Roles y permisos* (y **Registrar y modificar** si también debe actualizar los datos).
 
 ## 10. Vendedor: ventas y facturación
 

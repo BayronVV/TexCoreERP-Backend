@@ -1,13 +1,18 @@
+import importlib
+import os
 import re
+import subprocess
+import sys
 from io import StringIO
 from pathlib import Path
+from unittest import mock
 
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.management import call_command
-from django.db import DataError, IntegrityError
+from django.db import DatabaseError, DataError, IntegrityError, connection
 from django.test import SimpleTestCase, TestCase, override_settings
-from django.urls import reverse
+from django.urls import Resolver404, clear_url_caches, resolve, reverse
 from rest_framework.test import APIRequestFactory
 
 from apps.core.exceptions import api_exception_handler
@@ -20,14 +25,71 @@ class HealthTests(SimpleTestCase):
         self.assertEqual(response.json()["status"], "ok")
 
 
-@override_settings(DEBUG=True)
 class HealthDbTests(TestCase):
-    def test_health_db_ejecuta_consulta(self):
+    def test_health_db_responde_ok_solo_con_estado_y_latencia(self):
         response = self.client.get(reverse("health-db"))
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["status"], "ok")
-        self.assertIsInstance(body["tables"], list)
+        # Es público: no cuenta qué motor ni qué versión hay detrás ni lista las tablas.
+        self.assertEqual(set(body), {"status", "latency_ms"})
+
+    @override_settings(DEBUG=True)
+    def test_health_db_no_lista_tablas_ni_en_desarrollo(self):
+        self.assertNotIn("tables", self.client.get(reverse("health-db")).json())
+
+    def test_si_la_base_falla_responde_no_disponible_sin_detalles_y_lo_registra(self):
+        secreto = 'could not connect to server at "db.interno.supabase.co" (10.0.0.5): password authentication failed'
+        # Solo se simula `cursor`: con la conexión real, si una regresión devolviera `connection.vendor`
+        # en el cuerpo, la prueba fallaría con un texto en vez de intentar serializar un objeto simulado.
+        with mock.patch.object(connection, "cursor", side_effect=DatabaseError(secreto)):
+            with self.assertLogs("apps.core.views", level="ERROR") as logs:
+                response = self.client.get(reverse("health-db"))
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json(), {"status": "no disponible"})
+        self.assertNotIn("db.interno", response.content.decode())
+        self.assertNotIn("password", response.content.decode())
+        self.assertTrue(any("db/" in line for line in logs.output))  # el diagnóstico queda en el registro del servidor
+
+
+class DocumentacionDeLaApiTests(SimpleTestCase):
+    """B-15: `/api/docs/`, `/api/redoc/` y `/api/schema/` solo se publican en desarrollo, salvo que se pidan."""
+
+    def api_docs_enabled(self, **env):
+        base = {key: value for key, value in os.environ.items() if key != "API_DOCS_ENABLED"}
+        base.update(DJANGO_SETTINGS_MODULE="config.settings", **env)
+        result = subprocess.run(
+            [sys.executable, "-c", "from django.conf import settings; print(settings.API_DOCS_ENABLED)"],
+            cwd=settings.BASE_DIR, env=base, capture_output=True, text=True, timeout=60, check=True,
+        )
+        return result.stdout.strip() == "True"
+
+    def test_por_defecto_sigue_a_django_debug(self):
+        self.assertTrue(self.api_docs_enabled(DJANGO_DEBUG="true"))
+        self.assertFalse(self.api_docs_enabled(DJANGO_DEBUG="false"))
+
+    def test_la_variable_la_enciende_o_apaga_en_cualquier_ambiente(self):
+        self.assertTrue(self.api_docs_enabled(DJANGO_DEBUG="false", API_DOCS_ENABLED="true"))
+        self.assertFalse(self.api_docs_enabled(DJANGO_DEBUG="true", API_DOCS_ENABLED="false"))
+
+    def test_apagadas_las_rutas_no_existen(self):
+        import config.urls
+
+        try:
+            with override_settings(API_DOCS_ENABLED=False):
+                importlib.reload(config.urls)
+                clear_url_caches()
+                for path in ("/api/docs/", "/api/redoc/", "/api/schema/"):
+                    with self.assertRaises(Resolver404, msg=path):
+                        resolve(path, urlconf=config.urls)
+            with override_settings(API_DOCS_ENABLED=True):
+                importlib.reload(config.urls)
+                clear_url_caches()
+                for path in ("/api/docs/", "/api/redoc/", "/api/schema/"):
+                    self.assertTrue(resolve(path, urlconf=config.urls), path)
+        finally:
+            importlib.reload(config.urls)
+            clear_url_caches()
 
 
 class LoggingAndExceptionHandlerTests(SimpleTestCase):

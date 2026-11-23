@@ -34,7 +34,7 @@ despliegan la rama `main` y se redespliegan solos con cada merge.
 | `NUM_PROXIES` | `1` | Ver "Proxies". |
 | `DJANGO_LOG_LEVEL` | `INFO` (por defecto) | Opcional. Nivel del registro hacia la consola de Render (`INFO`, `WARNING`, `ERROR`). |
 | `DJANGO_DB_LOG_LEVEL` | `WARNING` (por defecto) | Opcional. Nivel para logs de consultas SQL de Django. |
-| `API_DOCS_ENABLED` | `true` (por defecto) | Opcional. Con `false` oculta `/api/docs/`, `/api/redoc/` y `/api/schema/`. |
+| `API_DOCS_ENABLED` | igual que `DJANGO_DEBUG` (en producción: apagada) | Opcional. Con `true` publica `/api/docs/`, `/api/redoc/` y `/api/schema/` también en producción (p. ej. para una demostración); con `false` las oculta incluso en desarrollo. |
 | `EMAIL_BACKEND` y `EMAIL_*` | ver `.env.example` | Solo si se envían correos reales. |
 | `DEFAULT_FROM_EMAIL` | `TexCore ERP <tu-correo>` | Debe coincidir con la cuenta SMTP. |
 | `TRACK123_API_KEY` | `<tu-clave>` | Clave de la API de Track123 (rastreo de guías, HU 7.2). **Secreto: solo se escribe en Render**, nunca en el repositorio ni en el `.env.example`. Sin ella el rastreo queda apagado. |

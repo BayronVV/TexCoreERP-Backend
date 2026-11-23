@@ -162,6 +162,30 @@ class UltimoAdminTests(TestCase):
         self.assertTrue(other_working_admins(admin))
 
 
+    def test_el_candado_lee_y_bloquea_a_todos_los_administradores(self):
+        """B-07: un `.exists()` genera `LIMIT 1` y en PostgreSQL bloquearía una sola fila; así dos cambios
+        simultáneos de dos administradores distintos pasarían a la vez y el sistema se quedaría sin admin."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from .serializers import other_working_admins
+
+        admin = make_user("admin@t.co", "ADMIN")
+        make_user("admin2@t.co", "ADMIN")
+        make_user("admin3@t.co", "ADMIN")
+        with CaptureQueriesContext(connection) as queries:
+            self.assertTrue(other_working_admins(admin))
+        sql = " ".join(query["sql"] for query in queries.captured_queries).upper()
+        self.assertNotIn("LIMIT", sql)
+        self.assertIn("ORDER BY", sql)  # siempre en el mismo orden, para no provocar interbloqueos
+
+    def test_un_unico_administrador_no_tiene_a_nadie_que_lo_releve(self):
+        from .serializers import other_working_admins
+
+        solo = make_user("solo@t.co", "ADMIN")
+        self.assertFalse(other_working_admins(solo))
+
+
 class RespuestaCrearRolTests(TestCase):
     def test_crear_rol_devuelve_users_count(self):
         """BUG menor: POST /api/roles/ no incluye users_count; la UI muestra ' usuarios' sin número."""

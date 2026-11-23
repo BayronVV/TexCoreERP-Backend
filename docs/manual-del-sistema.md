@@ -59,7 +59,7 @@ La variable `VITE_API_URL` apunta al backend (por defecto `http://localhost:8000
 | `TEST_DATABASE_URL`, `TEST_DB_SSL_REQUIRE` | Opcional: cadena PostgreSQL dedicada para correr `manage.py test` sin tocar `DATABASE_URL` (p. ej. en CI o en un Postgres local). |
 | `CORS_ALLOWED_ORIGINS` | Orígenes del frontend autorizados. |
 | `NUM_PROXIES`, `THROTTLE_*` | Proxies delante del backend (1 en Render) y límites de tasa (`login`, `register`, `password_reset`, `password_reset_check`). |
-| `API_DOCS_ENABLED`, `SECURE_HSTS_SECONDS` | Visibilidad de `/api/docs/` (`true` por defecto) y cabecera HSTS cuando `DJANGO_DEBUG=false`. |
+| `API_DOCS_ENABLED`, `SECURE_HSTS_SECONDS` | Visibilidad de `/api/docs/` (por defecto solo con `DJANGO_DEBUG=true`; en producción se enciende con `API_DOCS_ENABLED=true`) y cabecera HSTS cuando `DJANGO_DEBUG=false`. |
 | `DJANGO_LOG_LEVEL`, `DJANGO_DB_LOG_LEVEL` | Niveles del registro en consola (`INFO` para la aplicación y `WARNING` para consultas SQL por defecto). |
 | `APP_ENV` | Nombre del entorno que muestra `/api/health/` (`local`, `dev`, `prod`). |
 | `DB_SSL_REQUIRE`, `DB_CONN_MAX_AGE` | SSL de la base (`true` en Supabase) y segundos que se reutiliza una conexión (`0` para no agotar el pool). |

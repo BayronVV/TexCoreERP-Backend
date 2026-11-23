@@ -170,7 +170,7 @@ SIMPLE_JWT = {
 # --- Documentación de la API (drf-spectacular) ----------------------------------
 # /api/docs/ (Swagger UI), /api/redoc/ y /api/schema/ (OpenAPI). Para ocultarla en
 # un despliegue: API_DOCS_ENABLED=false.
-API_DOCS_ENABLED = env_bool("API_DOCS_ENABLED", True)
+API_DOCS_ENABLED = env_bool("API_DOCS_ENABLED", DEBUG)
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "TexCore ERP · API",

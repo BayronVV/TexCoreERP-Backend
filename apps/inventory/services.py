@@ -226,8 +226,13 @@ def update_product(product, **data):
     return product
 
 
+@transaction.atomic
 def archive_product(product):
-    """Archiva (borrado lógico) un producto. Solo si no tiene existencias ni una orden en proceso que lo produzca."""
+    """Archiva (borrado lógico) un producto. Solo si no tiene existencias ni una orden en proceso que lo produzca.
+
+    Bloquea la fila del producto y lee su saldo ya bloqueado: un ingreso simultáneo no puede dejar un
+    producto archivado con existencias."""
+    product = Producto.objects.select_for_update().get(pk=product.pk)
     if product.stock_actual > 0:
         fail("No se puede eliminar un producto con existencias.")
     if OrdenSalida.objects.filter(estado=catalog.STATUS_OPEN, producto_resultado=product).exists():

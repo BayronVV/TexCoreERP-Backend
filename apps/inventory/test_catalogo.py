@@ -299,6 +299,20 @@ class CatalogEditTests(CatalogBase):
         self.assertNotIn(self.generico.id, [p["id"] for p in self.api.get(reverse("inventario_catalogo")).json()])
         self.assertNotIn(self.generico.id, [p["id"] for p in self.api.get(reverse("inventario_productos")).json()])
 
+    def test_al_archivar_se_lee_el_saldo_ya_bloqueado_y_no_el_de_una_copia_vieja(self):
+        """B-08: con la copia que cargó la vista (stock 0) un ingreso simultáneo dejaría archivado un producto con existencias."""
+        from rest_framework.exceptions import APIException
+
+        from .services import archive_product
+
+        copia_vieja = Producto.objects.get(pk=self.generico.id)
+        self.assertEqual(copia_vieja.stock_actual, 0)
+        Producto.objects.filter(pk=self.generico.id).update(stock_actual=Decimal("5"))  # otro proceso ingresó 5
+        with self.assertRaises(APIException) as caught:
+            archive_product(copia_vieja)
+        self.assertIn("existencias", str(caught.exception.detail))
+        self.assertFalse(Producto.all_objects.get(pk=self.generico.id).is_deleted)
+
     def test_no_se_elimina_un_producto_que_una_orden_en_proceso_va_a_producir(self):
         self.production_order()
         self.assertEqual(self.api.delete(reverse("inventario_catalogo_detalle", args=[self.generico.id])).status_code, 400)

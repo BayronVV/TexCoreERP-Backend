@@ -24,6 +24,7 @@ urlpatterns = [
     path("users/", views.UserListCreateView.as_view(), name="user_list"),
     path("users/<int:pk>/", views.UserDetailView.as_view(), name="user_detail"),
     path("users/<int:pk>/invite/", views.UserResendInviteView.as_view(), name="user_invite"),
+    path("users/<int:pk>/unlock/", views.UserUnlockView.as_view(), name="user_unlock"),
     path("roles/", views.RoleListCreateView.as_view(), name="role_list"),
     path("roles/<int:pk>/", views.RoleDetailView.as_view(), name="role_detail"),
     path("permissions/", views.ModulePermissionListView.as_view(), name="permission_list"),

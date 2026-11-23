@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 REGISTER = "registro"
 LOGIN_OK = "login_ok"
 LOGIN_FAIL = "login_fallido"
+ACCOUNT_LOCKED = "cuenta_bloqueada"  # el tercer fallo bloqueó la cuenta
+BLOCKED_ATTEMPT = "acceso_bloqueado"  # intento mientras la cuenta ya estaba bloqueada
+UNLOCK = "desbloqueo"  # un administrador la desbloqueó (o se restableció la contraseña)
 
 
 def _valid(value):

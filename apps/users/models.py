@@ -93,6 +93,9 @@ class CustomUser(AbstractUser, BaseModel):
         related_name="+",
     )
     document_id = models.CharField(max_length=20, null=True, blank=True)
+    # Bloqueo por intentos fallidos (HU 1.5): se cuentan en la base para que lo vean todas las instancias.
+    failed_login_count = models.PositiveSmallIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
 
     objects = CustomUserManager()
     all_objects = UserManager()
@@ -116,6 +119,11 @@ class CustomUser(AbstractUser, BaseModel):
 
     def has_permission_code(self, code):
         return code in self.get_permission_codes()
+
+    @property
+    def is_locked(self):
+        """True mientras dure el bloqueo temporal por intentos fallidos."""
+        return self.locked_until is not None and self.locked_until > timezone.now()
 
 
 class AccessLog(models.Model):

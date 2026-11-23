@@ -74,6 +74,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # Auditoría de operaciones críticas (HU 1.5): mira la respuesta ya armada, por eso va al final.
+    "apps.users.audit.AuditMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"

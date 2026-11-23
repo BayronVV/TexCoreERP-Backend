@@ -12,7 +12,7 @@ class GenerarErdTests(SimpleTestCase):
         cls.text = Command().render(cls.models)
 
     def test_incluye_todas_las_tablas(self):
-        self.assertEqual(len(self.models), 54)
+        self.assertEqual(len(self.models), 55)
         for model in self.models:
             self.assertIn(f"### {model.__name__} (`{model._meta.db_table}`)", self.text)
 

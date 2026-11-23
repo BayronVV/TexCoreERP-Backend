@@ -19,7 +19,7 @@ class GenerarMerTests(SimpleTestCase):
         self.assertEqual(self.dots, mer.all_dots(project_models()))
 
     def test_cada_modelo_es_entidad_o_rombo_nm(self):
-        self.assertEqual(len(self.models), 54)
+        self.assertEqual(len(self.models), 55)
         for model in self.models:
             node = f"r_{model.__name__}" if mer.is_associative(model) else f"e_{model.__name__}"
             self.assertRegex(self.general, rf"(?m)^\s+{node} \[",f"{model.__name__} no aparece en el MER general")
@@ -75,7 +75,7 @@ class GenerarMerTests(SimpleTestCase):
 
     def test_mer_general_con_atributos_principales(self):
         dot = self.dots["mer-general-atributos"]
-        self.assertEqual(len(re.findall(r"(?m)^\s+a_\S+ \[shape=ellipse", dot)), 199)  # llave + hasta 3 atributos por entidad
+        self.assertEqual(len(re.findall(r"(?m)^\s+a_\S+ \[shape=ellipse", dot)), 203)  # llave + hasta 3 atributos por entidad
         for model in self.models:
             if not mer.is_associative(model):
                 self.assertRegex(dot, rf"(?m)^\s+a_{model.__name__}_id \[", f"{model.__name__} sin su llave")

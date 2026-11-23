@@ -70,6 +70,24 @@ flowchart LR
   asignándole rol. Las cuentas creadas por un administrador reciben una invitación (48 h) para definir su contraseña.
 - **Recuperación de contraseña:** enlace de un solo uso que vence a los 15 minutos; solo se guarda su SHA-256.
 - **Roles y permisos:** ver [roles y permisos](roles-y-permisos.md). Rutas en `apps/users/urls.py`.
+- **Bloqueo por intentos fallidos (HU 1.5, TE-175):** al tercer intento fallido seguido la cuenta se bloquea 15 minutos
+  (`LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCK_MINUTES`). El contador vive en la base (`failed_login_count`, `locked_until`) y se
+  actualiza con la fila bloqueada, así lo comparten todas las instancias. Con la cuenta bloqueada ni la contraseña
+  correcta entra ni se renueva la sesión (401 con `code: account_locked`); un correo inexistente responde igual que una
+  contraseña incorrecta. Mientras está bloqueada no se suman intentos (el bloqueo no se alarga). El último administrador
+  que puede entrar nunca se bloquea. Se levanta con `POST /api/users/<id>/unlock/` (`seguridad.gestionar`), al vencer
+  el tiempo o al restablecer la contraseña. Al bloquearse se avisa al titular por correo, una sola vez.
+- **Accesos:** `GET /api/seguridad/accesos/` (`seguridad.accesos`, solo Administrador por defecto): fecha, usuario, evento
+  (inicio de sesión, fallido, cuenta bloqueada, intento bloqueado, desbloqueo, registro), resultado e IP, con filtros y
+  paginado. Es de solo lectura y no expone cabeceras ni user agent.
+- **Auditoría de operaciones críticas:** `GET /api/seguridad/auditoria/` (`seguridad.auditoria`: Administrador y Gerente).
+  Un middleware (`apps/users/audit.py`, catálogo `AUDITED`) registra autor, fecha, acción, entidad, id, resultado
+  (`exito`, `rechazado` por falta de permiso, `error`), IP y los datos enviados (sin contraseñas ni tokens) de: órdenes de
+  producción, tarifas, lotes, inventario, compras, lavandería, producto terminado, precios, facturas, cartera, roles,
+  permisos y cuentas. No se edita ni se borra (modelo, consultas en bloque, administrador y API). Para auditar una ruta
+  nueva se agrega a `AUDITED`; la prueba `UnauthorizedApiAccessTests` la recorre con un rol sin permiso.
+- **Retención:** `python manage.py purgar_registros` borra accesos y auditoría de más de 12 meses (`--meses`, `--simular`)
+  y deja constancia de la purga en la auditoría (`auditoria.purga`).
 
 ## Inventario (HU 2.1 a 2.4)
 

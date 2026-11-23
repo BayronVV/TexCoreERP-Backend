@@ -10,7 +10,7 @@ from rest_framework_simplejwt.settings import api_settings as jwt_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.utils import get_md5_hash_password
 
-from . import catalog, trace
+from . import catalog, lockout, trace
 from .models import ModulePermission, Role
 from .validators import validate_password_policy, validate_passwords_match
 
@@ -46,14 +46,24 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """Login: el correo no distingue mayúsculas y el JWT lleva el rol del usuario."""
     def validate(self, attrs):
         # El registro guarda el correo en minúsculas; el login no debe distinguir.
-        attrs[self.username_field] = attrs[self.username_field].strip().lower()
+        email = attrs[self.username_field] = attrs[self.username_field].strip().lower()
         request = self.context.get("request")
+        user = User.objects.filter(email__iexact=email, is_active=True).first()
+        # Bloqueada: ni la contraseña correcta entra hasta que pase el tiempo o un administrador desbloquee.
+        if user is not None and user.is_locked:
+            if request is not None:
+                trace.record(request, trace.BLOCKED_ATTEMPT, user=user, email=email)
+            raise lockout.locked_error()
         try:
             data = super().validate(attrs)
         except AuthenticationFailed:
+            locked_now = user is not None and lockout.register_failure(user)
             if request is not None:
-                trace.record(request, trace.LOGIN_FAIL, email=attrs[self.username_field])
+                trace.record(request, trace.LOGIN_FAIL, email=email)
+                if locked_now:
+                    trace.record(request, trace.ACCOUNT_LOCKED, user=user, email=email)
             raise
+        lockout.register_success(self.user)
         if request is not None:
             trace.record(request, trace.LOGIN_OK, user=self.user, email=self.user.email)
         return data
@@ -74,6 +84,8 @@ class SafeTokenRefreshSerializer(TokenRefreshSerializer):
         user = User.objects.filter(pk=refresh.payload.get(jwt_settings.USER_ID_CLAIM)).first()
         if user is None or not user.is_active:
             raise AuthenticationFailed("La cuenta ya no está activa.", "no_active_account")
+        if user.is_locked:
+            raise lockout.locked_error()
         if refresh.payload.get(jwt_settings.REVOKE_TOKEN_CLAIM) != get_md5_hash_password(user.password):
             raise AuthenticationFailed("La sesión se cerró porque cambió la contraseña.", "password_changed")
         return super().validate(attrs)
@@ -106,6 +118,7 @@ class UserSerializer(serializers.ModelSerializer):
             "requested_area_name",
             "is_active",
             "has_password",
+            "locked_until",
             "date_joined",
             "last_login",
         ]

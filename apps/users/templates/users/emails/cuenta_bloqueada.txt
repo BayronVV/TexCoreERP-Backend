@@ -1,0 +1,7 @@
+{% autoescape off %}Hola {{ name }},
+
+Detectamos varios intentos fallidos de iniciar sesión en tu cuenta de TexCore ERP, por eso la bloqueamos durante {{ minutes }} minutos.
+
+Pasado ese tiempo podrás entrar de nuevo. Si no fuiste tú, cambia tu contraseña con la opción «Olvidé mi contraseña» o avisa a un administrador, que también puede desbloquear la cuenta.
+— TexCore ERP
+{% endautoescape %}

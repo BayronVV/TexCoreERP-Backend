@@ -73,6 +73,13 @@ Detrás de Render la IP real llega en `X-Forwarded-For`. Con `NUM_PROXIES=0` se
 ignora y todas las peticiones parecerían venir de la misma IP, así que los
 límites por IP (login, recuperación de contraseña) compartirían un solo cupo.
 Se usa `1`; si el límite bloquea a usuarios distintos a la vez, revisar el valor.
+La IP que se guarda en los accesos y en la auditoría sale del mismo criterio (`CF-Connecting-IP`, o `X-Forwarded-For` contando desde la derecha).
+
+### Bloqueo de cuentas y retención de registros
+
+`LOGIN_MAX_ATTEMPTS` (3) y `LOGIN_LOCK_MINUTES` (15) controlan el bloqueo por intentos fallidos; no hace falta cambiarlos.
+Los accesos y la auditoría se conservan 12 meses: programar `python manage.py purgar_registros` (Cron Job de Render, por ejemplo
+una vez por semana) para que las tablas no crezcan sin límite.
 
 ### Correo en Render
 

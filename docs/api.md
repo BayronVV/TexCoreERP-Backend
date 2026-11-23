@@ -38,6 +38,7 @@ Cada ruta exige un permiso por rol (RNF01), por ejemplo `inventario.ver` para co
 | 403 | El rol no tiene el permiso que la ruta exige |
 | 404 | No existe |
 | 409 | Conflicto con el estado actual; por ejemplo, el lote ya fue inspeccionado, la inspección ya fue ingresada al inventario final o la relación de despacho ya se creó con ese `token` |
+| 401 con `code: account_locked` | En el login, la cuenta está bloqueada temporalmente por intentos fallidos (15 min); también al renovar la sesión |
 | 429 | Demasiados intentos (límite de frecuencia) o, en el rastreo de una guía, consulta demasiado seguida (enfriamiento de 10 min por guía; el cuerpo trae `segundos`) |
 | 503 | El servicio de rastreo (Track123) está apagado, sin clave o no respondió. La guía conserva su último estado y nada más se bloquea |
 
@@ -50,7 +51,7 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | Módulo (etiqueta) | Rutas base | Historia |
 |---|---|---|
 | `auth` | `/api/register/`, `/api/token/`, `/api/token/refresh/`, `/api/auth/me/`, `/api/auth/password-reset/…` (`validate/` y `confirm/`) | TE-78, TE-42, TE-43 |
-| `users` | `/api/users/`, `/api/users/<id>/`, `/api/users/<id>/invite/`, `/api/roles/`, `/api/roles/<id>/`, `/api/permissions/` | TE-44 |
+| `users` | `/api/users/`, `/api/users/<id>/`, `/api/users/<id>/invite/`, `/api/users/<id>/unlock/`, `/api/seguridad/accesos/`, `/api/seguridad/auditoria/` (y `catalogo/`), `/api/roles/`, `/api/roles/<id>/`, `/api/permissions/` | TE-44 |
 | `proveedores` | `/api/inventario/proveedores/…` (listar, crear, editar, archivar) y `/api/inventario/proveedores/<id>/restaurar/` | TE-45 |
 | `catalogo` | `/api/inventario/catalogo/…`, `/api/inventario/catalogo/<id>/imagen/`, `/api/inventario/metadatos/` | TE-46 |
 | `inventario` | `/api/inventario/productos/` (con existencias y costo promedio), `/api/inventario/alertas/` | TE-47, TE-48 |

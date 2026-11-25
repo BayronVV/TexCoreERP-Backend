@@ -52,17 +52,12 @@ class LoteDisponibleLavadoSerializer(serializers.Serializer):
     op_codigo = serializers.CharField(help_text="Código de la orden de producción")
     referencia = serializers.CharField()
     referencia_codigo = serializers.CharField()
-    ficha_tecnica = serializers.CharField()
-    tela = serializers.CharField()
-    color_crudo = serializers.CharField()
+    ficha_tecnica = serializers.CharField(allow_blank=True)
+    color_crudo = serializers.CharField(allow_blank=True)
     unidades_ensambladas = serializers.IntegerField()
     unidades_disponibles = serializers.IntegerField()
     curva_tallas = serializers.DictField(child=serializers.IntegerField(), help_text="Cantidad por talla")
-    taller_confeccion = serializers.CharField()
     fecha_ensamble = serializers.DateField()
-    receta_sugerida = serializers.CharField(help_text="Código de la receta de lavado sugerida")
-    receta_sugerida_nombre = serializers.CharField()
-    observacion_confeccion = serializers.CharField()
     estado_inventario = serializers.CharField()
 
 
@@ -71,13 +66,10 @@ class LavanderiaProveedorSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     razon_social = serializers.CharField()
     nit = serializers.CharField(help_text="NIT con dígito de verificación")
-    ciudad = serializers.CharField()
-    direccion = serializers.CharField()
-    contacto = serializers.CharField()
-    telefono = serializers.CharField()
-    tarifa_base_unidad = serializers.IntegerField()
-    tiempo_promedio_dias = serializers.IntegerField()
-    calificacion_calidad = serializers.CharField()
+    ciudad = serializers.CharField(allow_blank=True)
+    direccion = serializers.CharField(allow_blank=True)
+    contacto = serializers.CharField(allow_blank=True)
+    telefono = serializers.CharField(allow_blank=True)
 
 
 class RecetaLavadoSerializer(serializers.Serializer):
@@ -97,14 +89,14 @@ class RemisionLoteDetalleSerializer(serializers.Serializer):
     """Lote incluido en una remisión de salida."""
     id = serializers.IntegerField()
     codigo_lote = serializers.CharField()
-    op_codigo = serializers.CharField()
-    referencia = serializers.CharField()
-    ficha_tecnica = serializers.CharField()
-    color_crudo = serializers.CharField()
+    op_codigo = serializers.CharField(allow_blank=True)
+    referencia = serializers.CharField(allow_blank=True)
+    ficha_tecnica = serializers.CharField(allow_blank=True)
+    color_crudo = serializers.CharField(allow_blank=True)
     cantidad_a_enviar = serializers.IntegerField()
-    receta_id = serializers.CharField()
-    receta_nombre = serializers.CharField()
-    instrucciones_especiales = serializers.CharField()
+    receta_id = serializers.CharField(allow_blank=True)
+    receta_nombre = serializers.CharField(allow_blank=True)
+    instrucciones_especiales = serializers.CharField(allow_blank=True)
 
 
 class RemisionLavanderiaSerializer(serializers.Serializer):
@@ -112,23 +104,25 @@ class RemisionLavanderiaSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     codigo = serializers.CharField(help_text="Consecutivo REM-LAV-AAAA-XXXX")
     fecha_emision = serializers.DateField()
-    fecha_entrega_estimada = serializers.CharField(help_text="Fecha ISO o cadena vacía si no se definió")
+    fecha_entrega_estimada = serializers.CharField(
+        allow_blank=True, help_text="Fecha ISO o cadena vacía si no se definió"
+    )
     lavanderia_id = serializers.IntegerField(allow_null=True)
-    lavanderia_nombre = serializers.CharField()
-    contacto_lavanderia = serializers.CharField()
+    lavanderia_nombre = serializers.CharField(allow_blank=True)
+    contacto_lavanderia = serializers.CharField(allow_blank=True)
     lotes_nombres = serializers.ListField(child=serializers.CharField())
     lotes_detalle = RemisionLoteDetalleSerializer(many=True)
     total_lotes = serializers.IntegerField()
     total_prendas = serializers.IntegerField()
-    receta_nombre = serializers.CharField()
+    receta_nombre = serializers.CharField(allow_blank=True)
     costo_estimado = serializers.FloatField()
-    transportador_nombre = serializers.CharField()
-    vehiculo_placa = serializers.CharField()
+    transportador_nombre = serializers.CharField(allow_blank=True)
+    vehiculo_placa = serializers.CharField(allow_blank=True)
     tulas_bultos = serializers.IntegerField()
     peso_kg = serializers.FloatField()
     estado = serializers.CharField()
-    responsable_despacho = serializers.CharField()
-    observaciones = serializers.CharField()
+    responsable_despacho = serializers.CharField(allow_blank=True)
+    observaciones = serializers.CharField(allow_blank=True)
 
 
 @extend_schema(
@@ -203,8 +197,8 @@ class RemisionLavanderiaListCreateView(APIView):
         responses={
             201: RemisionLavanderiaSerializer,
             400: OpenApiResponse(
-                description="Datos inválidos: lotes repetidos o inexistentes, lavandería inactiva, "
-                            "lote fuera de la planta interna o cantidad mayor a la disponible"
+                description="Datos inválidos: lotes repetidos o inexistentes, proveedor no perteneciente a lavandería, "
+                            "lote fuera de planta interna, ya recibido o con envío parcial distinto al tamaño del lote"
             ),
             403: FORBIDDEN_MANAGE,
         },

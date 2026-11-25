@@ -14,17 +14,31 @@ from django.utils import timezone
 
 from apps.inventory.models import Consecutivo
 from apps.inventory.services import fail
-from apps.production import catalog
+from apps.production import catalog, costing
 from apps.production.models import (
     Lote,
     RecepcionLavanderia,
     RecepcionLote,
     RemisionLavanderia,
     RemisionLote,
+    TarifaManoObra,
 )
 
 
-DEFAULT_GARMENT_COST = Decimal("35000.00")  # Costo estimado de fabricación estándar en TexCore
+def _load_order_unit_costs(orders):
+    """Calcula una sola vez el costo unitario real por orden (None si aún no tiene costos)."""
+    valid_orders = {o.id: o for o in orders if o is not None}
+    if not valid_orders:
+        return {}
+    rates = list(
+        TarifaManoObra.objects.filter(deleted_at__isnull=True).order_by("etapa", "-vigente_desde", "-id")
+    )
+    costs = {}
+    for orden_id, orden in valid_orders.items():
+        summary = costing.calculate_order_costs(orden, rates=rates)
+        unit_cost = Decimal(summary["totales"]["costo_por_prenda"])
+        costs[orden_id] = unit_cost if unit_cost > Decimal("0.00") else None
+    return costs
 
 
 def next_reception_code():
@@ -61,8 +75,8 @@ def serialize_reception_detail(recepcion):
             "codigo_lote": lote.codigo,
             "op_codigo": lote.orden.codigo if lote.orden else "",
             "referencia": ref.nombre if ref else "",
-            "ficha_tecnica": f"FT-{ref.codigo}" if ref else "",
-            "receta_nombre": dl.remision_lote.receta_nombre or (receta.nombre if receta else "Lavado Industrial"),
+            "ficha_tecnica": ref.codigo if ref else "",
+            "receta_nombre": dl.remision_lote.receta_nombre or (receta.nombre if receta else ""),
             "cantidad_enviada": dl.cantidad_enviada,
             "cantidad_recibida_conforme": dl.cantidad_recibida_conforme,
             "cantidad_merma": dl.cantidad_merma,
@@ -74,7 +88,7 @@ def serialize_reception_detail(recepcion):
             "observaciones": dl.observaciones,
         })
 
-    responsable_str = "Coordinador de Calidad y Planta"
+    responsable_str = ""
     if recepcion.responsable:
         responsable_str = recepcion.responsable.get_full_name() or recepcion.responsable.email
 
@@ -87,7 +101,7 @@ def serialize_reception_detail(recepcion):
         "factura_remision_externa": recepcion.factura_remision_externa,
         "fecha_recepcion": recepcion.fecha_recepcion.isoformat(),
         "lavanderia_id": prov.id if prov else None,
-        "lavanderia_nombre": prov.razon_social if prov else "Lavandería Externa",
+        "lavanderia_nombre": prov.razon_social if prov else "",
         "lavanderia_nit": f"{prov.nit}-{prov.nit_dv}" if prov and prov.nit_dv else (prov.nit if prov else ""),
         "lavanderia_contacto": prov.contacto if prov else "",
         "total_enviado": recepcion.total_enviado,
@@ -105,7 +119,7 @@ def serialize_reception_detail(recepcion):
 
 def get_pending_remissions_for_reception():
     """Devuelve las remisiones que se encuentran en tránsito o en lavandería, pendientes de recepción."""
-    remisiones = (
+    remisiones = list(
         RemisionLavanderia.objects.filter(
             deleted_at__isnull=True,
             estado__in=[catalog.REMISSION_IN_TRANSIT, catalog.REMISSION_IN_LAUNDRY],
@@ -113,10 +127,15 @@ def get_pending_remissions_for_reception():
         .select_related("lavanderia", "responsable")
         .prefetch_related(
             "lotes_detalle__lote__orden__referencia",
+            "lotes_detalle__lote__orden__orden_salida__lineas__producto",
+            "lotes_detalle__lote__orden__lotes__etapas",
             "lotes_detalle__receta",
         )
         .order_by("-fecha_emision", "-id")
     )
+
+    orders = [dl.lote.orden for rem in remisiones for dl in rem.lotes_detalle.all() if dl.lote and dl.lote.orden]
+    order_unit_costs = _load_order_unit_costs(orders)
 
     today = timezone.localdate()
     result = []
@@ -127,23 +146,25 @@ def get_pending_remissions_for_reception():
         lotes = []
         for dl in rem.lotes_detalle.all():
             lote = dl.lote
-            ref = lote.orden.referencia if lote.orden and lote.orden.referencia else None
+            orden = lote.orden
+            ref = orden.referencia if orden and orden.referencia else None
             receta = dl.receta
 
-            tarifa = dl.receta.tarifa_sugerida if dl.receta else Decimal("3500.00")
+            tarifa = dl.receta.tarifa_sugerida if dl.receta else Decimal("0.00")
+            unit_cost = order_unit_costs.get(orden.id) if orden else None
 
             lotes.append({
                 "remision_lote_id": dl.id,
                 "lote_id": lote.id,
                 "codigo_lote": lote.codigo,
                 "lote_codigo": lote.codigo,
-                "op_codigo": lote.orden.codigo if lote.orden else "",
+                "op_codigo": orden.codigo if orden else "",
                 "referencia": ref.nombre if ref else "",
                 "receta_id": receta.codigo if receta else "",
-                "receta_nombre": dl.receta_nombre or (receta.nombre if receta else "Lavado Estándar"),
+                "receta_nombre": dl.receta_nombre or (receta.nombre if receta else ""),
                 "tarifa_lavado": float(tarifa),
                 "cantidad_enviada": dl.cantidad,
-                "costo_unitario_estimado": float(DEFAULT_GARMENT_COST),
+                "costo_unitario_estimado": float(unit_cost) if unit_cost is not None else None,
             })
 
         total_prendas = sum(item["cantidad_enviada"] for item in lotes)
@@ -155,7 +176,7 @@ def get_pending_remissions_for_reception():
             "fecha_entrega_estimada": rem.fecha_entrega_estimada.isoformat() if rem.fecha_entrega_estimada else "",
             "dias_en_proceso": max(0, dias_proceso),
             "lavanderia_id": prov.id if prov else None,
-            "lavanderia_nombre": prov.razon_social if prov else "Lavandería Externa",
+            "lavanderia_nombre": prov.razon_social if prov else "",
             "lavanderia_contacto": prov.contacto if prov else "",
             "transportador_nombre": rem.transportador_nombre,
             "vehiculo_placa": rem.vehiculo_placa,
@@ -178,20 +199,21 @@ def create_laundry_reception(
     lotes_recibidos,
     observaciones="",
 ):
-    """Asienta el reingreso de prendas de lavandería externa, coteja cantidades y liquida pérdidas (TE-58).
+    """Asienta el reingreso de prendas de lavandería externa, coteja cantidades y liquida pérdidas (TE-58 / TE-172).
 
     Reglas de negocio:
-    1. Vincula el registro a la factura/remisión de salida original.
-    2. Coteja que para cada lote: conformes + mermas + dañadas == cantidad enviada.
-    3. Exige campos obligatorios para registrar mermas (motivo_merma) o daños (tipo_dano).
-    4. Devuelve los lotes al estado interno de la planta (estado_inventario = PLANTA).
-    5. Actualiza la cantidad disponible del lote con las unidades conformes devueltas.
-    6. Liquida y registra financieramente las pérdidas por procesos de terceros:
-       costo_perdida = (cantidad_merma + cantidad_danada) * costo_unitario_prenda.
-    7. Marca la remisión original como RETORNADA.
+    1. Exige el número de factura o remisión externa de la lavandería.
+    2. Coteja que para cada lote: conformes + mermas + dañadas == cantidad enviada (acepta 0 conformes).
+    3. Exige campos obligatorios para mermas (motivo_merma) y daños (tipo_dano).
+    4. Usa el costo real calculado de la orden o exige costo_unitario_prenda si hay pérdidas y la orden no tiene costos.
+    5. Devuelve los lotes a PLANTA conservando intacta su cantidad original (Lote.cantidad).
     """
     if not lotes_recibidos:
         fail("Debes incluir el detalle de lotes a cotejar en la recepción.", "lotes")
+
+    factura_externa = (factura_remision_externa or "").strip()
+    if not factura_externa:
+        fail("La factura o remisión externa de la lavandería es obligatoria.", "factura_remision_externa")
 
     # Bloquear y validar la remisión original
     remision = (
@@ -212,11 +234,16 @@ def create_laundry_reception(
     remision_lotes = {
         rl.id: rl
         for rl in RemisionLote.objects.select_for_update(of=("self",))
-        .select_related("lote", "receta")
+        .select_related("lote__orden__orden_salida", "lote__orden__referencia", "receta")
+        .prefetch_related("lote__orden__orden_salida__lineas__producto", "lote__orden__lotes__etapas")
         .filter(remision=remision, deleted_at__isnull=True)
     }
 
-    # Bloquear los lotes de producción para actualizar su estado y unidades
+    order_unit_costs = _load_order_unit_costs(
+        [rl.lote.orden for rl in remision_lotes.values() if rl.lote and rl.lote.orden]
+    )
+
+    # Bloquear los lotes de producción para actualizar su estado
     lot_ids = [rl.lote_id for rl in remision_lotes.values()]
     locked_lots = {
         l.id: l for l in Lote.objects.select_for_update().filter(id__in=lot_ids).order_by("id")
@@ -294,12 +321,28 @@ def create_laundry_reception(
                 "tipo_dano",
             )
 
-        # Costo unitario y cálculo de pérdida financiera
-        costo_unitario = Decimal(str(item.get("costo_unitario_prenda") or DEFAULT_GARMENT_COST))
-        perdida_lote = (Decimal(merma) + Decimal(danada)) * costo_unitario
+        # Regla 3: Costo unitario real (explícito > liquidación real de la orden; obligatorio si hay pérdida y la orden no tiene costos)
+        raw_cost = item.get("costo_unitario_prenda")
+        if raw_cost is not None and str(raw_cost).strip() != "":
+            costo_unitario = Decimal(str(raw_cost))
+        else:
+            costo_unitario = order_unit_costs.get(lote.orden_id)
 
-        # Costo de servicio de lavado de este lote (solo prendas conformes/procesadas)
-        tarifa_receta = rl.receta.tarifa_sugerida if rl.receta else Decimal("3500.00")
+        perdidas = merma + danada
+        if perdidas > 0:
+            if costo_unitario is None or costo_unitario <= Decimal("0.00"):
+                fail(
+                    f"El lote {lote.codigo} tiene pérdidas ({perdidas} und) y la orden no tiene costo calculado; "
+                    f"debes ingresar el costo unitario real de la prenda.",
+                    "costo_unitario_prenda",
+                )
+        elif costo_unitario is None:
+            costo_unitario = Decimal("0.00")
+
+        perdida_lote = Decimal(perdidas) * costo_unitario
+
+        # Costo de servicio de lavado de este lote (solo prendas conformes/procesadas; 0.00 sin receta)
+        tarifa_receta = rl.receta.tarifa_sugerida if rl.receta else Decimal("0.00")
         servicio_lote = Decimal(conforme) * tarifa_receta
 
         total_enviado += enviada
@@ -330,7 +373,7 @@ def create_laundry_reception(
     recepcion = RecepcionLavanderia.objects.create(
         codigo=consecutivo,
         remision=remision,
-        factura_remision_externa=factura_remision_externa.strip(),
+        factura_remision_externa=factura_externa,
         fecha_recepcion=fecha_recepcion,
         total_enviado=total_enviado,
         total_recibido_conforme=total_conforme,
@@ -344,7 +387,7 @@ def create_laundry_reception(
         creado_por=user,
     )
 
-    # Crear líneas de detalle y devolver prendas al estado interno de planta
+    # Crear líneas de detalle y devolver el lote a planta interna conservando su cantidad original
     for fila in filas_a_crear:
         RecepcionLote.objects.create(
             recepcion=recepcion,
@@ -361,18 +404,16 @@ def create_laundry_reception(
             observaciones=fila["observaciones"],
         )
 
-        # DEVOLVER AL ESTADO INTERNO DE PLANTA (LOT_INV_INTERNAL = "PLANTA")
+        # DEVOLVER AL ESTADO INTERNO DE PLANTA (LOT_INV_INTERNAL = "PLANTA") SIN ALTERAR Lote.cantidad
         lote = fila["lote"]
         lote.estado_inventario = catalog.LOT_INV_INTERNAL
-        # Si hubo mermas o prendas dañadas no recuperables, ajustar la cantidad disponible del lote
-        lote.cantidad = fila["cantidad_recibida_conforme"]
-        lote.save(update_fields=["estado_inventario", "cantidad", "updated_at"])
+        lote.save(update_fields=["estado_inventario", "updated_at"])
 
     # Actualizar estado de la remisión a RETORNADA
     remision.estado = catalog.REMISSION_RETURNED
     remision.save(update_fields=["estado", "updated_at"])
 
-    return serialize_reception_detail(recepcion)
+    return get_laundry_reception_detail(recepcion.pk)
 
 
 def list_laundry_receptions():

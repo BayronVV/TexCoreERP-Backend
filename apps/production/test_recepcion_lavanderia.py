@@ -15,7 +15,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.inventory import catalog as inv_catalog
-from apps.inventory.models import Proveedor
+from apps.inventory.models import OrdenLinea, Proveedor
 from apps.production import catalog
 from apps.production.models import (
     RecetaLavado,
@@ -29,6 +29,7 @@ from apps.production.recepcion_services import (
 )
 from apps.production.remisiones_services import create_laundry_remission
 from apps.production.test_modelos import ModelBase
+from apps.quality.services import pending_lots as quality_pending_lots
 
 
 class RecepcionLavanderiaTests(ModelBase):
@@ -132,10 +133,10 @@ class RecepcionLavanderiaTests(ModelBase):
         self.remision.refresh_from_db()
         self.assertEqual(self.remision.estado, catalog.REMISSION_RETURNED)
 
-        # 5. Las prendas vuelven al estado interno de planta (LOT_INV_INTERNAL = PLANTA)
+        # 5. Las prendas vuelven al estado interno de planta conservando la cantidad original del lote
         self.lot1.refresh_from_db()
         self.assertEqual(self.lot1.estado_inventario, catalog.LOT_INV_INTERNAL)
-        self.assertEqual(self.lot1.cantidad, 55)  # Se ajustó a las prendas conformes recibidas
+        self.assertEqual(self.lot1.cantidad, 60)
 
         # 6. Ya no aparece en remisiones pendientes de recepción
         pending = get_pending_remissions_for_reception()
@@ -152,6 +153,106 @@ class RecepcionLavanderiaTests(ModelBase):
         self.assertEqual(detail["codigo"], reception["codigo"])
         self.assertEqual(detail["remision_codigo"], self.remision.codigo)
 
+    def test_recepcion_cero_conformes_conserva_cantidad_original_y_excluye_de_calidad(self):
+        rem2 = create_laundry_remission(
+            user=self.boss,
+            lavanderia_id=self.prov.id,
+            lotes_seleccionados=[{"lote_id": self.lot2.id, "cantidad": 40, "receta_id": "REC-DENIM-01"}],
+            fecha_emision=self.today,
+        )
+        rl2 = RemisionLavanderia.objects.get(pk=rem2["id"]).lotes_detalle.first()
+
+        reception = create_laundry_reception(
+            user=self.boss,
+            remision_id=rem2["id"],
+            fecha_recepcion=self.today,
+            factura_remision_externa="FAC-CERO-040",
+            lotes_recibidos=[
+                {
+                    "remision_lote_id": rl2.id,
+                    "cantidad_recibida_conforme": 0,
+                    "cantidad_merma": 40,
+                    "motivo_merma": "Extravío completo del lote en proceso externo",
+                    "cantidad_danada": 0,
+                    "costo_unitario_prenda": "32000.00",
+                }
+            ],
+        )
+
+        self.assertEqual(reception["total_recibido_conforme"], 0)
+        self.assertEqual(reception["total_merma"], 40)
+        self.assertEqual(reception["costo_total_perdida"], float(Decimal("40") * Decimal("32000.00")))
+
+        self.lot2.refresh_from_db()
+        self.assertEqual(self.lot2.estado_inventario, catalog.LOT_INV_INTERNAL)
+        self.assertEqual(self.lot2.cantidad, 40)
+
+        # No queda con prendas para inspeccionar en Calidad
+        pending_quality_ids = [row["id"] for row in quality_pending_lots()]
+        self.assertNotIn(self.lot2.id, pending_quality_ids)
+
+    def test_pendientes_usa_costo_real_de_la_orden_y_devuelve_none_si_no_hay_costos(self):
+        pending_before = get_pending_remissions_for_reception()
+        row_before = next(p for p in pending_before if p["remision_id"] == self.remision.id)
+        self.assertIsNone(row_before["lotes"][0]["costo_unitario_estimado"])
+
+        # Asignar costo real de materiales a la orden: 100 und * $18.000 / 100 prendas = $18.000/prenda
+        OrdenLinea.objects.create(
+            orden=self.order.orden_salida,
+            producto=self.tela,
+            cantidad=Decimal("100.000"),
+            costo_unitario=Decimal("18000.0000"),
+        )
+        pending_after = get_pending_remissions_for_reception()
+        row_after = next(p for p in pending_after if p["remision_id"] == self.remision.id)
+        self.assertEqual(row_after["lotes"][0]["costo_unitario_estimado"], 18000.0)
+
+        # Al recibir con pérdida sin enviar costo manual, toma automáticamente los $18.000 reales de la orden
+        reception = create_laundry_reception(
+            user=self.boss,
+            remision_id=self.remision.id,
+            fecha_recepcion=self.today,
+            factura_remision_externa="FAC-REAL-180",
+            lotes_recibidos=[
+                {
+                    "remision_lote_id": self.remision_lote.id,
+                    "cantidad_recibida_conforme": 58,
+                    "cantidad_merma": 2,
+                    "motivo_merma": "Faltante en centrifugado",
+                }
+            ],
+        )
+        self.assertEqual(reception["costo_total_perdida"], float(Decimal("2") * Decimal("18000.00")))
+
+    def test_recepcion_con_perdida_sin_costos_en_orden_exige_costo_unitario_real(self):
+        with self.assertRaises(ValidationError) as ctx:
+            create_laundry_reception(
+                user=self.boss,
+                remision_id=self.remision.id,
+                fecha_recepcion=self.today,
+                factura_remision_externa="FAC-SIN-COSTO",
+                lotes_recibidos=[
+                    {
+                        "remision_lote_id": self.remision_lote.id,
+                        "cantidad_recibida_conforme": 58,
+                        "cantidad_merma": 2,
+                        "motivo_merma": "Faltante",
+                    }
+                ],
+            )
+        self.assertIn("costo", str(ctx.exception.detail).lower())
+
+    def test_recepcion_exige_factura_remision_externa_obligatoria(self):
+        with self.assertRaises(ValidationError) as ctx:
+            create_laundry_reception(
+                user=self.boss,
+                remision_id=self.remision.id,
+                fecha_recepcion=self.today,
+                factura_remision_externa="   ",
+                lotes_recibidos=[{"remision_lote_id": self.remision_lote.id, "cantidad_recibida_conforme": 60}],
+            )
+        self.assertIn("factura", str(ctx.exception.detail).lower())
+
     def test_falla_si_cantidades_no_coinciden_con_enviadas(self):
         # Se enviaron 60, pero reportan 50 conformes y 0 mermas/daños (suma 50 != 60)
         with self.assertRaises(ValidationError):
@@ -159,6 +260,7 @@ class RecepcionLavanderiaTests(ModelBase):
                 user=self.boss,
                 remision_id=self.remision.id,
                 fecha_recepcion=self.today,
+                factura_remision_externa="FAC-ERR-1",
                 lotes_recibidos=[
                     {
                         "remision_lote_id": self.remision_lote.id,
@@ -176,6 +278,7 @@ class RecepcionLavanderiaTests(ModelBase):
                 user=self.boss,
                 remision_id=self.remision.id,
                 fecha_recepcion=self.today,
+                factura_remision_externa="FAC-ERR-2",
                 lotes_recibidos=[
                     {
                         "remision_lote_id": self.remision_lote.id,
@@ -183,6 +286,7 @@ class RecepcionLavanderiaTests(ModelBase):
                         "cantidad_merma": 2,
                         "motivo_merma": "   ",  # Inválido: obligatorio
                         "cantidad_danada": 0,
+                        "costo_unitario_prenda": "25000.00",
                     }
                 ],
             )
@@ -194,6 +298,7 @@ class RecepcionLavanderiaTests(ModelBase):
                 user=self.boss,
                 remision_id=self.remision.id,
                 fecha_recepcion=self.today,
+                factura_remision_externa="FAC-ERR-3",
                 lotes_recibidos=[
                     {
                         "remision_lote_id": self.remision_lote.id,
@@ -201,6 +306,7 @@ class RecepcionLavanderiaTests(ModelBase):
                         "cantidad_merma": 0,
                         "cantidad_danada": 3,
                         "tipo_dano": "",  # Inválido: obligatorio
+                        "costo_unitario_prenda": "25000.00",
                     }
                 ],
             )
@@ -211,6 +317,7 @@ class RecepcionLavanderiaTests(ModelBase):
             user=self.boss,
             remision_id=self.remision.id,
             fecha_recepcion=self.today,
+            factura_remision_externa="FAC-DUP-1",
             lotes_recibidos=[
                 {
                     "remision_lote_id": self.remision_lote.id,
@@ -227,6 +334,7 @@ class RecepcionLavanderiaTests(ModelBase):
                 user=self.boss,
                 remision_id=self.remision.id,
                 fecha_recepcion=self.today,
+                factura_remision_externa="FAC-DUP-2",
                 lotes_recibidos=[
                     {
                         "remision_lote_id": self.remision_lote.id,
@@ -242,6 +350,7 @@ class RecepcionLavanderiaTests(ModelBase):
             user=self.boss,
             remision_id=self.remision.id,
             fecha_recepcion=self.today,
+            factura_remision_externa="FAC-N1-1",
             lotes_recibidos=[
                 {
                     "remision_lote_id": self.remision_lote.id,
@@ -268,6 +377,7 @@ class RecepcionLavanderiaTests(ModelBase):
                 user=self.boss,
                 remision_id=rem["id"],
                 fecha_recepcion=self.today,
+                factura_remision_externa=f"FAC-N1-{idx}",
                 lotes_recibidos=[{"remision_lote_id": rem_lote.id, "cantidad_recibida_conforme": 10}],
             )
 

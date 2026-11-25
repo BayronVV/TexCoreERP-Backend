@@ -6,7 +6,7 @@ from apps.inventory import catalog as inv_catalog
 from apps.inventory.models import Consecutivo, Proveedor
 from apps.inventory.services import fail
 from apps.production import catalog
-from apps.production.models import Lote, RecetaLavado, RemisionLavanderia, RemisionLote
+from apps.production.models import Lote, RecepcionLote, RecetaLavado, RemisionLavanderia, RemisionLote
 
 
 def next_remission_code():
@@ -21,8 +21,7 @@ def next_remission_code():
 def get_available_lots_for_washing():
     """Devuelve los lotes ensamblados que están en la planta interna (estado_inventario = PLANTA).
 
-    Cuando un lote se remite a lavandería, se descuenta de la planta pasando su estado a EN_TRANSITO
-    y ya no aparece en esta lista.
+    Excluye lotes que ya tienen una recepción de lavandería activa para evitar reenvíos duplicados.
     """
     lotes = (
         Lote.objects.filter(
@@ -30,23 +29,20 @@ def get_available_lots_for_washing():
             deleted_at__isnull=True,
             orden__deleted_at__isnull=True,
         )
+        .exclude(
+            id__in=RecepcionLote.objects.filter(deleted_at__isnull=True).values_list("lote_id", flat=True)
+        )
         .select_related("orden__orden_salida", "orden__referencia")
         .prefetch_related("tallas", "etapas")
         .order_by("orden_id", "numero")
     )
 
-    receta_default = RecetaLavado.objects.filter(deleted_at__isnull=True).order_by("id").first()
-    receta_default_id = receta_default.codigo if receta_default else "REC-SW-01"
-    receta_default_nombre = receta_default.nombre if receta_default else "Stone Wash Medio + Bigotes 3D"
-
     data = []
     for lote in lotes:
         ref = lote.orden.referencia
-        tallas_dict = {t.talla: t.cantidad for t in lote.tallas.all()}
-        # Color y tela por defecto o de la referencia
-        color_crudo = "Azul Índigo Crudo"
-        if lote.tallas.exists() and lote.tallas.first().color:
-            color_crudo = lote.tallas.first().color
+        tallas_list = list(lote.tallas.all())
+        tallas_dict = {t.talla: t.cantidad for t in tallas_list}
+        color_crudo = tallas_list[0].color if tallas_list and tallas_list[0].color else ""
 
         data.append(
             {
@@ -55,17 +51,12 @@ def get_available_lots_for_washing():
                 "op_codigo": lote.orden.codigo,
                 "referencia": ref.nombre,
                 "referencia_codigo": ref.codigo,
-                "ficha_tecnica": f"FT-{ref.codigo}",
-                "tela": f"Denim {ref.nombre}",
+                "ficha_tecnica": ref.codigo,
                 "color_crudo": color_crudo,
                 "unidades_ensambladas": lote.cantidad,
                 "unidades_disponibles": lote.cantidad,
                 "curva_tallas": tallas_dict,
-                "taller_confeccion": "Planta TexCore - Módulo Ensamble",
                 "fecha_ensamble": lote.created_at.date().isoformat(),
-                "receta_sugerida": receta_default_id,
-                "receta_sugerida_nombre": receta_default_nombre,
-                "observacion_confeccion": "Lote ensamblado y verificado en planta interna.",
                 "estado_inventario": lote.estado_inventario,
             }
         )
@@ -73,15 +64,11 @@ def get_available_lots_for_washing():
 
 
 def get_laundry_providers():
-    """Lista los proveedores de servicios de lavandería activos."""
+    """Lista los proveedores activos registrados en la categoría de lavandería."""
     proveedores = Proveedor.objects.filter(
         categoria=inv_catalog.CAT_LAUNDRY,
         deleted_at__isnull=True,
     ).order_by("razon_social")
-
-    # Si aún no hay con categoría LAVANDERIA, tomar todos los proveedores activos como fallback
-    if not proveedores.exists():
-        proveedores = Proveedor.objects.filter(deleted_at__isnull=True).order_by("razon_social")
 
     result = []
     for prov in proveedores:
@@ -91,13 +78,10 @@ def get_laundry_providers():
                 "id": prov.id,
                 "razon_social": prov.razon_social,
                 "nit": nit_completo,
-                "ciudad": prov.ciudad or "Medellín, Antioquia",
-                "direccion": prov.direccion or "Zona Industrial",
-                "contacto": prov.contacto or "Coordinador de Planta",
+                "ciudad": prov.ciudad or "",
+                "direccion": prov.direccion or "",
+                "contacto": prov.contacto or "",
                 "telefono": prov.telefono or "",
-                "tarifa_base_unidad": 3500,
-                "tiempo_promedio_dias": 3,
-                "calificacion_calidad": "4.8 / 5.0 (Proveedor Homologado)",
             }
         )
     return result
@@ -128,26 +112,28 @@ def serialize_remission_detail(remision):
     for dl in remision.lotes_detalle.all():
         lote = dl.lote
         ref = lote.orden.referencia if lote.orden and lote.orden.referencia else None
+        tallas_list = list(lote.tallas.all())
+        color_crudo = tallas_list[0].color if tallas_list and tallas_list[0].color else ""
         lotes_detalle.append(
             {
                 "id": lote.id,
                 "codigo_lote": lote.codigo,
                 "op_codigo": lote.orden.codigo if lote.orden else "",
                 "referencia": ref.nombre if ref else "",
-                "ficha_tecnica": f"FT-{ref.codigo}" if ref else "",
-                "color_crudo": "Índigo Base",
+                "ficha_tecnica": ref.codigo if ref else "",
+                "color_crudo": color_crudo,
                 "cantidad_a_enviar": dl.cantidad,
                 "receta_id": dl.receta.codigo if dl.receta else "",
-                "receta_nombre": dl.receta_nombre or (dl.receta.nombre if dl.receta else "Lavado Estándar"),
+                "receta_nombre": dl.receta_nombre or (dl.receta.nombre if dl.receta else ""),
                 "instrucciones_especiales": dl.instrucciones_especiales,
             }
         )
 
     prov = remision.lavanderia
     contacto_lav = prov.contacto if prov else ""
-    nombre_lav = prov.razon_social if prov else "Lavandería Externa"
+    nombre_lav = prov.razon_social if prov else ""
 
-    responsable_str = "Carlos E. Restrepo (Jefe de Producción)"
+    responsable_str = ""
     if remision.responsable:
         responsable_str = f"{remision.responsable.get_full_name() or remision.responsable.email}"
 
@@ -168,7 +154,7 @@ def serialize_remission_detail(remision):
         "lotes_detalle": lotes_detalle,
         "total_lotes": len(lotes_detalle),
         "total_prendas": total_prendas,
-        "receta_nombre": lotes_detalle[0]["receta_nombre"] if lotes_detalle else "Lavado Industrial",
+        "receta_nombre": lotes_detalle[0]["receta_nombre"] if lotes_detalle else "",
         "costo_estimado": float(remision.costo_estimado),
         "transportador_nombre": remision.transportador_nombre,
         "vehiculo_placa": remision.vehiculo_placa,
@@ -194,21 +180,27 @@ def create_laundry_remission(
     peso_kg=0,
     observaciones="",
 ):
-    """Crea la remisión oficial de salida a lavandería (HU TE-57 / TE-131).
+    """Crea la remisión oficial de salida a lavandería (HU TE-57 / TE-131 / TE-172).
 
     Reglas de negocio:
-    1. Genera el código consecutivo oficial del documento de salida (REM-LAV-YYYY-0001).
-    2. Bloquea los lotes para evitar concurrencia y valida que estén en la planta interna (PLANTA).
+    1. Valida que el proveedor pertenezca a la categoría de lavandería.
+    2. Bloquea los lotes, exige estado PLANTA, sin recepción previa, y envío del lote completo.
     3. Descuenta los lotes de la planta interna cambiando su estado de inventario a EN_TRANSITO.
-    4. Guarda el documento de remisión y sus líneas asociadas.
-    5. Devuelve la remisión estructurada lista para el ticket de impresión.
+    4. Guarda el documento de remisión con consecutivo oficial REM-LAV-YYYY-0001.
     """
     if not lotes_seleccionados:
         fail("Debes seleccionar al menos un lote para generar la remisión.", "lotes")
 
-    prov = Proveedor.objects.filter(pk=lavanderia_id, deleted_at__isnull=True).first()
+    prov = Proveedor.objects.filter(
+        pk=lavanderia_id,
+        categoria=inv_catalog.CAT_LAUNDRY,
+        deleted_at__isnull=True,
+    ).first()
     if prov is None:
-        fail("El proveedor de lavandería seleccionado no existe o está inactivo.", "lavanderia")
+        fail(
+            "El proveedor seleccionado no existe, está inactivo o no corresponde a una lavandería.",
+            "lavanderia",
+        )
 
     lot_ids = [item["lote_id"] for item in lotes_seleccionados]
     if len(lot_ids) != len(set(lot_ids)):
@@ -223,7 +215,13 @@ def create_laundry_remission(
     if missing_ids:
         fail(f"Los lotes con IDs {missing_ids} no existen.", "lotes")
 
-    # Validar estado de planta de cada lote
+    already_received_ids = set(
+        RecepcionLote.objects.filter(lote_id__in=lot_ids, deleted_at__isnull=True).values_list(
+            "lote_id", flat=True
+        )
+    )
+
+    # Validar estado de planta, no recepción previa y envío del lote completo
     for item in lotes_seleccionados:
         lote = locked_lots[item["lote_id"]]
         if lote.estado_inventario != catalog.LOT_INV_INTERNAL:
@@ -231,28 +229,33 @@ def create_laundry_remission(
                 f"El lote {lote.codigo} ya no está en la planta interna (estado actual: {lote.get_estado_inventario_display()}).",
                 "lotes",
             )
+        if lote.id in already_received_ids:
+            fail(
+                f"El lote {lote.codigo} ya completó su proceso y recepción de lavandería.",
+                "lotes",
+            )
         qty = int(item.get("cantidad", 0))
         if qty <= 0:
             fail(f"La cantidad enviada del lote {lote.codigo} debe ser mayor a cero.", "cantidad")
-        if qty > lote.cantidad:
+        if qty != lote.cantidad:
             fail(
-                f"La cantidad solicitada ({qty}) supera las unidades del lote {lote.codigo} ({lote.cantidad}).",
+                f"El lote {lote.codigo} se envía completo ({lote.cantidad} prendas); "
+                f"no se permiten remisiones parciales ({qty}).",
                 "cantidad",
             )
 
     # Generar código consecutivo oficial
     consecutivo = next_remission_code()
 
-    # Calcular costo estimado total
+    # Calcular costo estimado total con tarifas reales de receta (0.00 si no tiene receta)
     recetas_cache = {r.codigo: r for r in RecetaLavado.objects.filter(deleted_at__isnull=True)}
     costo_total = Decimal("0.00")
-    tarifa_base_defecto = Decimal("3500.00")
 
     for item in lotes_seleccionados:
         qty = Decimal(str(item.get("cantidad", 0)))
         receta_code = item.get("receta_id")
         receta_obj = recetas_cache.get(receta_code)
-        tarifa = receta_obj.tarifa_sugerida if receta_obj else tarifa_base_defecto
+        tarifa = receta_obj.tarifa_sugerida if receta_obj else Decimal("0.00")
         costo_total += qty * tarifa
 
     # Crear la Remisión de Salida
@@ -297,6 +300,7 @@ def create_laundry_remission(
         RemisionLavanderia.objects.select_related("lavanderia", "responsable")
         .prefetch_related(
             "lotes_detalle__lote__orden__referencia",
+            "lotes_detalle__lote__tallas",
             "lotes_detalle__receta",
         )
         .get(pk=remision.pk)
@@ -312,6 +316,7 @@ def list_laundry_remissions():
         .select_related("lavanderia", "responsable")
         .prefetch_related(
             "lotes_detalle__lote__orden__referencia",
+            "lotes_detalle__lote__tallas",
             "lotes_detalle__receta",
         )
         .order_by("-fecha_emision", "-id")

@@ -7,6 +7,8 @@ Maneja:
 - Devolución de prendas a la planta interna.
 - Consulta de historial de recepciones generadas.
 """
+from decimal import Decimal
+
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_serializer
 from rest_framework import serializers, status
 from rest_framework.response import Response
@@ -26,7 +28,12 @@ class RecepcionLoteItemInputSerializer(serializers.Serializer):
     motivo_merma = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
     tipo_dano = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
     costo_unitario_prenda = serializers.DecimalField(
-        max_digits=12, decimal_places=2, required=False, default=35000
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        default=None,
+        min_value=Decimal("0.01"),
     )
     observaciones = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
 
@@ -37,7 +44,9 @@ class RecepcionInputSerializer(serializers.Serializer):
     remision_id = serializers.IntegerField(min_value=1)
     fecha_recepcion = serializers.DateField()
     factura_remision_externa = serializers.CharField(
-        max_length=60, required=False, allow_blank=True, default=""
+        max_length=60,
+        allow_blank=False,
+        help_text="Número obligatorio de la factura o remisión externa de la lavandería",
     )
     observaciones = serializers.CharField(
         max_length=1000, required=False, allow_blank=True, default=""
@@ -55,13 +64,13 @@ class RemisionPendienteLoteSerializer(serializers.Serializer):
     lote_id = serializers.IntegerField()
     codigo_lote = serializers.CharField()
     lote_codigo = serializers.CharField()
-    op_codigo = serializers.CharField()
-    referencia = serializers.CharField()
-    receta_id = serializers.CharField()
-    receta_nombre = serializers.CharField()
+    op_codigo = serializers.CharField(allow_blank=True)
+    referencia = serializers.CharField(allow_blank=True)
+    receta_id = serializers.CharField(allow_blank=True)
+    receta_nombre = serializers.CharField(allow_blank=True)
     tarifa_lavado = serializers.FloatField()
     cantidad_enviada = serializers.IntegerField()
-    costo_unitario_estimado = serializers.FloatField()
+    costo_unitario_estimado = serializers.FloatField(allow_null=True)
 
 
 class RemisionPendienteRecepcionSerializer(serializers.Serializer):
@@ -69,13 +78,15 @@ class RemisionPendienteRecepcionSerializer(serializers.Serializer):
     remision_id = serializers.IntegerField()
     codigo = serializers.CharField()
     fecha_emision = serializers.DateField()
-    fecha_entrega_estimada = serializers.CharField(help_text="Fecha ISO o cadena vacía si no se definió")
+    fecha_entrega_estimada = serializers.CharField(
+        allow_blank=True, help_text="Fecha ISO o cadena vacía si no se definió"
+    )
     dias_en_proceso = serializers.IntegerField()
     lavanderia_id = serializers.IntegerField(allow_null=True)
-    lavanderia_nombre = serializers.CharField()
-    lavanderia_contacto = serializers.CharField()
-    transportador_nombre = serializers.CharField()
-    vehiculo_placa = serializers.CharField()
+    lavanderia_nombre = serializers.CharField(allow_blank=True)
+    lavanderia_contacto = serializers.CharField(allow_blank=True)
+    transportador_nombre = serializers.CharField(allow_blank=True)
+    vehiculo_placa = serializers.CharField(allow_blank=True)
     total_lotes = serializers.IntegerField()
     total_prendas = serializers.IntegerField()
     estado = serializers.CharField()
@@ -89,19 +100,19 @@ class RecepcionLoteDetalleSerializer(serializers.Serializer):
     remision_lote_id = serializers.IntegerField(allow_null=True)
     lote_id = serializers.IntegerField()
     codigo_lote = serializers.CharField()
-    op_codigo = serializers.CharField()
-    referencia = serializers.CharField()
-    ficha_tecnica = serializers.CharField()
-    receta_nombre = serializers.CharField()
+    op_codigo = serializers.CharField(allow_blank=True)
+    referencia = serializers.CharField(allow_blank=True)
+    ficha_tecnica = serializers.CharField(allow_blank=True)
+    receta_nombre = serializers.CharField(allow_blank=True)
     cantidad_enviada = serializers.IntegerField()
     cantidad_recibida_conforme = serializers.IntegerField()
     cantidad_merma = serializers.IntegerField()
     cantidad_danada = serializers.IntegerField()
-    motivo_merma = serializers.CharField()
-    tipo_dano = serializers.CharField()
+    motivo_merma = serializers.CharField(allow_blank=True)
+    tipo_dano = serializers.CharField(allow_blank=True)
     costo_unitario_prenda = serializers.FloatField()
     costo_perdida = serializers.FloatField()
-    observaciones = serializers.CharField()
+    observaciones = serializers.CharField(allow_blank=True)
 
 
 class RecepcionLavanderiaSerializer(serializers.Serializer):
@@ -114,9 +125,9 @@ class RecepcionLavanderiaSerializer(serializers.Serializer):
     factura_remision_externa = serializers.CharField()
     fecha_recepcion = serializers.DateField()
     lavanderia_id = serializers.IntegerField(allow_null=True)
-    lavanderia_nombre = serializers.CharField()
-    lavanderia_nit = serializers.CharField()
-    lavanderia_contacto = serializers.CharField()
+    lavanderia_nombre = serializers.CharField(allow_blank=True)
+    lavanderia_nit = serializers.CharField(allow_blank=True)
+    lavanderia_contacto = serializers.CharField(allow_blank=True)
     total_enviado = serializers.IntegerField()
     total_recibido_conforme = serializers.IntegerField()
     total_merma = serializers.IntegerField()
@@ -124,8 +135,8 @@ class RecepcionLavanderiaSerializer(serializers.Serializer):
     costo_total_perdida = serializers.FloatField()
     costo_servicio_lavado = serializers.FloatField()
     estado = serializers.CharField()
-    responsable = serializers.CharField()
-    observaciones = serializers.CharField()
+    responsable = serializers.CharField(allow_blank=True)
+    observaciones = serializers.CharField(allow_blank=True)
     lotes_detalle = RecepcionLoteDetalleSerializer(many=True)
 
 
@@ -166,15 +177,16 @@ class RecepcionLavanderiaListCreateView(APIView):
 
     @extend_schema(
         summary="Asentar recepción, cotejar cantidades y registrar pérdidas (TE-58)",
-        description="Coteja cantidades enviadas vs devueltas, exige motivos para mermas y daños, "
-                    "devuelve las prendas conformes al estado interno (PLANTA), calcula la pérdida financiera "
-                    "y marca la remisión original como RETORNADA.",
+        description="Exige factura o remisión externa, coteja cantidades enviadas vs devueltas (acepta 0 conformes), "
+                    "exige motivos para mermas y daños, liquida pérdidas con el costo real calculado de la orden "
+                    "o ingresado manualmente, devuelve los lotes a planta conservando su cantidad original y marca "
+                    "la remisión como RETORNADA.",
         request=RecepcionInputSerializer,
         responses={
             201: RecepcionLavanderiaSerializer,
             400: OpenApiResponse(
-                description="Datos inválidos: remisión inexistente o ya recibida, lotes que no pertenecen a la remisión, "
-                            "cantidades que no cuadran con lo enviado o mermas/daños sin motivo"
+                description="Datos inválidos: falta factura externa, remisión inexistente o ya recibida, lotes ajenos "
+                            "a la remisión, cantidades inconsistentes, mermas/daños sin motivo o sin costo real"
             ),
             403: FORBIDDEN_MANAGE,
         },

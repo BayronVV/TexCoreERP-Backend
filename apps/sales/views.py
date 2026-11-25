@@ -13,18 +13,21 @@ from apps.references import catalog as reference_catalog
 from apps.references.models import Referencia
 from apps.shipping.models import Guia
 
-from . import catalog, invoicing
-from .models import Cliente, DetalleVenta, FacturaVenta, PrecioReferencia
+from . import catalog, invoicing, pricing
+from .models import Cliente, DetalleVenta, FacturaVenta, HistorialPrecioReferencia, PrecioReferencia
 from .pdf import invoice_pdf
 from .serializers import (
     AnularInputSerializer,
+    AplicarCostoInputSerializer,
     CarteraResumenSerializer,
     ClienteSerializer,
     ConciliarInputSerializer,
     FacturaInputSerializer,
     FacturaSerializer,
+    HistorialPrecioSerializer,
     MetadatosVentaSerializer,
     PrecioInputSerializer,
+    PrecioReferenciaBasicoSerializer,
     PrecioReferenciaSerializer,
 )
 
@@ -117,9 +120,14 @@ class ClienteDetailView(APIView):
         return Response(ClienteSerializer(data.save()).data)
 
 
+def _can_manage_prices(user) -> bool:
+    """True si el usuario puede administrar precios y ver el costo calculado desde producción."""
+    return bool(user and getattr(user, "is_authenticated", False) and user.has_permission_code(catalog.SALES_PRICES))
+
+
 @extend_schema(tags=["ventas"])
 class PrecioListView(APIView):
-    """Costo de fábrica y precios de las referencias activas (vacíos si todavía no se registran)."""
+    """Costo de fábrica y precios de las referencias activas (con cálculo de producción para `ventas.precios`)."""
     required_permissions = PRICE_PERMISSIONS
 
     @extend_schema(
@@ -127,20 +135,24 @@ class PrecioListView(APIView):
         responses={200: PrecioReferenciaSerializer(many=True)},
     )
     def get(self, request):
-        references = Referencia.objects.filter(estado=reference_catalog.ACTIVE).order_by("codigo")
+        references = list(Referencia.objects.filter(estado=reference_catalog.ACTIVE).order_by("codigo"))
         q = request.query_params.get("q", "").strip()
         if q:
-            references = references.filter(Q(codigo__icontains=q) | Q(nombre__icontains=q))
+            q_lower = q.lower()
+            references = [r for r in references if q_lower in r.codigo.lower() or q_lower in r.nombre.lower()]
         prices = {p.referencia_id: p for p in PrecioReferencia.objects.all()}
-        rows = []
-        for reference in references:
-            price = prices.get(reference.id)
-            rows.append({
-                "referencia": reference.id, "codigo": reference.codigo, "nombre": reference.nombre, "estado": reference.estado,
-                "costo_fabrica": price.costo_fabrica if price else None, "precio_detal": price.precio_detal if price else None,
-                "precio_mayorista": price.precio_mayorista if price else None,
-            })
-        return Response(PrecioReferenciaSerializer(rows, many=True).data)
+        can_manage = _can_manage_prices(request.user)
+        calcs = pricing.calculate_references_costs([r.id for r in references]) if can_manage else None
+        rows = [
+            pricing.build_price_row(
+                reference,
+                prices.get(reference.id),
+                calc=calcs.get(reference.id) if calcs is not None else None,
+            )
+            for reference in references
+        ]
+        serializer_cls = PrecioReferenciaSerializer if can_manage else PrecioReferenciaBasicoSerializer
+        return Response(serializer_cls(rows, many=True).data)
 
 
 @extend_schema(tags=["ventas"])
@@ -149,18 +161,74 @@ class PrecioDetailView(APIView):
     required_permissions = PRICE_PERMISSIONS
 
     @extend_schema(summary="Registrar o actualizar los precios de una referencia", request=PrecioInputSerializer, responses={200: PrecioReferenciaSerializer})
-    @transaction.atomic
     def put(self, request, referencia):
         reference = Referencia.objects.filter(pk=referencia).first()
         if reference is None:
             raise Http404("La referencia no existe.")
         data = PrecioInputSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        price, _ = PrecioReferencia.objects.update_or_create(referencia=reference, defaults={**data.validated_data, "actualizado_por": request.user})
-        return Response(PrecioReferenciaSerializer({
-            "referencia": reference.id, "codigo": reference.codigo, "nombre": reference.nombre, "estado": reference.estado,
-            "costo_fabrica": price.costo_fabrica, "precio_detal": price.precio_detal, "precio_mayorista": price.precio_mayorista,
-        }).data)
+        values = data.validated_data
+        price = pricing.save_reference_price(
+            user=request.user,
+            reference=reference,
+            costo_fabrica=values["costo_fabrica"],
+            precio_mayorista=values["precio_mayorista"],
+            precio_detal=values["precio_detal"],
+            origen=catalog.PRICE_SOURCE_MANUAL,
+            motivo=values.get("motivo", ""),
+        )
+        calc = pricing.calculate_references_costs([reference.id])[reference.id]
+        return Response(PrecioReferenciaSerializer(pricing.build_price_row(reference, price, calc=calc)).data)
+
+
+@extend_schema(tags=["ventas"])
+class PrecioAplicarCostoView(APIView):
+    """Aplica como costo de fábrica el valor calculado desde las órdenes terminadas de producción (HU 4.7)."""
+    required_permissions = {"POST": catalog.SALES_PRICES}
+
+    @extend_schema(
+        summary="Aplicar el costo calculado desde producción a una referencia",
+        request=AplicarCostoInputSerializer,
+        responses={200: PrecioReferenciaSerializer},
+        description="Adopta el costo promedio ponderado por prendas aptas calculado de órdenes terminadas con costos completos. "
+                    "Rechaza con 400 si el cálculo está incompleto o supera el precio mayorista sin actualizarlo.",
+    )
+    def post(self, request, referencia):
+        reference = Referencia.objects.filter(pk=referencia).first()
+        if reference is None:
+            raise Http404("La referencia no existe.")
+        data = AplicarCostoInputSerializer(data=request.data or {})
+        data.is_valid(raise_exception=True)
+        values = data.validated_data
+        price, calc = pricing.apply_calculated_cost(
+            user=request.user,
+            reference=reference,
+            precio_mayorista=values.get("precio_mayorista"),
+            precio_detal=values.get("precio_detal"),
+            motivo=values.get("motivo", ""),
+        )
+        return Response(PrecioReferenciaSerializer(pricing.build_price_row(reference, price, calc=calc)).data)
+
+
+@extend_schema(tags=["ventas"])
+class PrecioHistorialView(APIView):
+    """Historial de cambios de costo de fábrica y precios de venta de una referencia (HU 4.7)."""
+    required_permissions = {"GET": catalog.SALES_PRICES}
+
+    @extend_schema(
+        summary="Consultar el historial de precios y costos de una referencia",
+        responses={200: HistorialPrecioSerializer(many=True)},
+    )
+    def get(self, request, referencia):
+        reference = Referencia.objects.filter(pk=referencia).first()
+        if reference is None:
+            raise Http404("La referencia no existe.")
+        history = (
+            HistorialPrecioReferencia.objects.filter(precio_referencia__referencia=reference)
+            .select_related("usuario")
+            .order_by("-created_at", "-id")
+        )
+        return Response(HistorialPrecioSerializer(history, many=True).data)
 
 
 @extend_schema(tags=["ventas"])

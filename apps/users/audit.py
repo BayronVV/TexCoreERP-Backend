@@ -45,6 +45,7 @@ AUDITED = {
     ("terminado_ajustes", "POST"): ("producto_terminado.ajuste", "movimiento_terminado"),
     # Ventas: precios, facturas, cartera
     ("ventas_precio", "PUT"): ("precio.modificar", "referencia"),
+    ("ventas_precio_aplicar_costo", "POST"): ("precio.aplicar_costo", "referencia"),
     ("ventas_facturas", "POST"): ("factura.emitir", "factura"),
     ("ventas_factura_anular", "POST"): ("factura.anular", "factura"),
     ("ventas_factura_conciliar", "POST"): ("cartera.conciliar", "factura"),

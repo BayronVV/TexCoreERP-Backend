@@ -644,9 +644,15 @@ dígito de verificación solo para NIT), el nombre, el tipo de cliente, la ciuda
 
 ### Precios (Gerente)
 
-Menú **Ventas y Despachos → Precios**. Lista las referencias activas con su **costo de fábrica**, su **precio mayorista** y su **precio de detal**, en pesos y antes de IVA. El Gerente pulsa **Registrar** (o **Editar**) y
-escribe los tres valores: el mayorista no puede ser menor que el costo de fábrica ni el de detal menor que el mayorista. El costo de fábrica es el **piso** de toda venta. Una referencia sin precio no se puede vender.
-Cambiar un precio no modifica las facturas ya emitidas. Los demás roles solo consultan.
+Menú **Ventas y Despachos → Precios**. Lista las referencias activas con su **costo de fábrica** (el piso de toda venta), su **precio mayorista** y su **precio de detal**, en pesos y antes de IVA.
+
+Para el **Gerente** (y el Administrador), la tabla muestra además:
+- **Costo calculado:** promedio ponderado por prendas aptas de las órdenes terminadas en los últimos 90 días con costos completos (`(materiales + mano de obra + servicio de lavandería) ÷ prendas aptas`), con enlace **Ver órdenes** para ver el desglose de cada orden, o **Ver faltantes** cuando falta una tarifa o el costo de un material (en ese caso no se propone valor).
+- **Diferencia y alertas:** diferencia frente al costo vigente, aviso **Costo desactualizado** si el calculado es mayor al vigente, y **Precio bajo costo** cuando el costo calculado supera al precio mayorista actual (en ese caso obliga a **Subir precio y aplicar** antes de cambiar el piso).
+- **Aplicar costo** (un clic cuando el mayorista cubre el nuevo costo) y **Registrar / Editar** para ajustar manualmente. El costo nunca cambia solo; si el Gerente lo aplica, las facturas ya emitidas no cambian y solo las ventas nuevas usan el nuevo piso.
+- **Historial:** muestra quién cambió costo o precios, cuándo, origen (*Manual* o *Calculado desde producción*), valores anteriores y órdenes de respaldo.
+
+El **Vendedor** consulta únicamente los precios y el costo vigente, sin ver el cálculo sugerido ni los botones de modificación o historial.
 
 ### Mensajes que puedes ver
 
@@ -654,6 +660,8 @@ Cambiar un precio no modifica las facturas ya emitidas. Los demás roles solo co
 - *…: el descuento máximo para un cliente … es N %.* El descuento supera el tope del tipo de cliente.
 - *…: con N % el precio queda por debajo del costo de fábrica.* Baja el descuento de esa línea.
 - *Falta el precio de venta de: …* Pídele al Gerente que lo registre en **Precios**.
+- *El costo calculado ($…) supera el precio mayorista vigente ($…). Sube el precio mayorista antes de aplicar este costo.* Ajusta el precio mayorista primero con **Subir precio y aplicar**.
+- *No se puede aplicar el costo porque las órdenes tienen costos incompletos: …* Falta el costo de algún material o una tarifa de mano de obra vigente.
 - *Elige un cliente activo.* No hay cliente elegido, o está desactivado.
 - *Esta venta ya se facturó como FV-….* Enviaste el formulario dos veces; la primera ya quedó facturada.
 - *Explica por qué se anula (mínimo 10 caracteres).* El motivo de la anulación es muy corto.
@@ -665,7 +673,7 @@ Cambiar un precio no modifica las facturas ya emitidas. Los demás roles solo co
     - **Despacho:** el seguimiento de la guía (semáforo, relaciones de despacho, devoluciones) está en el módulo **Envíos** (sección 11).
     - **Pedidos y reservas:** se vende lo que hay en ese momento; no se reserva producto.
     - **Devoluciones parciales:** solo se anula la factura completa. En una devolución el flete se descuenta al vendedor, según la política de la empresa; el módulo Envíos lo registra y lo reporta, pero no lo descuenta.
-    - **Precios y costo de fábrica:** los registra el Gerente a mano.
+    - **Precios de venta:** aunque el costo de fábrica se calcula desde producción como sugerencia (TE-174), los precios mayorista y detal los fija el Gerente.
     - **Filtros avanzados e impresión directa:** la lista filtra por texto, estado y fechas, y la factura se entrega solo en PDF.
 
 ## 11. Envíos: guías y despachos (Vendedor, Almacenista, Secretaria y Gerente)

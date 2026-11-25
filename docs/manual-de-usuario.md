@@ -301,32 +301,28 @@ opera las dos pantallas; el Gerente solo las consulta. El camino de cada lote es
 Menú **Procesos Externos (Lavandería) → Remisión a Lavado**. La pantalla se llama *Remisión de Lotes Ensamblados a Lavado* y tiene dos pestañas: **Nueva Remisión** (con
 el número de lotes listos) e **Historial de Remisiones**.
 
-1. En **1. Seleccionar Lotes Ensamblados a Lavar** aparecen los lotes que están en la planta interna. Marca los que vas a enviar. Al marcar un lote puedes cambiar
-   **Prendas a Enviar** (no puede pasar de las que tiene), elegir el **Proceso de Lavado** (cada opción muestra su tarifa por prenda) y escribir **instrucciones especiales**
-   para la lavandería (opcional). Cada tarjeta muestra la curva de tallas del lote.
-2. En **2. Destino de Lavandería y Datos Logísticos** elige el **Proveedor de Lavandería** (verás su dirección, teléfono y contacto), la **Fecha de Salida / Despacho**
-   y la **Fecha Estimada de Retorno**. También puedes anotar el **Conductor / Transportador Responsable**, la **Placa del Vehículo**, los **Bultos / Tulas de Envío**, el
-   **Peso Total Aprox. (Kg)** y las **Observaciones Generales de la Remisión**.
-3. A la derecha, el **Resumen de Despacho** muestra los lotes escogidos, la lavandería, el tiempo estimado, la tarifa base por prenda, el **Total Prendas a Remitir** y el
-   costo estimado del servicio. **Limpiar Selección** desmarca todo.
+1. En **1. Seleccionar Lotes Ensamblados a Lavar** aparecen los lotes que están en la planta interna y aún no se han recibido de lavandería. Marca los que vas a enviar;
+   **cada lote se envía completo** (no se permite fraccionar prendas de un mismo lote). Puedes elegir un **Proceso de Lavado** opcional (cada opción muestra su tarifa por prenda)
+   y escribir **instrucciones especiales** para la lavandería. Cada tarjeta muestra la curva de tallas del lote.
+2. En **2. Destino de Lavandería y Datos Logísticos** elige el **Proveedor de Lavandería** (solo aparecen proveedores activos de la categoría *Lavandería*, con su dirección,
+   teléfono y contacto reales), la **Fecha de Salida / Despacho** y opcionalmente la **Fecha Estimada de Retorno**. También puedes anotar el **Conductor / Transportador
+   Responsable**, la **Placa del Vehículo**, los **Bultos / Tulas de Envío**, el **Peso Total Aprox. (Kg)** y las **Observaciones Generales de la Remisión** (todos los campos
+   logísticos arrancan en blanco para evitar datos inventados).
+3. A la derecha, el **Resumen de Despacho** muestra los lotes escogidos, la lavandería, el **Total Prendas a Remitir** y el costo estimado del servicio calculado desde la tarifa real de las recetas seleccionadas (`$ 0` si no se eligió receta). **Limpiar Selección** desmarca todo.
 4. Pulsa **Generar Remisión de Lavado**. El sistema crea la remisión (código `REM-LAV-AAAA-0001`), saca los lotes de la planta (pasan a *En Tránsito / Externo* y dejan de
    salir en la lista) y abre la **guía de la remisión**, lista para **imprimir**. Verás *«Remisión … generada con éxito (N prendas despachadas a …).»*
 5. La guía impresa trae la lavandería, el transporte, el detalle de lotes con su proceso de lavado y el total de prendas, con tres firmas: **Entrega Planta (TexCore)**,
    **Transportador** y **Recibe Lavandería**. Hazla firmar al entregar los paquetes.
 
 El **Historial de Remisiones** lista cada remisión con su fecha de salida, retorno estimado, lavandería, lotes, prendas, proceso, transporte y estado
-(*En Tránsito / Externo*, *En Lavandería* o *Retornada a Planta*). **Ver Guía** vuelve a abrir la hoja para reimprimirla.
-
-!!! warning "Revisa los datos que vienen escritos de antemano"
-    Al abrir la pantalla, el conductor, la placa, las tulas, el peso, las observaciones y las instrucciones del primer lote **vienen con un texto de ejemplo**. Cámbialos por
-    los datos reales antes de generar la remisión, porque se imprimen en la guía.
+(*En Tránsito / Externo*, *En Lavandería* o *Retornada a Planta*). **Ver Guía** vuelve a abrir la hoja para reimprimirla. Si el servidor falla al cargar, verás una alerta con botón **Reintentar** y ningún dato simulado.
 
 **Mensajes que puedes ver:**
 
-- *Debes seleccionar al menos un lote ensamblado con cantidad mayor a 0.* No marcaste ningún lote o dejaste la cantidad en cero.
+- *Debes seleccionar al menos un lote ensamblado para remitir.* No marcaste ningún lote.
 - *El lote … ya no está en la planta interna (estado actual: …).* Otra persona lo remitió primero; recarga la pantalla.
-- *La cantidad solicitada (N) supera las unidades del lote … (M).* No puedes enviar más prendas de las que tiene el lote.
-- *El proveedor de lavandería seleccionado no existe o está inactivo.*
+- *El lote … se envía completo (N prendas); no se permiten remisiones parciales.* Debes despachar la cantidad completa del lote.
+- *El proveedor seleccionado no existe, está inactivo o no corresponde a una lavandería.*
 
 #### Recibir lo que vuelve de lavandería (Recepción de Lavandería)
 
@@ -337,7 +333,7 @@ Menú **Procesos Externos (Lavandería) → Recepción de Lavandería**. La pant
    despacho y las prendas). Debajo se ven la lavandería, el vehículo y la fecha estimada de retorno. Si no hay ninguna, la pantalla dice *«No hay remisiones pendientes por
    recibir»* y ofrece **+ Crear Nueva Remisión de Salida**.
 2. En **2. Cotejo de Cantidades: Enviadas vs Devueltas**, por cada lote, cuenta las prendas físicas y escribe:
-    - **Conformes (1ª)**: las que volvieron en buen estado.
+    - **Conformes (1ª)**: las que volvieron en buen estado (puede ser `0` si el lote se perdió o dañó completo).
     - **Merma (Extravío)**: las que no volvieron.
     - **Dañadas (Segundas)**: las que volvieron con un defecto de lavado.
 
@@ -346,17 +342,15 @@ Menú **Procesos Externos (Lavandería) → Recepción de Lavandería**. La pant
 3. Si hay **merma**, aparece el campo obligatorio **Motivo de la Merma**: elige uno de la lista (por ejemplo *Extravío en tinas o centrifugado industrial* o *Faltante en transporte
    / bultos entregados*) o escribe el detalle. Si hay **dañadas**, es obligatorio el **Tipo de Daño / Defecto** (por ejemplo *Decoloración irregular o veteado químico* o
    *Quemado térmico en tambor de secado*), también de la lista o escrito a mano.
-4. En **Datos del Documento de Reingreso** escribe la **Factura / Remisión Externa del Proveedor** (el número del papel que entregó la lavandería), la **Fecha de Recepción en
-   Planta** y las **Observaciones de Recepción**.
-5. En **Liquidación Financiera por Terceros** ves cuántas prendas son *Conformes* y cuántas *Afectadas*, la **Pérdida Financiera Liquidada** (prendas perdidas o dañadas por el
-   costo de cada prenda) y el **Servicio de lavado a liquidar** (prendas conformes por la tarifa del proceso).
-6. Pulsa **Asentar Reingreso a Planta & Liquidar**. Hasta que todos los lotes cuadren y los motivos estén escritos, el botón queda desactivado y un recuadro explica qué falta
-   (*No se puede asentar aún*). Al asentar verás *«Recepción … asentada. Se devolvieron N prendas a planta y se asentaron $ … en pérdidas.»* y se abre el **acta de recepción**,
+4. **Costo real de la prenda para pérdidas:** el sistema carga automáticamente el **costo por prenda calculado en la orden de producción**. Si la orden aún no tiene costos y reportas merma o daño, aparecerá el campo obligatorio **Costo unitario real de la prenda (COP)** para ingresarlo manualmente.
+5. En **Datos del Documento de Reingreso** escribe obligatoriamente la **Factura / Remisión Externa del Proveedor** (arranca vacía; digita el número del comprobante real entregado por la lavandería), la **Fecha de Recepción en Planta** y las **Observaciones de Recepción**.
+6. En **Liquidación Financiera por Terceros** ves cuántas prendas son *Conformes* y cuántas *Afectadas*, la **Pérdida Financiera Liquidada** (prendas perdidas o dañadas por el
+   costo real de cada prenda) y el **Servicio de lavado a liquidar** (prendas conformes por la tarifa real de la receta elegida, o `$ 0` si no lleva receta).
+7. Pulsa **Asentar Reingreso a Planta & Liquidar**. Hasta que todos los lotes cuadren, los motivos/costos estén completos y la factura externa escrita, el botón queda desactivado y un recuadro explica qué falta
+   (*No se puede asentar aún*). Al asentar verás *«Recepción … asentada. Se devolvieron N prendas conformes y se asentaron $ … en pérdidas.»* y se abre el **acta de recepción**,
    lista para imprimir, con tres firmas: **Recibe en Planta (TexCore)**, **Entrega Lavandería / Conductor** y **V°B° Gerencia de Producción**.
 
-**Qué pasa al asentar.** La recepción (código `REC-LAV-AAAA-0001`) es definitiva: no se edita ni se borra. La remisión pasa a *Retornada a Planta*; cada lote **vuelve a la planta con
-solo las prendas conformes** como cantidad, y queda listo para la inspección de calidad: aparecerá en **Control de Calidad → Inspecciones → Lotes por inspeccionar** (sección 7).
-Las prendas con merma o daño **ya quedaron descontadas aquí**, por eso calidad solo clasifica las que sí llegaron.
+**Qué pasa al asentar.** La recepción (código `REC-LAV-AAAA-0001`) es definitiva: no se edita ni se borra. La remisión pasa a *Retornada a Planta*; cada lote **vuelve a la planta conservando su cantidad original**, mientras que las prendas conformes devueltas quedan registradas en el acta para **Control de Calidad → Inspecciones → Lotes por inspeccionar** (sección 7). Si se recibieron `0` conformes, el lote conserva su cantidad histórica pero **no entra a inspecciones pendientes**.
 
 El **Historial de Reingresos** muestra cuatro indicadores (**Actas Asentadas**, **Prendas Retornadas (Conformes)**, **Mermas & Daños Acumulados** y **Pérdidas Totales Liquidadas**) y la tabla de
 actas con su remisión, lavandería, fecha, conformes, mermas, daños y pérdida. Busca por código, remisión o lavandería, y **Ver Acta Oficial** abre el acta para reimprimirla.
@@ -365,19 +359,15 @@ actas con su remisión, lavandería, fecha, conformes, mermas, daños y pérdida
 
 - *Lote …: faltan N prendas por conciliar (deben sumar M).* o *…: sobran N prendas…* El cotejo no cuadra con lo enviado.
 - *Lote …: el motivo de merma es obligatorio…* y *Lote …: el tipo de daño es obligatorio…* Falta explicar la merma o el daño.
+- *El número de factura o remisión externa de la lavandería es obligatorio.* No has escrito el número del comprobante externo.
+- *Lote …: el costo unitario real de la prenda es obligatorio cuando hay mermas o daños.* La orden no tiene costo calculado y reportaste pérdida.
 - *La remisión … ya fue retornada y recibida previamente.* Otra persona la recibió primero.
 - *La remisión … está anulada y no puede recibir prendas.*
 - *Faltan lotes de la remisión por cotejar: …* Hay que cotejar todos los lotes de la remisión en una sola recepción.
 
-!!! warning "Límites actuales"
-    - **Costo por prenda fijo:** la pérdida por merma o daño se calcula con un costo de **$ 35.000 por prenda** que el sistema usa por defecto; todavía no sale del costeo real de la
-      orden. Tómalo como una cifra de referencia, no como el valor contable definitivo. Algo parecido pasa con la tarifa del lavado: si el proceso no trae una, se usan **$ 3.500 por prenda**.
-    - **Número de la factura externa:** al abrir una remisión la pantalla propone un número automático (`FAC-LAV-…`). Sustitúyelo por el del comprobante real que entregó la lavandería.
-    - **Envío parcial de un lote:** aunque puedes escribir menos prendas que las del lote, el lote completo sale de la planta. Para evitar prendas «perdidas», envía los lotes completos.
-    - **Lote sin prendas conformes:** si ninguna prenda del lote vuelve conforme, la recepción puede fallar; consúltalo con quien administre el sistema.
-    - **Datos de ejemplo:** si la pantalla no logra consultar el servidor, puede mostrar remisiones y lotes de muestra que no son reales. Si ves datos que no reconoces, recarga la
-      página y verifica con el administrador antes de registrar nada.
-    - **Sin corrección ni anulación:** una remisión generada o una recepción asentada no se editan desde la pantalla.
+!!! note "Reglas operativas"
+    - Una remisión generada o una recepción asentada no se editan ni se anulan desde la pantalla.
+    - Si el servicio de lavandería no responde al cargar cualquiera de las dos pantallas, se muestra la alerta de error con el botón **Reintentar** y ningún dato simulado.
 
 ## 7. Personal de Terminación: control de calidad
 

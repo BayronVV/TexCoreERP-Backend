@@ -55,14 +55,18 @@ class QualityBase(ModelBase):
             row["tipo_dano"] = "Decoloración irregular"
         from apps.production.models import RemisionLavanderia
         row["remision_lote_id"] = RemisionLavanderia.objects.get(codigo=remission["codigo"]).lotes_detalle.first().id
-        create_laundry_reception(user=self.boss, remision_id=RemisionLavanderia.objects.get(codigo=remission["codigo"]).id,
-                                 fecha_recepcion=self.today, lotes_recibidos=[row])
+        create_laundry_reception(
+            user=self.boss,
+            remision_id=RemisionLavanderia.objects.get(codigo=remission["codigo"]).id,
+            fecha_recepcion=self.today,
+            factura_remision_externa=f"FAC-CAL-{lot.codigo}",
+            lotes_recibidos=[row],
+        )
 
     def without_good_garments(self):
         """Lote cuya recepción no trajo prendas conformes (todo se perdió en lavandería)."""
         lot = self.make_lot(self.order, number=3, quantity=10)
-        self.returned(lot, sent=10, good=9, lost=1)
-        lot.recepciones_lavado.update(cantidad_recibida_conforme=0)
+        self.returned(lot, sent=10, good=0, lost=10)
         return lot
 
     def defect(self, name="Costura floja", fixable=True, active=True):

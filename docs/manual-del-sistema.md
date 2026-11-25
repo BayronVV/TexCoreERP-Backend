@@ -94,7 +94,7 @@ La lista completa y los valores por defecto están en `.env.example` y en el [RE
 | `python manage.py seed_demo_stock` | Entre 12 y 20 unidades en cada talla y color de las referencias activas, por ajuste manual (motivo «Sobrante o hallazgo», con su comprobante `AJT`). Solo sube lo que está por debajo de la meta. |
 | `python manage.py seed_demo_completo` | **Todo en uno**: encadena inventario, producción, recursos, tarifas, compras, calidad, producto terminado, stock por talla y color, ventas y envíos, en su orden; salta los módulos que ya tienen datos y al final imprime cuántos registros tiene cada módulo (falla si alguno quedó vacío). Con `--permitir-produccion` corre también con `DJANGO_DEBUG=false`: es la siembra de los datos **simulados** de la demostración sobre la base compartida; no borra nada ni toca usuarios, roles ni permisos. Es el comando que dispara `SEED_DEMO_ON_DEPLOY`. |
 | `python manage.py generar_erd --salida docs/modelo-de-datos.md` | Regenera el [modelo de datos](modelo-de-datos.md). |
-| `python manage.py test` | Ejecuta la suite de pruebas (965 en backend). |
+| `python manage.py test` | Ejecuta la suite de pruebas (971 en backend). |
 | `python manage.py makemigrations --check --dry-run` | Verifica que no existan migraciones pendientes. |
 | `ruff check apps config` | Ejecuta el linter estático del backend. |
 | `coverage run manage.py test && coverage report` | Mide la cobertura real sobre `apps/`. |

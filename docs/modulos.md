@@ -21,6 +21,7 @@ cuerpos y respuestas) están en Swagger (`/api/docs/`); cómo se usa cada pantal
 | HU 5.1 (TE-57) | Remisión de salida a lavandería | `production` | Lavandería → Remisión a Lavado |
 | HU 5.2 (TE-58) | Recepción de lavandería con cotejo y pérdidas | `production` | Lavandería → Recepción de Lavandería |
 | HU 5.3 (TE-171) | Retiro de la salida a lavandería provisional de Inventario | `inventory` | Inventario → Movimientos de almacén |
+| HU 5.4 (TE-172) | Lavandería confiable: sin datos simulados ni pérdida de prendas | `production` | Lavandería → Remisión y Recepción |
 | HU 6.1 (TE-59) | Registro de marras y calidad | `quality` | Control de Calidad → Inspecciones y Defectos |
 | HU 6.2 (TE-60) | Ingreso a inventario final (producto terminado) | `finished` | Producto Terminado → Ingreso, Existencias y Movimientos |
 | HU 6.3 (TE-61) | Ajuste manual de inventario de producto terminado | `finished` | Producto Terminado → Ajuste manual |
@@ -252,58 +253,59 @@ flowchart LR
     ENV --> COT{"Cotejo por lote:<br/>conformes + merma + dañadas = enviadas"}
     COT -- "no cuadra o falta motivo" --> E400["400: no se guarda nada"]
     COT -- "cuadra" --> ACTA["Acta REC-LAV-AAAA-NNNN<br/>remisión → RETORNADA"]
-    ACTA --> LB["Lote de nuevo en PLANTA<br/>cantidad = conformes"]
-    ACTA --> PER["Pérdida = (merma + dañadas) × costo por prenda<br/>servicio = conformes × tarifa de la receta"]
-    LB --> CAL["Control de calidad<br/>lotes por inspeccionar"]
+    ACTA --> LB["Lote de nuevo en PLANTA<br/>cantidad original conservada"]
+    ACTA --> PER["Pérdida = (merma + dañadas) × costo real<br/>servicio = conformes × tarifa de la receta"]
+    LB --> CAL["Control de calidad<br/>lotes con conformes > 0"]
 ```
 
-### Salida: remisión a lavandería (HU 5.1, TE-57)
+### Salida: remisión a lavandería (HU 5.1 y 5.4, TE-57 y TE-172)
 
 `create_laundry_remission` es una sola transacción: si algo falla, no queda nada, ni siquiera el consecutivo. Reglas en el orden en que se aplican:
 
 | Regla | Detalle |
 |---|---|
 | Al menos un lote | Sin lotes responde `400` («Debes seleccionar al menos un lote para generar la remisión.»). El cuerpo también exige `lavanderia_id` y `fecha_emision`. |
-| Lavandería válida | El proveedor debe existir y no estar eliminado. El servicio **no exige** que su categoría sea lavandería. |
-| Sin lotes repetidos | Un lote no puede ir dos veces en la misma remisión. |
+| Proveedor de lavandería válido | El proveedor debe existir, no estar eliminado y pertenecer a la categoría `LAVANDERIA`. `GET /api/lavanderia/proveedores/` devuelve únicamente proveedores de esa categoría (sin rellenos ni campos simulados). |
+| Sin lotes repetidos ni ya recibidos | Un lote no puede ir dos veces en la misma remisión ni remitirse si ya tiene una `RecepcionLote` activa. |
 | Lotes bloqueados | Se bloquean por fila en orden de id, así que dos remisiones simultáneas del mismo lote no pasan las dos: la segunda ve el lote `EN_TRANSITO` y se rechaza. Un id inexistente se rechaza. |
 | Lote en planta | Solo se remite un lote con `estado_inventario = PLANTA`; si no, `400` indicando el estado actual. |
-| Cantidad | Entera, mayor que cero y **no mayor que las unidades del lote** (`lote.cantidad`). |
+| Envío completo del lote | La cantidad debe ser entera, mayor que cero e **igual al tamaño completo del lote** (`qty == lote.cantidad`); si difiere responde `400` explicando que el lote se envía completo. |
 | Consecutivo | `REM-LAV-AAAA-NNNN`: el año es el de hoy y el número sale del contador `REM-LAV` (`Consecutivo`), que **no se reinicia cada año**. |
-| Costo estimado | Suma de `cantidad × tarifa_sugerida` de la receta elegida; si no hay receta, usa **3.500** por prenda. |
+| Costo estimado | Suma de `cantidad × tarifa_sugerida` de la receta elegida; si no hay receta, usa **0.00**. |
 | Descuento de la planta | Cada lote remitido pasa a `EN_TRANSITO` y la remisión nace `EN_TRANSITO`, con el usuario como responsable y creador. |
-| Respuesta | `201` con la remisión lista para el ticket de impresión: código, lavandería, lotes con su receta, `total_prendas`, costo estimado, transportador, placa, tulas, peso y estado. |
+| Respuesta | `201` con la remisión lista para el ticket de impresión: código, lavandería, lotes con su receta, `total_prendas`, costo estimado, transportador, placa, tulas, peso y estado (sin nombres ni datos inventados). |
 
 Campos opcionales del cuerpo: `fecha_entrega_estimada`, `transportador_nombre` (150 caracteres), `vehiculo_placa` (30), `tulas_bultos` (entero ≥ 1, por defecto 1),
 `peso_kg` (por defecto 0), `observaciones` (1000), y por lote `receta_id` (el código de la receta), `receta_nombre` e `instrucciones_especiales` (500).
-Un `receta_id` que no existe no da error: la línea se guarda sin receta.
+Un `receta_id` vacío o inexistente guarda la línea sin receta (`tarifa = 0.00`).
 
-`GET /api/lavanderia/lotes-disponibles/` lista los lotes en `PLANTA` de órdenes vigentes (código del lote, orden, referencia, tallas, unidades y receta sugerida);
-`GET /api/lavanderia/proveedores/` lista las lavanderías (proveedores de categoría lavandería, o todos los activos si todavía no hay ninguna);
+`GET /api/lavanderia/lotes-disponibles/` lista los lotes en `PLANTA` de órdenes vigentes sin recepción previa (código del lote, orden, referencia, tallas y unidades reales, sin recetas ni talleres inventados);
+`GET /api/lavanderia/proveedores/` lista exclusivamente las lavanderías activas (`categoria = LAVANDERIA`);
 `GET /api/lavanderia/recetas/` lista las recetas.
 
-### Entrada: recepción con cotejo (HU 5.2, TE-58)
+### Entrada: recepción con cotejo (HU 5.2 y 5.4, TE-58 y TE-172)
 
 `create_laundry_reception` también es una sola transacción. Bloquea la remisión, sus líneas y sus lotes, y aplica:
 
 | Regla | Detalle |
 |---|---|
+| Factura o remisión externa | `factura_remision_externa` es **obligatoria** y no puede llegar en blanco (`400`). |
 | Remisión pendiente | Debe existir; una remisión `RETORNADA` responde «ya fue retornada y recibida previamente» y una `ANULADA`, «está anulada y no puede recibir prendas». |
 | Todos los lotes, una vez | El cotejo debe traer **todos** los lotes de la remisión, cada uno una sola vez (por `remision_lote_id` o por `lote_id`); uno ajeno o repetido, o uno que falte, responde `400`. |
-| Cotejo exacto | Por lote, `conformes + merma + dañadas` debe ser **igual a lo enviado** en la remisión (no a las unidades actuales del lote). El mensaje dice cuánto suma y cuánto debería sumar. Ninguna cantidad puede ser negativa. |
+| Cotejo exacto (acepta 0 conformes) | Por lote, `conformes + merma + dañadas` debe ser **igual a lo enviado** en la remisión. Acepta `0` prendas conformes cuando el lote entero se pierde o daña. Ninguna cantidad puede ser negativa. |
 | Justificar las pérdidas | Si `cantidad_merma > 0`, `motivo_merma` es obligatorio; si `cantidad_danada > 0`, `tipo_dano` lo es. Son texto libre de hasta 200 caracteres; `catalog.py` trae listas sugeridas de motivos de merma y tipos de daño, pero el servicio no obliga a escoger de ellas. |
-| Liquidación de pérdidas por terceros | `costo_perdida = (merma + dañadas) × costo_unitario_prenda`, por lote y sumado en `costo_total_perdida`. El costo unitario viene en el cuerpo y, si falta, vale **35.000** (`DEFAULT_GARMENT_COST`). |
-| Costo del servicio | `costo_servicio_lavado` suma `conformes × tarifa_sugerida` de la receta de cada línea (3.500 si no tiene receta): solo se cobra lo procesado conforme. |
+| Liquidación real de pérdidas | `costo_perdida = (merma + dañadas) × costo_unitario_prenda`, por lote y sumado en `costo_total_perdida`. Si no se envía `costo_unitario_prenda`, el servicio calcula el **costo real por prenda de la orden** (`costing.calculate_order_costs`); si la orden aún no tiene costos y hay pérdidas (`merma + dañada > 0`), exige ingresarlo explícitamente (`400`). Sin pérdidas ni costos, guarda `0.00`. |
+| Costo del servicio | `costo_servicio_lavado` suma `conformes × tarifa_sugerida` de la receta de cada línea (`0.00` si no tiene receta): solo se cobra lo procesado conforme. |
 | Consecutivo | `REC-LAV-AAAA-NNNN`, con el contador `REC-LAV` (tampoco se reinicia por año). |
-| Reingreso a planta | Cada lote vuelve a `PLANTA` y su `cantidad` pasa a ser **solo las prendas conformes**. La merma y las dañadas salen de la cantidad del lote; quedan escritas únicamente en el acta. |
+| Reingreso a planta | Cada lote vuelve a `PLANTA` **conservando intacta su cantidad original (`Lote.cantidad`)**. Las unidades conformes, la merma y las dañadas quedan en `RecepcionLote`. |
 | Cierre | La remisión queda `RETORNADA` y el acta, `COMPLETADA`. No hay recepción parcial: o se cotejan todos los lotes o no se guarda nada. |
 
-`GET /api/lavanderia/remisiones-pendientes/` entrega las remisiones `EN_TRANSITO` o `EN_LAVANDERIA` con sus lotes, días en proceso y, por lote, la tarifa y el costo
-unitario estimado (35.000) que la pantalla propone en el cotejo.
+`GET /api/lavanderia/remisiones-pendientes/` entrega las remisiones `EN_TRANSITO` o `EN_LAVANDERIA` con sus lotes, días en proceso, la tarifa real (`0` sin receta) y `costo_unitario_estimado`
+calculado desde la liquidación real de cada orden (`null` si la orden aún no tiene costos).
 
 **Qué alimenta a Control de calidad:** la inspección de [Control de calidad](#control-de-calidad-marras-y-defectos-hu-61-te-59) toma como base
-`RecepcionLote.cantidad_recibida_conforme` de la recepción **más reciente** del lote. Un lote es «por inspeccionar» si está en `PLANTA`, tiene recepción con conformes
-mayores que cero, no tiene inspección y su orden no está anulada; la merma y los daños de lavandería ya quedaron liquidados aquí y no se vuelven a clasificar.
+`RecepcionLote.cantidad_recibida_conforme` de la recepción **más reciente** del lote. Un lote es «por inspeccionar» si está en `PLANTA`, tiene recepción con **conformes
+mayores que cero**, no tiene inspección y su orden no está anulada; si se recibieron `0` conformes, el lote conserva su cantidad original pero **no entra a inspección** y la merma/daños quedan liquidados aquí.
 
 ### Rutas y permisos
 
@@ -312,39 +314,30 @@ Referencia exacta en Swagger, etiqueta `lavanderia`:
 | Ruta | Operaciones | Permiso |
 |---|---|---|
 | `/api/lavanderia/lotes-disponibles/` | `GET`: lotes en planta disponibles para remitir | `lavanderia.ver` |
-| `/api/lavanderia/proveedores/` | `GET`: lavanderías | `lavanderia.ver` |
+| `/api/lavanderia/proveedores/` | `GET`: proveedores categoría `LAVANDERIA` | `lavanderia.ver` |
 | `/api/lavanderia/recetas/` | `GET`: recetas de lavado | `lavanderia.ver` |
 | `/api/lavanderia/remisiones/` | `GET` (historial, de la más reciente a la más antigua) / `POST` (crea y despacha) | `lavanderia.ver` / `lavanderia.gestionar` |
-| `/api/lavanderia/remisiones-pendientes/` | `GET`: remisiones por recibir, con sus lotes | `lavanderia.ver` |
+| `/api/lavanderia/remisiones-pendientes/` | `GET`: remisiones por recibir, con sus lotes y costo real por orden | `lavanderia.ver` |
 | `/api/lavanderia/recepciones/` | `GET` (historial) / `POST` (asienta el cotejo) | `lavanderia.ver` / `lavanderia.gestionar` |
 | `/api/lavanderia/recepciones/<id>/` | `GET`: acta completa | `lavanderia.ver` |
 
 **Permisos:** `lavanderia.ver` y `lavanderia.gestionar` los crea la migración `users/0003_roles_y_permisos`. El **Jefe de Producción** tiene los dos; el **Gerente**,
 solo `lavanderia.ver`; el Administrador los tiene de forma implícita. Ninguna migración posterior los cambia. Ver [roles y permisos](roles-y-permisos.md).
 
-**Errores `400` más comunes:** sin lotes, lote repetido, lote que ya no está en la planta, cantidad mayor que las unidades del lote, cotejo que no suma lo enviado,
-falta de `motivo_merma` o `tipo_dano`, lotes de la recepción que no son de la remisión o que faltan, y remisión ya retornada o anulada. Un id de remisión
-inexistente responde `400` en el campo `remision_id`; el acta inexistente (`GET …/recepciones/<id>/`) responde `400` en el campo `id`.
+**Errores `400` más comunes:** sin lotes, lote repetido o ya recibido, lote que ya no está en la planta, proveedor ajeno a `LAVANDERIA`, envío parcial distinto al tamaño del lote, falta de `factura_remision_externa`, cotejo que no suma lo enviado, falta de `motivo_merma` o `tipo_dano`, pérdidas sin costo calculado ni ingresado, lotes de la recepción que no son de la remisión o que faltan, y remisión ya retornada o anulada. Un id de remisión inexistente responde `400` en el campo `remision_id`; el acta inexistente (`GET …/recepciones/<id>/`) responde `400` en el campo `id`.
 
 **Pantallas** (menú *Lavandería*): *Remisión a Lavado* (`/lavanderia/remisiones`) y *Recepción de Lavandería* (`/lavanderia/recepcion`), ambas con `lavanderia.ver`;
-generan el ticket de remisión y el comprobante de recepción para imprimir. Los componentes están en `frontend/src/components/Laundry/`.
+generan el ticket de remisión y el comprobante de recepción para imprimir. Si la API falla, muestran el error con botón para reintentar y ningún dato simulado. Los componentes están en `frontend/src/components/Laundry/`.
 
 **Datos de demostración:** `python manage.py seed_demo_lavanderia` (idempotente) deja proveedores de lavandería y cuatro recetas de lavado con tarifas de
 2.800 a 4.500, y cuenta los lotes que están en planta; no crea remisiones. `seed_demo_calidad` sí deja dos lotes ya devueltos de lavandería con su remisión y su recepción.
 
-**Pruebas:** `apps/production/test_remisiones.py` cubre los lotes disponibles, los proveedores, las recetas, que la remisión genere el consecutivo `REM-LAV-AAAA-`,
-pase el lote a `EN_TRANSITO` y lo saque de la lista, y que un lote que ya no está en planta no se pueda remitir otra vez.
-`apps/production/test_recepcion_lavanderia.py` cubre las remisiones pendientes, una recepción completa (60 enviadas = 55 conformes + 3 de merma + 2 dañadas: pérdida,
-servicio, remisión `RETORNADA`, lote de vuelta en planta con 55 unidades, historial y detalle), el cotejo que no cuadra, la merma sin motivo, los daños sin tipo y la
-remisión ya retornada. Para correrlas: `python manage.py test apps.production.test_remisiones apps.production.test_recepcion_lavanderia --noinput`.
+**Pruebas:** `apps/production/test_remisiones.py` cubre los lotes disponibles, el filtro estricto de categoría `LAVANDERIA` sin campos inventados, el rechazo de envíos parciales y proveedores de otra categoría, las recetas, que la remisión genere el consecutivo `REM-LAV-AAAA-`, pase el lote a `EN_TRANSITO` y lo saque de la lista, y que un lote ya remitido o recibido no pueda enviarse otra vez.
+`apps/production/test_recepcion_lavanderia.py` cubre las remisiones pendientes con costo real calculado de la orden, la recepción con conformes y pérdidas (conservando intacta la cantidad original del lote), la recepción con `0` conformes y `40` mermas (sin entrar a Calidad), la exigencia de `factura_remision_externa` y de costo unitario ante pérdidas sin costo previo, la validación de sumas y motivos, y el listado sin consultas N+1 (`CaptureQueriesContext`). `apps/core/test_postgres.py` verifica también en PostgreSQL la recepción de `0` conformes. Para correrlas: `python manage.py test apps.production.test_remisiones apps.production.test_recepcion_lavanderia --noinput`.
 
 !!! warning "Alcance y límites actuales"
-    La auditoría de deuda técnica del Sprint 4 (`Deuda-Tecnica-Sprint-4.md`) agrupó lo siguiente en la **HU 5.4 «Lavandería confiable» (TE-172)**:
+    La mayoría de la deuda de lavandería quedó cerrada con **HU 5.4 (TE-172)**; permanece pendiente:
 
-    - **Remisión parcial que pierde prendas:** se valida `cantidad ≤ lote.cantidad`, pero el lote **entero** pasa a `EN_TRANSITO`; al recibir, la cantidad del lote se sobrescribe con los conformes. Hoy solo es seguro remitir el lote completo (TE-172).
-    - **Recepción sin prendas conformes:** un lote con `0` conformes (todo merma o daño) no está bien resuelto: sobrescribe `Lote.cantidad` y puede fallar con un error `500`. Además, la cantidad original del lote no se conserva y alimenta mal la columna `prendas_en_lotes` de [reportes](#reportes-gerenciales-vistas-materializadas-y-exportacion-hu-74-te-65) (TE-172).
-    - **Valores por defecto de costo:** el costo por prenda (35.000) y la tarifa (3.500) cuando falta la receta están escritos en el código, y el servicio de proveedores devuelve datos de relleno (tarifa 3.500, calificación, tiempo promedio). No salen de la liquidación de la orden de producción (TE-172; el costo real de fábrica llega con la HU 4.7, TE-174).
-    - **Datos de relleno en el frontend:** las dos pantallas pueden mostrar datos simulados si la API falla y proponen valores inventados (un número de factura aleatorio, la receta `REC-SW-01`, el costo 35.000) que se envían al servidor (TE-172).
     - **Estados sin flujo:** no se puede anular una remisión; `EN_LAVANDERIA`, `ANULADA`, `PARCIAL` y `RETORNADO` existen en el catálogo pero ningún servicio los asigna.
     - **Pérdidas solo en el acta:** la liquidación de las pérdidas se guarda en la recepción, pero aún no se carga al costo de la orden ni a Control de calidad; la valoración de marras es la HU 6.4 (TE-169).
     - **Botones y remaches, y reglas de la lavandería:** si los insumos van antes o después del lavado y si la lavandería responde por las marras son decisiones pendientes del PM; el backend no las endurece.
@@ -959,7 +952,7 @@ rango de fechas, el filtro de estado de cobro tras una conciliación y los permi
     - **Refresco en cada consulta y sin manejo de fallos:** en PostgreSQL cada carga del tablero refresca las dos vistas y no atrapa un error del refresco; cualquier usuario con `reportes.ver` puede dispararlo. Quién puede refrescar se revisa en TE-179; sacar el refresco de la lectura está en la deuda del Sprint 4 y todavía no tiene historia propia.
     - **Estado de los modelos:** `makemigrations --check` quiere crear una migración inicial para los modelos no gestionados de `reports`; se corregirá junto a la integración continua (TE-180).
     - **Pruebas solo en SQLite:** como allí son vistas comunes, ninguna prueba ejercita `REFRESH MATERIALIZED VIEW` ni el comportamiento propio de PostgreSQL (TE-180).
-    - **Cifras que dependen de otros módulos:** `prendas_en_lotes` suma `Lote.cantidad`, que la recepción de lavandería sobrescribe con los conformes (ver [Lavandería](#lavanderia-remision-de-salida-y-recepcion-con-cotejo-hu-51-y-52-te-57-y-te-58), TE-172); `costo_estimado` usa el costo de fábrica que el Gerente digita a mano en Precios, hasta que la HU 4.7 lo calcule desde la producción (TE-174).
+    - **Cifras que dependen de otros módulos:** `prendas_en_lotes` suma `Lote.cantidad`, que desde TE-172 se conserva intacta tras la recepción de lavandería (ver [Lavandería](#lavanderia-remision-de-salida-y-recepcion-con-cotejo-hu-51-y-52-te-57-y-te-58)); `costo_estimado` usa el costo de fábrica que el Gerente digita a mano en Precios, hasta que la HU 4.7 lo calcule desde la producción (TE-174).
     - **Ingresos y devoluciones:** los ingresos incluyen las facturas emitidas que terminaron en `DEVOLUCION` a menos que se filtre por estado de cobro; `ingresos_totales` suma el total con IVA, mientras que la utilidad usa la base gravable.
     - **Exportación en el navegador:** el Excel y el CSV se arman en el cliente con la última respuesta (el detalle de ventas llega limitado a 250 líneas). La biblioteca `xlsx` tiene avisos de seguridad sin versión corregida en npm y va dentro del paquete principal (riesgo bajo porque solo exporta); su reemplazo y la carga diferida están en la deuda del Sprint 4 sin historia propia todavía.
 

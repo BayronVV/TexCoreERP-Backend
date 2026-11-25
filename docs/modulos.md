@@ -18,6 +18,7 @@ cuerpos y respuestas) están en Swagger (`/api/docs/`); cómo se usa cada pantal
 | HU 4.4 (TE-54) | Asignación de recursos | `production` | Recursos y Seguimiento |
 | HU 4.5 (TE-55) | Monitor de estado | `production` | Monitor de estado |
 | HU 4.6 (TE-56) | Costeo y liquidación de órdenes | `production`, `inventory` | Liquidación de Órdenes |
+| HU 4.7 (TE-174) | Costo de fábrica calculado desde producción e historial de precios | `sales`, `production` | Ventas y Despachos → Precios |
 | HU 5.1 (TE-57) | Remisión de salida a lavandería | `production` | Lavandería → Remisión a Lavado |
 | HU 5.2 (TE-58) | Recepción de lavandería con cotejo y pérdidas | `production` | Lavandería → Recepción de Lavandería |
 | HU 5.3 (TE-171) | Retiro de la salida a lavandería provisional de Inventario | `inventory` | Inventario → Movimientos de almacén |
@@ -596,8 +597,10 @@ Rutas y permisos (la referencia exacta está en Swagger, etiqueta `ventas`):
 | `/api/ventas/metadatos/` | `GET`: tipos de cliente con su lista de precios y descuento máximo, tipos de documento, transportadoras, IVA, la leyenda y el mínimo del motivo | `ventas.ver` |
 | `/api/ventas/clientes/` | `GET` (filtros `tipo`, `activo`, `q`, `limit`), `POST` | `ventas.ver` / `ventas.gestionar` |
 | `/api/ventas/clientes/<id>/` | `GET`, `PATCH` (un cliente no se borra: se desactiva con `activo`) | `ventas.ver` / `ventas.gestionar` |
-| `/api/ventas/precios/` | `GET` (filtro `q`): las referencias activas con su costo y precios (vacíos si todavía no se registran) | `ventas.ver` |
-| `/api/ventas/precios/<referencia>/` | `PUT`: registra o actualiza el costo de fábrica y los precios de una referencia | `ventas.precios` |
+| `/api/ventas/precios/` | `GET` (filtro `q`): las referencias activas con su costo y precios; para `ventas.precios` incluye `costo_calculado`, `diferencia_costo`, alertas y desglose por órdenes (TE-174) | `ventas.ver` |
+| `/api/ventas/precios/<referencia>/` | `PUT`: registra o actualiza el costo de fábrica y los precios de una referencia (guarda historial `MANUAL`) | `ventas.precios` |
+| `/api/ventas/precios/<referencia>/aplicar-costo/` | `POST`: adopta el costo calculado desde producción (guarda historial `PRODUCCION` y respalda con órdenes) | `ventas.precios` |
+| `/api/ventas/precios/<referencia>/historial/` | `GET`: historial de cambios de costo de fábrica y precios (quién, cuándo, origen y valores) | `ventas.precios` |
 | `/api/ventas/facturas/` | `GET` (filtros `cliente`, `estado`, `desde`, `hasta`, `q`, `limit`), `POST` (emite y descuenta) | `ventas.ver` / `ventas.gestionar` |
 | `/api/ventas/facturas/<id>/` | `GET` con sus líneas | `ventas.ver` |
 | `/api/ventas/facturas/<id>/pdf/` | `GET`: descarga `FV-0001.pdf` | `ventas.ver` |
@@ -628,7 +631,10 @@ facturas) y los otorga al **Gerente**; el Administrador los tiene de forma impl�
 - *Facturas* (`/ventas/facturas`): lista con búsqueda por número, cliente o documento y filtros básicos de estado, recaudo y fechas; el detalle muestra
   las líneas con el precio, descuento e IVA del momento, el PDF y, con `ventas.anular`, la anulación con motivo.
 - *Clientes* (`/ventas/clientes`) y *Precios* (`/ventas/precios`): mantenimiento de clientes (con permiso de gestionar) y del costo de
-  fábrica y los precios por referencia (con `ventas.precios`).
+  fábrica y los precios por referencia (con `ventas.precios`), incluyendo el **costo calculado desde producción (HU 4.7, TE-174)**:
+  toma las órdenes terminadas en los últimos 90 días con costos completos (`(materiales + mano de obra + servicio de lavandería) ÷ prendas aptas`
+  en promedio ponderado por prendas aptas), alerta cuando supera el costo vigente o el precio mayorista, exige subir el mayorista antes de aplicarlo,
+  oculta el cálculo al Vendedor (`ventas.ver`) y registra cada ajuste en `HistorialPrecioReferencia` (`ventas_precio_historial`).
 
 **Datos de demostración:** `python manage.py seed_demo_ventas` (solo con `DJANGO_DEBUG=true`, idempotente) crea **4 clientes** (un
 distribuidor, dos mayoristas y uno de detal) y los precios de demostración de cinco referencias (mayorista ≈ costo × 1,45 y detal ≈ costo × 1,90).
@@ -640,7 +646,9 @@ variante, el precio de detal y mayorista, que la factura sea la suma de sus lín
 guardar nada, las últimas unidades para el primero, la numeración sin huecos, el tope de descuento por tipo de cliente, el piso del costo
 de fábrica (el costo exacto pasa y un peso menos no), el token único (y que la base impida repetirlo o totales que no cuadran), la anulación
 (devuelve las unidades, conserva la factura, no se repite y exige motivo y permiso), que las facturas no se editen ni se borren, los permisos por
-rol, los filtros, que las consultas no crezcan con las filas, el PDF, los metadatos, los clientes y los precios. Los permisos por rol de la
+rol, los filtros, que las consultas no crezcan con las filas, el PDF, los metadatos, los clientes y los precios. `apps/sales/test_costo_fabrica.py`
+cubre el cálculo por orden y promedio ponderado de los últimos 90 días (TE-174), los costos incompletos, la alerta de precio bajo costo, la aplicación
+sin tocar facturas previas, el historial de cambios, los permisos del Vendedor (`403`) y la ausencia de consultas N+1. Los permisos por rol de la
 migración se prueban en `apps/users/tests.py`.
 
 !!! warning "Limitaciones conocidas de la HU 7.1"
@@ -649,8 +657,8 @@ migración se prueban en `apps/users/tests.py`.
     - **Sin pedidos ni reservas:** se factura contra el stock disponible en ese instante; no se reserva producto para un pedido.
     - **Sin devolución parcial:** solo se anula la factura completa. En una devolución el flete se descuenta al vendedor (política de
       la empresa): la HU 7.2 lo registra y lo reporta por vendedor, pero no lo descuenta (no hay nómina).
-    - **Precios y costo a mano:** el Gerente fija el costo de fábrica y los precios; a futuro el costo saldrá de la liquidación de la orden
-      (deuda técnica, ítem 19).
+    - **Precios decididos por el Gerente:** desde TE-174 el sistema sugiere el costo de fábrica desde producción y alerta desfases, pero el
+      Gerente sigue definiendo cuándo aplicarlo y fijando los precios mayorista y detal.
     - **Despacho y cobro:** la transportadora y la guía de la factura son el espejo de la guía vigente que administra el módulo de envíos
       (HU 7.2, más abajo); el cobro es de la cartera (HU 7.3, ver [Cartera y pagos contraentrega](#cartera-y-pagos-contraentrega-hu-73-te-64)).
     - **Filtros avanzados e impresión directa:** quedan fuera; la lista tiene búsqueda, estado y fechas (Sprint 4) y el comprobante se entrega solo en PDF.
@@ -970,7 +978,7 @@ rango de fechas, el filtro de estado de cobro tras una conciliación y los permi
     - **Refresco en cada consulta y sin manejo de fallos:** en PostgreSQL cada carga del tablero refresca las dos vistas y no atrapa un error del refresco; solo quien tiene `reportes.gestionar` puede dispararlo a mano (TE-179); sacar el refresco de la lectura está en la deuda del Sprint 4 y todavía no tiene historia propia.
     - **Estado de los modelos:** `makemigrations --check` quiere crear una migración inicial para los modelos no gestionados de `reports`; se corregirá junto a la integración continua (TE-180).
     - **Pruebas solo en SQLite:** como allí son vistas comunes, ninguna prueba ejercita `REFRESH MATERIALIZED VIEW` ni el comportamiento propio de PostgreSQL (TE-180).
-    - **Cifras que dependen de otros módulos:** `prendas_en_lotes` suma `Lote.cantidad`, que desde TE-172 se conserva intacta tras la recepción de lavandería (ver [Lavandería](#lavanderia-remision-de-salida-y-recepcion-con-cotejo-hu-51-y-52-te-57-y-te-58)); `costo_estimado` usa el costo de fábrica que el Gerente digita a mano en Precios, hasta que la HU 4.7 lo calcule desde la producción (TE-174).
+    - **Cifras que dependen de otros módulos:** `prendas_en_lotes` suma `Lote.cantidad`, que desde TE-172 se conserva intacta tras la recepción de lavandería (ver [Lavandería](#lavanderia-remision-de-salida-y-recepcion-con-cotejo-hu-51-y-52-te-57-y-te-58)); `costo_estimado` usa el costo de fábrica vigente en Precios (desde TE-174 sugerido como promedio ponderado de órdenes terminadas en los últimos 90 días y aplicado por el Gerente).
     - **Ingresos y devoluciones:** los ingresos incluyen las facturas emitidas que terminaron en `DEVOLUCION` a menos que se filtre por estado de cobro; `ingresos_totales` suma el total con IVA, mientras que la utilidad usa la base gravable.
     - **Exportación en el navegador:** el Excel y el CSV se arman en el cliente con la última respuesta (el detalle de ventas llega limitado a 250 líneas). La biblioteca `xlsx` tiene avisos de seguridad sin versión corregida en npm y va dentro del paquete principal (riesgo bajo porque solo exporta); su reemplazo y la carga diferida están en la deuda del Sprint 4 sin historia propia todavía.
 

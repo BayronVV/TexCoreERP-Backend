@@ -62,6 +62,32 @@ class PrecioReferencia(BaseModel):
         ]
 
 
+class HistorialPrecioReferencia(BaseModel):
+    """Historial de cambios del costo de fábrica y los precios de una referencia (HU 4.7 / TE-174)."""
+    precio_referencia = models.ForeignKey(PrecioReferencia, on_delete=models.PROTECT, related_name="historial")
+    costo_fabrica_anterior = models.PositiveBigIntegerField(null=True, blank=True)
+    costo_fabrica_nuevo = models.PositiveBigIntegerField()
+    precio_mayorista_anterior = models.PositiveBigIntegerField(null=True, blank=True)
+    precio_mayorista_nuevo = models.PositiveBigIntegerField()
+    precio_detal_anterior = models.PositiveBigIntegerField(null=True, blank=True)
+    precio_detal_nuevo = models.PositiveBigIntegerField()
+    origen = models.CharField(
+        max_length=16,
+        choices=catalog.PRICE_CHANGE_SOURCES,
+        default=catalog.PRICE_SOURCE_MANUAL,
+    )
+    ordenes_respaldo = models.JSONField(default=list, blank=True)
+    motivo = models.CharField(max_length=255, blank=True)
+    usuario = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+", null=True)
+
+    class Meta:
+        db_table = "ventas_precio_historial"
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self):
+        return f"{self.precio_referencia.referencia_id} ({self.origen}: {self.costo_fabrica_nuevo})"
+
+
 class FacturaVenta(BaseModel):
     """Factura POS interna (no es factura electrónica). Inalterable: se anula, no se edita ni se borra."""
     numero = models.CharField(max_length=20)

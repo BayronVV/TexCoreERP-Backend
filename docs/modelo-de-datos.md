@@ -3,7 +3,7 @@
 > Generado automáticamente con `python manage.py generar_erd --salida docs/modelo-de-datos.md`.
 > No lo edites a mano: vuelve a generarlo cuando cambie un modelo.
 
-El modelo tiene **55 tablas** de negocio en 9 módulos, más dos vistas materializadas de reportes. Todas las tablas de negocio heredan de `BaseModel` y por eso incluyen además `created_at`, `updated_at` y `deleted_at` (borrado lógico; ver [convenciones de base de datos](convenciones-base-de-datos.md)). Esas columnas no se repiten abajo.
+El modelo tiene **56 tablas** de negocio en 9 módulos, más dos vistas materializadas de reportes. Todas las tablas de negocio heredan de `BaseModel` y por eso incluyen además `created_at`, `updated_at` y `deleted_at` (borrado lógico; ver [convenciones de base de datos](convenciones-base-de-datos.md)). Esas columnas no se repiten abajo.
 
 ## Cómo leer este modelo
 
@@ -26,7 +26,7 @@ python manage.py generar_erd --salida docs/modelo-de-datos.md --mermaid-dir <car
 
 ## Modelo entidad-relación (notación de Chen)
 
-Es el modelo **conceptual** del sistema, dibujado con la notación de Peter Chen. Se parte de las 55 tablas reales, pero se leen como entidades y relaciones del negocio, no como tablas.
+Es el modelo **conceptual** del sistema, dibujado con la notación de Peter Chen. Se parte de las 56 tablas reales, pero se leen como entidades y relaciones del negocio, no como tablas.
 
 | Símbolo | Significado |
 |---|---|
@@ -155,7 +155,7 @@ Un nodo por módulo y una flecha por cada par de módulos con dependencia por cl
         m_produccion["Producción y lavandería<br/>(14 tablas)"]
         m_calidad["Calidad<br/>(3 tablas)"]
         m_terminado["Producto terminado<br/>(6 tablas)"]
-        m_ventas["Ventas y cartera<br/>(6 tablas)"]
+        m_ventas["Ventas y cartera<br/>(7 tablas)"]
         m_envios["Envíos<br/>(3 tablas)"]
         m_calidad -->|"1 relación"| m_terminado
         m_inventario -->|"5 relaciones"| m_compras
@@ -246,6 +246,7 @@ Cada flecha va de la tabla referenciada a la tabla que guarda la clave foránea.
         subgraph sg_ventas["Ventas y cartera"]
             Cliente
             PrecioReferencia
+            HistorialPrecioReferencia
             FacturaVenta
             DetalleVenta
             SaldoFinanciero
@@ -295,6 +296,7 @@ Cada flecha va de la tabla referenciada a la tabla que guarda la clave foránea.
         OrdenSalida --> Movimiento
         OrdenSalida --> OrdenLinea
         OrdenSalida --> OrdenProduccion
+        PrecioReferencia --> HistorialPrecioReferencia
         Producto --> FichaLinea
         Producto --> LineaCompra
         Producto --> Movimiento
@@ -1119,7 +1121,7 @@ Relaciones con otros módulos (solo clave): `Variante` (Referencias), `Inspeccio
 
 ### Ventas y cartera
 
-Tablas: `Cliente`, `PrecioReferencia`, `FacturaVenta`, `DetalleVenta`, `SaldoFinanciero`, `MovimientoCartera`.
+Tablas: `Cliente`, `PrecioReferencia`, `HistorialPrecioReferencia`, `FacturaVenta`, `DetalleVenta`, `SaldoFinanciero`, `MovimientoCartera`.
 
 Relaciones con otros módulos (solo clave): `MovimientoTerminado` (Producto terminado), `Referencia` (Referencias), `Variante` (Referencias), `Guia` (Envíos).
 
@@ -1152,6 +1154,20 @@ Relaciones con otros módulos (solo clave): `MovimientoTerminado` (Producto term
             positivebiginteger precio_detal
             positivebiginteger precio_mayorista
             bigint actualizado_por FK
+        }
+        HistorialPrecioReferencia {
+            bigint id PK
+            bigint precio_referencia FK
+            positivebiginteger costo_fabrica_anterior
+            positivebiginteger costo_fabrica_nuevo
+            positivebiginteger precio_mayorista_anterior
+            positivebiginteger precio_mayorista_nuevo
+            positivebiginteger precio_detal_anterior
+            positivebiginteger precio_detal_nuevo
+            varchar_16 origen
+            json ordenes_respaldo
+            varchar_255 motivo
+            bigint usuario FK
         }
         FacturaVenta {
             bigint id PK
@@ -1236,6 +1252,7 @@ Relaciones con otros módulos (solo clave): `MovimientoTerminado` (Producto term
         FacturaVenta ||--o{ DetalleVenta : "factura"
         FacturaVenta ||--o{ Guia : "factura"
         FacturaVenta ||--o{ MovimientoCartera : "factura"
+        PrecioReferencia ||--o{ HistorialPrecioReferencia : "precio_referencia"
         Referencia ||--o{ PrecioReferencia : "referencia"
         Variante ||--o{ DetalleVenta : "variante"
     ```
@@ -1812,6 +1829,20 @@ erDiagram
         positivebiginteger precio_mayorista
         bigint actualizado_por FK
     }
+    HistorialPrecioReferencia {
+        bigint id PK
+        bigint precio_referencia FK
+        positivebiginteger costo_fabrica_anterior
+        positivebiginteger costo_fabrica_nuevo
+        positivebiginteger precio_mayorista_anterior
+        positivebiginteger precio_mayorista_nuevo
+        positivebiginteger precio_detal_anterior
+        positivebiginteger precio_detal_nuevo
+        varchar_16 origen
+        json ordenes_respaldo
+        varchar_255 motivo
+        bigint usuario FK
+    }
     FacturaVenta {
         bigint id PK
         varchar_20 numero
@@ -1934,6 +1965,7 @@ erDiagram
     CustomUser |o--o{ FacturaVenta : "cobrado_por"
     CustomUser |o--o{ FacturaVenta : "vendedor"
     CustomUser |o--o{ FichaTecnica : "actualizado_por"
+    CustomUser |o--o{ HistorialPrecioReferencia : "usuario"
     CustomUser |o--o{ IngresoTerminado : "recibido_por"
     CustomUser |o--o{ Inspeccion : "inspector"
     CustomUser |o--o{ Movimiento : "registrado_por"
@@ -1988,6 +2020,7 @@ erDiagram
     OrdenSalida |o--o{ Movimiento : "orden"
     OrdenSalida ||--o{ OrdenLinea : "orden"
     OrdenSalida ||--o{ OrdenProduccion : "orden_salida"
+    PrecioReferencia ||--o{ HistorialPrecioReferencia : "precio_referencia"
     Producto ||--o{ FichaLinea : "producto"
     Producto ||--o{ LineaCompra : "producto"
     Producto ||--o{ Movimiento : "producto"
@@ -2841,6 +2874,25 @@ Costo de fábrica y precios de venta de una referencia (pesos enteros, antes de 
 | `precio_detal` | positivebiginteger |  |  |
 | `precio_mayorista` | positivebiginteger |  |  |
 | `actualizado_por` | bigint | FK, nulo | → `CustomUser` |
+
+### HistorialPrecioReferencia (`ventas_precio_historial`)
+
+Historial de cambios del costo de fábrica y los precios de una referencia (HU 4.7 / TE-174).
+
+| Campo | Tipo | Restricciones | Relación |
+|---|---|---|---|
+| `id` | bigint | PK |  |
+| `precio_referencia` | bigint | FK | → `PrecioReferencia` |
+| `costo_fabrica_anterior` | positivebiginteger | nulo |  |
+| `costo_fabrica_nuevo` | positivebiginteger |  |  |
+| `precio_mayorista_anterior` | positivebiginteger | nulo |  |
+| `precio_mayorista_nuevo` | positivebiginteger |  |  |
+| `precio_detal_anterior` | positivebiginteger | nulo |  |
+| `precio_detal_nuevo` | positivebiginteger |  |  |
+| `origen` | varchar(16) |  |  |
+| `ordenes_respaldo` | json |  |  |
+| `motivo` | varchar(255) |  |  |
+| `usuario` | bigint | FK, nulo | → `CustomUser` |
 
 ### FacturaVenta (`ventas_factura`)
 

@@ -35,9 +35,9 @@ Los datos que hay hoy en los servidores de Render son **simulados**: sirven para
 
     - **Historias de producto:** valoración y liquidación de marras (TE-169), unificación de las existencias de producto terminado (TE-170),
       coherencia entre cartera y guías de envío (TE-173),
-      costo de fábrica calculado desde la producción (TE-174), bloqueo por intentos fallidos y auditoría de accesos (TE-175),
+      bloqueo por intentos fallidos y auditoría de accesos (TE-175),
       trazabilidad de punta a punta (TE-176), filtros avanzados y devoluciones en los reportes (TE-177).
-      Ya entregadas en Sprint 4: órdenes de compra con aprobación independiente (**TE-178**), retiro de la salida a lavandería provisional de Inventario (**TE-171**), lavandería confiable sin datos simulados ni pérdida de prendas (**TE-172**).
+      Ya entregadas en Sprint 4: órdenes de compra con aprobación independiente (**TE-178**), retiro de la salida a lavandería provisional de Inventario (**TE-171**), lavandería confiable sin datos simulados ni pérdida de prendas (**TE-172**), costo de fábrica calculado desde la producción (**TE-174**).
     - **Calidad de vida (TE-184):** seguridad (TE-179), calidad continua con CI y PostgreSQL (TE-180), observabilidad (TE-181),
       documentación al día (TE-182), datos de demostración coherentes (TE-183) y separación de los ambientes de desarrollo y producción (TE-185).
 

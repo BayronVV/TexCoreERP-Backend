@@ -71,6 +71,24 @@ flowchart LR
   asignándole rol. Las cuentas creadas por un administrador reciben una invitación (48 h) para definir su contraseña.
 - **Recuperación de contraseña:** enlace de un solo uso que vence a los 15 minutos; solo se guarda su SHA-256.
 - **Roles y permisos:** ver [roles y permisos](roles-y-permisos.md). Rutas en `apps/users/urls.py`.
+- **Bloqueo por intentos fallidos (HU 1.5, TE-175):** al tercer intento fallido seguido la cuenta se bloquea 15 minutos
+  (`LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCK_MINUTES`). El contador vive en la base (`failed_login_count`, `locked_until`) y se
+  actualiza con la fila bloqueada, así lo comparten todas las instancias. Con la cuenta bloqueada ni la contraseña
+  correcta entra ni se renueva la sesión (401 con `code: account_locked`); un correo inexistente responde igual que una
+  contraseña incorrecta. Mientras está bloqueada no se suman intentos (el bloqueo no se alarga). El último administrador
+  que puede entrar nunca se bloquea. Se levanta con `POST /api/users/<id>/unlock/` (`seguridad.gestionar`), al vencer
+  el tiempo o al restablecer la contraseña. Al bloquearse se avisa al titular por correo, una sola vez.
+- **Accesos:** `GET /api/seguridad/accesos/` (`seguridad.accesos`, solo Administrador por defecto): fecha, usuario, evento
+  (inicio de sesión, fallido, cuenta bloqueada, intento bloqueado, desbloqueo, registro), resultado e IP, con filtros y
+  paginado. Es de solo lectura y no expone cabeceras ni user agent.
+- **Auditoría de operaciones críticas:** `GET /api/seguridad/auditoria/` (`seguridad.auditoria`: Administrador y Gerente).
+  Un middleware (`apps/users/audit.py`, catálogo `AUDITED`) registra autor, fecha, acción, entidad, id, resultado
+  (`exito`, `rechazado` por falta de permiso, `error`), IP y los datos enviados (sin contraseñas ni tokens) de: órdenes de
+  producción, tarifas, lotes, inventario, compras, lavandería, producto terminado, precios, facturas, cartera, roles,
+  permisos y cuentas. No se edita ni se borra (modelo, consultas en bloque, administrador y API). Para auditar una ruta
+  nueva se agrega a `AUDITED`; la prueba `UnauthorizedApiAccessTests` la recorre con un rol sin permiso.
+- **Retención:** `python manage.py purgar_registros` borra accesos y auditoría de más de 12 meses (`--meses`, `--simular`)
+  y deja constancia de la purga en la auditoría (`auditoria.purga`).
 
 ## Inventario (HU 2.1 a 2.4)
 
@@ -922,10 +940,10 @@ ajuste y estado).
 |---|---|---|
 | `/api/reportes/metadatos/` | `GET`: opciones de los filtros | `reportes.ver` |
 | `/api/reportes/gerencial/` | `GET` con los filtros anteriores | `reportes.ver` |
-| `/api/reportes/refrescar/` | `POST`: refresca las vistas; responde `{"refreshed": true\|false, "detail": …}` (`false` en SQLite) | `reportes.ver` |
+| `/api/reportes/refrescar/` | `POST`: refresca las vistas; responde `{"refreshed": true\|false, "detail": …}` (`false` en SQLite) | `reportes.gestionar` |
 
 **Permisos:** `reportes.ver` y `reportes.gestionar` los crea la migración `users/0003_roles_y_permisos` y los otorga al **Gerente**; el Administrador los tiene de forma implícita.
-Hoy las tres rutas piden solo `reportes.ver`; `reportes.gestionar` no se usa. Un Vendedor, por ejemplo, recibe `403`. Ver [roles y permisos](roles-y-permisos.md).
+Las rutas de consulta piden `reportes.ver` y refrescar las vistas pide `reportes.gestionar` (TE-179): con solo consultar no se puede disparar el refresco. Un Vendedor, por ejemplo, recibe `403`. El botón **Actualizar datos** solo se muestra a quien tiene `reportes.gestionar`. Ver [roles y permisos](roles-y-permisos.md).
 
 ### Pantalla y exportación
 
@@ -949,7 +967,7 @@ rango de fechas, el filtro de estado de cobro tras una conciliación y los permi
 
     - **Filtros avanzados e impresión:** el tablero ya filtra por fecha, tipo de jean, referencia, estados y tipo de cliente, pero los filtros avanzados de otras pantallas (facturas, guías, producción, inventario, calidad) y la **paginación** son la HU 7.7 (TE-177). El flete de las devoluciones al vendedor tampoco está en el tablero todavía (TE-177).
     - **Fechas inválidas:** una fecha mal escrita (`?desde=abc`) llega sin validar a la consulta y la auditoría la reporta como error `500` en vez de `400`; la robustez de la API está en TE-181 (subtarea de TE-184).
-    - **Refresco en cada consulta y sin manejo de fallos:** en PostgreSQL cada carga del tablero refresca las dos vistas y no atrapa un error del refresco; cualquier usuario con `reportes.ver` puede dispararlo. Quién puede refrescar se revisa en TE-179; sacar el refresco de la lectura está en la deuda del Sprint 4 y todavía no tiene historia propia.
+    - **Refresco en cada consulta y sin manejo de fallos:** en PostgreSQL cada carga del tablero refresca las dos vistas y no atrapa un error del refresco; solo quien tiene `reportes.gestionar` puede dispararlo a mano (TE-179); sacar el refresco de la lectura está en la deuda del Sprint 4 y todavía no tiene historia propia.
     - **Estado de los modelos:** `makemigrations --check` quiere crear una migración inicial para los modelos no gestionados de `reports`; se corregirá junto a la integración continua (TE-180).
     - **Pruebas solo en SQLite:** como allí son vistas comunes, ninguna prueba ejercita `REFRESH MATERIALIZED VIEW` ni el comportamiento propio de PostgreSQL (TE-180).
     - **Cifras que dependen de otros módulos:** `prendas_en_lotes` suma `Lote.cantidad`, que desde TE-172 se conserva intacta tras la recepción de lavandería (ver [Lavandería](#lavanderia-remision-de-salida-y-recepcion-con-cotejo-hu-51-y-52-te-57-y-te-58)); `costo_estimado` usa el costo de fábrica que el Gerente digita a mano en Precios, hasta que la HU 4.7 lo calcule desde la producción (TE-174).

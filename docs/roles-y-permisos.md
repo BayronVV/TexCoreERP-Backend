@@ -26,7 +26,7 @@ Cada módulo tiene `ver` (consultar) y `gestionar` (registrar y modificar). Marc
 
 | Módulo | Permisos | Estado |
 |---|---|---|
-| Seguridad y Usuarios | `seguridad.ver`, `seguridad.gestionar`, `seguridad.roles` | Activo |
+| Seguridad y Usuarios | `seguridad.ver`, `seguridad.gestionar`, `seguridad.roles`, `seguridad.accesos`, `seguridad.auditoria` | Activo |
 | Inventario de Materias Primas | `inventario.ver`, `inventario.gestionar` | Activo |
 | Compras | `compras.ver`, `compras.gestionar`, `compras.aprobar` | Activo |
 | Referencias de Jean | `referencias.ver`, `referencias.gestionar` | Activo |
@@ -37,7 +37,7 @@ Cada módulo tiene `ver` (consultar) y `gestionar` (registrar y modificar). Marc
 | Producto Terminado | `producto_terminado.ver`, `producto_terminado.gestionar`, `producto_terminado.ajustar` | Activo (Ingreso, Existencias, Ajuste manual y Movimientos) |
 | Ventas y Despachos | `ventas.ver`, `ventas.gestionar`, `ventas.precios`, `ventas.anular` | Activo (Panel de ventas, Nueva venta, Facturas, Clientes, Precios y Cartera) |
 | Envíos | `envios.ver`, `envios.anotar`, `envios.gestionar`, `envios.devolucion` | Activo (Guías, Por despachar / sin guía, Relaciones de despacho y Resumen) |
-| Reportes | `reportes.ver`, `reportes.gestionar` | Activo (Tablero gerencial). Las rutas hoy solo exigen `reportes.ver`; `reportes.gestionar` existe en el catálogo pero ninguna ruta lo pide |
+| Reportes | `reportes.ver`, `reportes.gestionar` | Activo (Tablero gerencial). Consultar exige `reportes.ver`; refrescar las vistas exige `reportes.gestionar` |
 
 ## Matriz inicial rol → permiso
 
@@ -75,7 +75,7 @@ roles, así que la matriz real de un despliegue puede diferir. `ADMIN` no aparec
 | `reportes.ver` | ✔ | | | | | |
 | `reportes.gestionar` | ✔ | | | | | |
 
-`seguridad.*` solo lo tiene `ADMIN` por defecto. `PENDING` no tiene ninguno.
+`seguridad.*` solo lo tiene `ADMIN` por defecto, salvo `seguridad.auditoria`, que también tiene el `GERENTE`. `PENDING` no tiene ninguno.
 
 ## Qué exige cada operación
 
@@ -85,6 +85,9 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 |---|---|
 | Ver y gestionar usuarios | `seguridad.ver` / `seguridad.gestionar` |
 | Crear, editar y eliminar roles | `seguridad.roles` |
+| Desbloquear una cuenta bloqueada por intentos fallidos | `seguridad.gestionar` |
+| Consultar los accesos al sistema (inicios de sesión, fallos, bloqueos) | `seguridad.accesos` |
+| Consultar la auditoría de operaciones críticas | `seguridad.auditoria` |
 | Consultar existencias, catálogo, proveedores, kardex, órdenes de salida y alertas | `inventario.ver` |
 | Registrar ingresos de materias primas/insumos o retorno de órdenes `OP`, anular órdenes de salida `OP`, editar catálogo y proveedores, adjuntar evidencias | `inventario.gestionar` |
 | **Recibir mercancía** (`/api/compras/recepciones/`) | `inventario.gestionar` (es un ingreso al almacén) |
@@ -140,7 +143,7 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 - **La devolución física la registra bodega o gerencia:** `envios.devolucion` (Almacenista y Gerente). El flete de una devolución se registra a nombre del vendedor y solo se reporta.
 - **La lavandería no se corrige:** una remisión o una recepción de lavandería registrada no se edita ni se borra, ni siquiera con `lavanderia.gestionar` o siendo administrador; la ruta no existe. Una remisión ya retornada o anulada no admite otra recepción, y la recepción exige cotejar todos los lotes de la remisión.
 - **La cartera se concilia una vez:** una factura emitida pasa de `POR_COBRAR` a `PAGADO` o a `DEVOLUCION` una sola vez; después no se mueve, ni siquiera siendo administrador. Una factura anulada no se concilia. La devolución física que registra Envíos (`envios.devolucion`) usa esta misma conciliación.
-- **Los reportes son de solo lectura:** el tablero gerencial no modifica nada; refrescar sus vistas tampoco cambia los datos de negocio, pero con `reportes.ver` basta para pedirlo.
+- **Los reportes son de solo lectura:** el tablero gerencial no modifica nada; refrescar sus vistas tampoco cambia los datos de negocio, pero pedirlo exige `reportes.gestionar`, no solo `reportes.ver`.
 - **Factura interna, no electrónica:** la factura POS es un comprobante propio de TexCore y no sustituye la factura electrónica ante la DIAN.
 - **Quién decide los precios:** el Vendedor factura con los precios que fija el Gerente (`ventas.precios`); el descuento que da está limitado
   por el tipo de cliente y nunca baja del costo de fábrica, sin importar el permiso.

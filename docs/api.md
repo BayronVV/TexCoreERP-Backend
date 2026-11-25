@@ -9,7 +9,7 @@ es siempre la documentación interactiva, que se genera desde el código:
 | ReDoc (lectura) | `/api/redoc/` |
 | Esquema OpenAPI (YAML) | `/api/schema/` |
 
-En local: <http://localhost:8000/api/docs/>. Para ocultarla en un despliegue define `API_DOCS_ENABLED=false`.
+En local: <http://localhost:8000/api/docs/>. Esas rutas solo existen en desarrollo (`DJANGO_DEBUG=true`): en producción están apagadas por defecto y se encienden con `API_DOCS_ENABLED=true`.
 
 ## Autenticación
 
@@ -38,6 +38,7 @@ Cada ruta exige un permiso por rol (RNF01), por ejemplo `inventario.ver` para co
 | 403 | El rol no tiene el permiso que la ruta exige |
 | 404 | No existe |
 | 409 | Conflicto con el estado actual; por ejemplo, el lote ya fue inspeccionado, la inspección ya fue ingresada al inventario final o la relación de despacho ya se creó con ese `token` |
+| 401 con `code: account_locked` | En el login, la cuenta está bloqueada temporalmente por intentos fallidos (15 min); también al renovar la sesión |
 | 429 | Demasiados intentos (límite de frecuencia) o, en el rastreo de una guía, consulta demasiado seguida (enfriamiento de 10 min por guía; el cuerpo trae `segundos`) |
 | 503 | El servicio de rastreo (Track123) está apagado, sin clave o no respondió. La guía conserva su último estado y nada más se bloquea |
 
@@ -50,7 +51,7 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | Módulo (etiqueta) | Rutas base | Historia |
 |---|---|---|
 | `auth` | `/api/register/`, `/api/token/`, `/api/token/refresh/`, `/api/auth/me/`, `/api/auth/password-reset/…` (`validate/` y `confirm/`) | TE-78, TE-42, TE-43 |
-| `users` | `/api/users/`, `/api/users/<id>/`, `/api/users/<id>/invite/`, `/api/roles/`, `/api/roles/<id>/`, `/api/permissions/` | TE-44 |
+| `users` | `/api/users/`, `/api/users/<id>/`, `/api/users/<id>/invite/`, `/api/users/<id>/unlock/`, `/api/seguridad/accesos/`, `/api/seguridad/auditoria/` (y `catalogo/`), `/api/roles/`, `/api/roles/<id>/`, `/api/permissions/` | TE-44 |
 | `proveedores` | `/api/inventario/proveedores/…` (listar, crear, editar, archivar) y `/api/inventario/proveedores/<id>/restaurar/` | TE-45 |
 | `catalogo` | `/api/inventario/catalogo/…`, `/api/inventario/catalogo/<id>/imagen/`, `/api/inventario/metadatos/` | TE-46 |
 | `inventario` | `/api/inventario/productos/` (con existencias y costo promedio), `/api/inventario/alertas/` | TE-47, TE-48 |
@@ -89,8 +90,8 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | `compras` | `/api/compras/ordenes/` y `/api/compras/ordenes/<id>/` (órdenes de compra de materiales: crear, listar con filtros `estado`, `proveedor` y `q`, y editar mientras son borrador), `/api/compras/ordenes/<id>/aprobar/`, `cancelar/` y `cerrar/` (aprobación del Gerente, cancelación y cierre con motivo) | — |
 | `compras` | `/api/compras/recepciones/` (recibir mercancía con varios productos a la vez, contra una orden aprobada o suelta; cada fila entra al almacén con la misma regla del ingreso: stock, costo promedio y kardex) y `/api/compras/metadatos/` (estados y tolerancia de exceso) | — |
 | `reportes` | `/api/reportes/metadatos/` (opciones de los filtros: tipos de jean, estados de orden y de cobro, tipos de cliente y referencias) y `/api/reportes/gerencial/` (`GET`: indicadores de producción, calidad y ventas, con los filtros `desde`, `hasta`, `tipo_jean`, `referencia`, `estado_orden`, `estado_cobro` y `tipo_cliente`). Ambas exigen `reportes.ver` | TE-65 |
-| `reportes` | `/api/reportes/refrescar/` (`POST`: refresca a la fuerza las dos vistas SQL materializadas en PostgreSQL; en SQLite responde `refreshed: false` porque son vistas normales). Exige `reportes.ver`. La consulta gerencial ya las refresca sola en PostgreSQL | TE-65 |
-| `salud` | `/api/health/`, `/api/health/db/` | — |
+| `reportes` | `/api/reportes/refrescar/` (`POST`: refresca a la fuerza las dos vistas SQL materializadas en PostgreSQL; en SQLite responde `refreshed: false` porque son vistas normales). Exige `reportes.gestionar` (la consulta, `reportes.ver`). La consulta gerencial ya las refresca sola en PostgreSQL | TE-65 |
+| `salud` | `/api/health/`, `/api/health/db/` (público; `db` solo responde `ok` con la latencia, o `no disponible` con 503, sin motor, versión ni texto del error) | — |
 
 Los listados aceptan `?limit=` (por defecto 100) y los filtros que indica Swagger para cada uno (por ejemplo `?q=`, `?estado=`,
 `?categoria=`). Los listados de lavandería son la excepción: devuelven la lista completa, sin filtros ni `limit`. Las rutas de producción que reciben una acción sobre un lote usan el id del **lote**, no el de la orden.

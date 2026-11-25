@@ -10,3 +10,5 @@ NON_REQUESTABLE_ROLES = {ADMIN, PENDING}
 USERS_VIEW = "seguridad.ver"
 USERS_MANAGE = "seguridad.gestionar"
 ROLES_MANAGE = "seguridad.roles"
+ACCESS_VIEW = "seguridad.accesos"
+AUDIT_VIEW = "seguridad.auditoria"

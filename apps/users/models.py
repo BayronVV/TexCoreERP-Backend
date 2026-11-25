@@ -93,6 +93,9 @@ class CustomUser(AbstractUser, BaseModel):
         related_name="+",
     )
     document_id = models.CharField(max_length=20, null=True, blank=True)
+    # Bloqueo por intentos fallidos (HU 1.5): se cuentan en la base para que lo vean todas las instancias.
+    failed_login_count = models.PositiveSmallIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
 
     objects = CustomUserManager()
     all_objects = UserManager()
@@ -117,6 +120,11 @@ class CustomUser(AbstractUser, BaseModel):
     def has_permission_code(self, code):
         return code in self.get_permission_codes()
 
+    @property
+    def is_locked(self):
+        """True mientras dure el bloqueo temporal por intentos fallidos."""
+        return self.locked_until is not None and self.locked_until > timezone.now()
+
 
 class AccessLog(models.Model):
     """Rastro de registros e inicios de sesión (éxitos y fallos) para revisar accesos sospechosos."""
@@ -132,6 +140,60 @@ class AccessLog(models.Model):
     class Meta:
         db_table = "seguridad_acceso"
         ordering = ["-created_at"]
+
+
+class AuditQuerySet(models.QuerySet):
+    """Consultas de la auditoría: solo se agrega y se lee. Editar o borrar en bloque está prohibido."""
+
+    def update(self, **kwargs):
+        raise TypeError("El registro de auditoría no se puede modificar.")
+
+    def delete(self):
+        raise TypeError("El registro de auditoría no se puede borrar.")
+
+    def bulk_update(self, *args, **kwargs):
+        raise TypeError("El registro de auditoría no se puede modificar.")
+
+    def purge_before(self, limit):
+        """Única vía de borrado: retención vencida (comando `purgar_registros`). Devuelve cuántas filas."""
+        return models.QuerySet.delete(self.filter(created_at__lt=limit))[0]
+
+
+class AuditRecord(models.Model):
+    """Auditoría de operaciones críticas (HU 1.5, RNF02): quién hizo qué, sobre qué y con qué resultado.
+
+    Es solo de lectura: ni el modelo, ni el administrador, ni la API permiten editar o borrar una fila
+    (el borrado por retención pasa por `AuditRecord.objects.purge_before`). Nunca guarda contraseñas ni tokens.
+    """
+
+    EXITO = "exito"
+    RECHAZADO = "rechazado"
+    ERROR = "error"
+    RESULT_CHOICES = [(EXITO, "Éxito"), (RECHAZADO, "Rechazado por permiso"), (ERROR, "Error")]
+
+    user = models.ForeignKey(CustomUser, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    user_email = models.CharField(max_length=254, blank=True)  # se conserva aunque se borre la cuenta
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    action = models.CharField(max_length=60, db_index=True)
+    entity = models.CharField(max_length=40, blank=True)
+    entity_id = models.CharField(max_length=40, blank=True)
+    result = models.CharField(max_length=10, choices=RESULT_CHOICES, db_index=True)
+    ip = models.GenericIPAddressField(null=True, blank=True)
+    detail = models.JSONField(default=dict, blank=True)
+
+    objects = AuditQuerySet.as_manager()
+
+    class Meta:
+        db_table = "seguridad_auditoria"
+        ordering = ["-created_at", "-id"]
+
+    def save(self, *args, **kwargs):
+        if self.pk is not None:
+            raise TypeError("El registro de auditoría no se puede modificar.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise TypeError("El registro de auditoría no se puede borrar.")
 
 
 class PasswordResetToken(models.Model):

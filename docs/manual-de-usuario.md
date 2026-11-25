@@ -25,6 +25,10 @@ Las tablas completas de permisos están en el [apartado técnico de roles y perm
 
 Si algún dato no coincide verás *«Credenciales inválidas. Por favor intenta de nuevo.»* No indica cuál dato falló.
 
+**Cuenta bloqueada:** tras tres intentos fallidos seguidos la cuenta se bloquea 15 minutos y te llega un aviso por correo.
+Mientras dure, ni la contraseña correcta te deja entrar (*«La cuenta está bloqueada temporalmente…»*). Puedes esperar,
+restablecer tu contraseña con **¿Olvidaste tu contraseña?** (eso también levanta el bloqueo) o pedirle a un administrador que la desbloquee.
+
 ## 2. Pedir una cuenta
 
 En el inicio de sesión pulsa **Regístrate** y completa:
@@ -55,13 +59,20 @@ Menú **Seguridad y Usuarios**.
 ### Usuarios
 
 - En el **Inicio** aparece una tarjeta con el número de solicitudes pendientes y un enlace para revisarlas.
-- Filtra por rol o estado (**Activo**, **Inactivo**, **Pendiente**) o busca por nombre, correo o cédula.
+- Filtra por rol o estado (**Activo**, **Inactivo**, **Pendiente**, **Bloqueada**) o busca por nombre, correo o cédula.
+- Una cuenta bloqueada por intentos fallidos aparece como **Bloqueada**; pulsa **Desbloquear** para que la persona pueda entrar de nuevo sin esperar.
 - **Solicitudes pendientes**: arriba aparece la lista de quienes pidieron cuenta, con el área que solicitaron. Elige el
   rol en el selector y pulsa **Aprobar**. Si no corresponde, **Rechazar** (esa persona no podrá iniciar sesión; puedes reactivarla después).
 - **+ Nuevo usuario** → **Crear y enviar invitación**: a la persona le llega un correo con un enlace para definir su contraseña.
 - **Desactivar usuario** impide que entre; **Eliminar usuario** la oculta sin borrar su historial.
 - Reglas: nadie cambia su propio rol ni se desactiva o elimina a sí mismo, y siempre debe quedar al menos un
   administrador activo. Solo un administrador crea administradores o asigna roles con permisos de Seguridad.
+
+### Accesos y auditoría
+
+- **Accesos** (solo el Administrador): quién inició sesión, quién falló, qué cuentas se bloquearon y desde qué IP. Filtra por correo, evento, resultado, IP y fechas; por ejemplo, **Fallidos** desde hace una semana.
+- **Auditoría** (Administrador y Gerente): quién hizo cada operación crítica (órdenes de producción, tarifas y precios, lotes, ajustes de inventario y de producto terminado, facturas, cartera, roles y cuentas), sobre qué y con qué resultado.
+  También aparecen los intentos que el sistema rechazó por falta de permiso. **Detalle** muestra los datos enviados (nunca contraseñas). Nada se edita ni se borra; ambos registros se conservan 12 meses.
 
 ### Roles y permisos
 
@@ -533,8 +544,8 @@ Si ningún registro cumple los filtros, la tabla dice *«No se encontraron regis
 **solo consulta**: no cambia nada de la operación.
 
 !!! note "Permisos del tablero"
-    El módulo **Reportes** tiene dos permisos, **Ver** y **Registrar y modificar** (*reportes.ver* y *reportes.gestionar*), y el Gerente trae ambos. Hoy basta con **Ver** para consultar, filtrar,
-    actualizar y exportar. Si un rol personalizado necesita el tablero, márcale **Ver** en *Roles y permisos*.
+    El módulo **Reportes** tiene dos permisos, **Ver** y **Registrar y modificar** (*reportes.ver* y *reportes.gestionar*), y el Gerente trae ambos. Con **Ver** se consulta, se filtra y se exporta; el botón **Actualizar datos** exige además **Registrar y modificar**
+    y a los demás roles no se les muestra. Si un rol personalizado necesita el tablero, márcale **Ver** en *Roles y permisos* (y **Registrar y modificar** si también debe actualizar los datos).
 
 ## 10. Vendedor: ventas y facturación
 

@@ -39,7 +39,7 @@ En producción: API <https://texcore-api.onrender.com> y sistema <https://texcor
 ## Documentación
 
 - **API interactiva (Swagger):** con el servidor en marcha, <http://localhost:8000/api/docs/> (también `/api/redoc/` y `/api/schema/`).
-  Se genera desde el código con drf-spectacular; `API_DOCS_ENABLED=false` la oculta.
+  Se genera desde el código con drf-spectacular; solo está publicada en desarrollo y en producción se enciende con `API_DOCS_ENABLED=true`.
 - **Sitio publicado:** <https://bayronvv.github.io/TexCoreERP-Backend/> (se actualiza solo al fusionar cambios de `docs/` en `main`).
 - **Manuales y arquitectura:** `pip install -r requirements-dev.txt` y luego `mkdocs serve`
   (usa `mkdocs serve -a 127.0.0.1:8001` si el backend ya ocupa el puerto 8000).
@@ -79,7 +79,7 @@ La API queda en http://localhost:8000. Con `DATABASE_URL` vacío se usa SQLite l
 | `CORS_ALLOWED_ORIGINS` | No | Orígenes del frontend autorizados. |
 | `FRONTEND_URL`         | No | URL del frontend para armar el enlace del correo de recuperación. |
 | `EMAIL_*`, `DEFAULT_FROM_EMAIL` | No | Envío de correo (por defecto se imprime en la consola). Ver `.env.example`. |
-| `API_DOCS_ENABLED`     | No (`true`) | `false` oculta `/api/docs/`, `/api/redoc/` y `/api/schema/`. |
+| `API_DOCS_ENABLED`     | No (igual que `DJANGO_DEBUG`) | `true` publica `/api/docs/`, `/api/redoc/` y `/api/schema/` en producción; por defecto están apagadas. |
 | `MEDIA_ROOT`           | No | Carpeta de las evidencias de inventario (por defecto `backend/media/`). |
 | `TRACK123_API_KEY`     | No | Clave de la API de Track123 para consultar el estado de las guías (HU 7.2). Secreto: solo en el `.env` local y en Render, nunca en el repositorio. Vacía = rastreo apagado. |
 | `TRACK123_ENABLED`     | No (`false`) | `true` enciende el rastreo. Se apaga solo al correr `manage.py test`. |

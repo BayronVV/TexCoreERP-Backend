@@ -9,7 +9,7 @@ from . import catalog, services
 from .serializers import MetadatosReporteSerializer, ReporteGerencialSerializer, ReporteRefrescoSerializer
 
 VIEW_PERMISSIONS = {"GET": catalog.REPORTS_VIEW}
-REFRESH_PERMISSIONS = {"POST": catalog.REPORTS_VIEW}
+REFRESH_PERMISSIONS = {"POST": catalog.REPORTS_MANAGE}  # refrescar es una operación de gestión, no de consulta
 
 
 @extend_schema(tags=["reportes"])

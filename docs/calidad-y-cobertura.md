@@ -20,11 +20,11 @@ compatibilidad con PostgreSQL, validación de transiciones y cliente/rutas del f
 | Subconjunto `apps.reports` (antes) | `PBKDF2PasswordHasher` | 6 | 54,26 s totales (43,26 s en pruebas) |
 | Subconjunto `apps.reports` (después) | `MD5PasswordHasher` solo en test | 6 | **11,95 s** totales (**1,51 s** en pruebas · ~29× más rápido) |
 | Suite completa backend (auditoría 08/11) | `PBKDF2PasswordHasher` (SQLite) | 922 | ~28 min |
-| Suite completa backend con `coverage` (después) | `MD5PasswordHasher` (SQLite + cobertura) | **965** | **252,76 s** (4 min 13 s) |
-| Suite completa frontend (`npm test`) | `node --test` | **237** | **1,81 s** |
+| Suite completa backend con `coverage` (después) | `MD5PasswordHasher` (SQLite + cobertura) | **1041** | **245,11 s** (4 min 05 s) |
+| Suite completa frontend (`npm test`) | `node --test` | **241** | **2,24 s** |
 
 !!! tip "Por debajo del límite de 5 minutos"
-    Incluso ejecutando **965 pruebas** secuenciales con instrumentación de `coverage` y pruebas de concurrencia con
+    Incluso ejecutando **1041 pruebas** secuenciales con instrumentación de `coverage` y pruebas de concurrencia con
     `TransactionTestCase` (`serialized_rollback = True`), la suite completa del backend finaliza por debajo de los 5 minutos en máquina local.
 
 ---
@@ -36,18 +36,18 @@ Medición obtenida sobre `apps/` (excluyendo migraciones, archivos de prueba y c
 
 | Módulo | Sentencias cubiertas / totales | Cobertura |
 |---|---|---|
-| `apps/core` | 148 / 177 | **83,6 %** |
-| `apps/users` | 576 / 616 | **93,5 %** |
-| `apps/inventory` | 914 / 945 | **96,7 %** |
+| `apps/core` | 146 / 170 | **85,9 %** |
+| `apps/users` | 911 / 975 | **93,4 %** |
+| `apps/inventory` | 916 / 947 | **96,7 %** |
 | `apps/purchasing` | 549 / 556 | **98,7 %** |
 | `apps/references` | 668 / 679 | **98,4 %** |
-| `apps/production` | 1938 / 1997 | **97,0 %** |
+| `apps/production` | 1964 / 2014 | **97,5 %** |
 | `apps/quality` | 319 / 333 | **95,8 %** |
 | `apps/finished` | 550 / 573 | **96,0 %** |
 | `apps/sales` | 691 / 718 | **96,2 %** |
 | `apps/shipping` | 842 / 878 | **95,9 %** |
 | `apps/reports` | 339 / 360 | **94,2 %** |
-| **Total backend** | **7534 / 7832** | **96 %** |
+| **Total backend** | **7895 / 8203** | **96 %** |
 
 ---
 
@@ -73,19 +73,20 @@ Convención de tipos de prueba en la tabla:
 | Asignación de operarios y máquinas | TE-54 | 57 / 24 | 15 *(`resources.test.js`)* | Lógica pura + Servicios + E2E API | Incluida en job `apps.production` en PostgreSQL |
 | Monitor Kanban y transición inválida API (H03) | TE-55 | 46 / 12 | 23 *(`monitorBoard.test.js`)* | Lógica pura + Reversión optimista UI + E2E API | Incluida en job `apps.production` en PostgreSQL |
 | Liquidación y costeo de órdenes | TE-56 | 22 / 12 | 10 *(`costSettlement.test.js`)* | Lógica pura + Servicios + E2E API | Incluida en job `apps.production` en PostgreSQL |
-| Remisión y recepción de lavandería externa | TE-57, TE-58 | 11 / 5 | 8 *(`laundryReception.test.js`)* | Lógica pura + Servicios + E2E API | **Sí (crítico):** bloqueo `of=("self",)` en `RemisionLote` con `receta=None` (Fallo 1 Sprint 3) |
+| Remisión y recepción de lavandería externa confiable | TE-57, TE-58, TE-172 *(HU 5.4)* | 17 / 8 | 12 *(`laundryReception.test.js`)* | Lógica pura + Servicios + Contrato UI + E2E API | **Sí (crítico):** bloqueo `of=("self",)` con `receta=None` y recepción `0` conformes sin violar `CHECK (cantidad >= 1)` |
 | Control de calidad e inspección de marras | TE-59 | 40 / 22 | 9 *(`quality.test.js`)* | Lógica pura + Servicios + E2E API | **Sí (crítico):** bloqueo `of=("self",)` sobre `Lote` con `select_related` |
 | Producto terminado: ingreso y ajuste manual | TE-60, TE-61 | 50 / 31 | 16 *(`finished.test.js`)* | Lógica pura + Servicios + E2E API | **Sí (crítico):** bloqueo `of=("self",)` sobre `Inspeccion` en ingreso final |
 | Facturación POS interna, clientes y precios | TE-62 | 39 / 27 | 10 *(parte de `sales.test.js`)* | Lógica pura + Servicios + E2E API | Ejecutada en job PostgreSQL (`apps.sales`) |
 | Guías de envío, relaciones de despacho y Track123 | TE-63 | 73 / 41 | 13 *(`shipping.test.js`)* | Lógica pura + Servicios (mock HTTP) + E2E API | **Sí (crítico):** `@transaction.atomic` en `assign_guide_to` en `TransactionTestCase` (Fallo 2 Sprint 3) |
 | Cartera y conciliación contraentrega | TE-64 | 8 / 6 | 4 *(`cartera` en `sales.test.js`)* | Lógica pura + Servicios + E2E API | Ejecutada en job PostgreSQL (`apps.sales`) |
 | Tablero de reportes gerenciales | TE-65 | 6 / 1 | 7 *(`reports.test.js`)* | Lógica pura + Exportación XLSX/CSV + E2E API | **Sí (crítico):** `CREATE MATERIALIZED VIEW` y `REFRESH MATERIALIZED VIEW` dentro y fuera de bloque atómico |
-| Núcleo, PostgreSQL transversal, ERD/MER y seeds | TE-180 / Sprint 1–3 | 26 / 6 | — | Servicios + Migraciones + PostgreSQL | **Sí:** `apps.core.test_postgres` |
+| Núcleo, PostgreSQL transversal, ERD/MER y seeds | TE-180 / Sprint 1–3 | 27 / 6 | — | Servicios + Migraciones + PostgreSQL | **Sí:** `apps.core.test_postgres` |
 | Observabilidad, manejo de errores, OpenAPI y robustez API | TE-181 | +12 *(incl. en suites)* | — | Manejador global + Logging + E2E API + N+1 | Concurrencia multihilo Track123 (`ConcurrencyTrackingTests`) en `apps.shipping` |
 | Retiro de salida a lavandería provisional de Inventario | TE-171 *(HU 5.3)* | Incl. en `inventory` *(rechazo 400 + historial LV)* | +1 contrato UI *(`orderLines.test.js`)* | Servicios + Serializers + Contrato UI + E2E API | Validada en `apps.inventory` y flujo real lavandería (`apps.production`) |
-| **Total sistema** | **TE-42 a TE-181 + TE-171** | **965** | **237** | **Lógica + Servicios/UI + E2E API** | **7 suites completas + `core.test_postgres` sobre PostgreSQL 16** |
+| Seguridad, bloqueo, accesos y auditoría | TE-175, TE-179 | +70 *(incl. en suites)* | — | Throttling + Auditoría + Permisos + E2E API | Validada en `apps.users`, `apps.reports` y `apps.core` sobre PostgreSQL 16 |
+| **Total sistema** | **TE-42 a TE-181 + TE-171, TE-172** | **1041** | **241** | **Lógica + Servicios/UI + E2E API** | **7 suites completas + `core.test_postgres` sobre PostgreSQL 16** |
 
-> Nota sobre el conteo de ejecución: el corredor de Django ejecuta **965** casos (`OK`, con 2 pruebas multi-hilo condicionales en SQLite — `ConcurrencyOrderTests` y `ConcurrencyTrackingTests` — que corren obligatoriamente en el job PostgreSQL).
+> Nota sobre el conteo de ejecución: el corredor de Django ejecuta **1041** casos (`OK`, con 2 pruebas multi-hilo condicionales en SQLite — `ConcurrencyOrderTests` y `ConcurrencyTrackingTests` — que corren obligatoriamente en el job PostgreSQL).
 
 ---
 

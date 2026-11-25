@@ -6,6 +6,7 @@ from apps.inventory import catalog as inv_catalog
 from apps.inventory.models import Proveedor
 from apps.production import catalog
 from apps.production.models import RecetaLavado
+from apps.production.recepcion_services import create_laundry_reception
 from apps.production.remisiones_services import (
     create_laundry_remission,
     get_available_lots_for_washing,
@@ -32,6 +33,13 @@ class RemisionesTests(ModelBase):
             contacto="Pedro Perez",
             telefono="3001234567",
         )
+        self.non_laundry_prov = Proveedor.objects.create(
+            nit="900111999",
+            nit_dv="1",
+            razon_social="Textiles No Lavandería S.A.S.",
+            categoria=inv_catalog.CAT_FABRIC,
+            ciudad="Bogotá",
+        )
 
         self.receta = RecetaLavado.objects.create(
             codigo="REC-TEST-01",
@@ -47,11 +55,23 @@ class RemisionesTests(ModelBase):
         lot_ids = [l["id"] for l in lots]
         self.assertIn(self.lot1.id, lot_ids)
         self.assertIn(self.lot2.id, lot_ids)
+        first = next(l for l in lots if l["id"] == self.lot1.id)
+        self.assertNotIn("receta_sugerida", first)
+        self.assertNotIn("taller_confeccion", first)
 
-    def test_proveedores_lavanderia_retorna_proveedor_creado(self):
+    def test_proveedores_lavanderia_solo_lista_categoria_lavanderia_y_sin_datos_inventados(self):
         provs = get_laundry_providers()
         prov_ids = [p["id"] for p in provs]
         self.assertIn(self.prov.id, prov_ids)
+        self.assertNotIn(self.non_laundry_prov.id, prov_ids)
+        row = next(p for p in provs if p["id"] == self.prov.id)
+        self.assertNotIn("tarifa_base_unidad", row)
+        self.assertNotIn("tiempo_promedio_dias", row)
+        self.assertNotIn("calificacion_calidad", row)
+
+        # Aunque se elimine la lavandería, no cae en proveedores de otra categoría
+        self.prov.delete()
+        self.assertEqual(get_laundry_providers(), [])
 
     def test_recetas_lavado_retorna_receta_creada(self):
         recipes = get_wash_recipes()
@@ -99,10 +119,29 @@ class RemisionesTests(ModelBase):
         history_codes = [h["codigo"] for h in history]
         self.assertIn(remision["codigo"], history_codes)
 
-    def test_no_se_puede_remitir_un_lote_que_ya_no_esta_en_planta(self):
+    def test_rechaza_remision_parcial_y_proveedor_no_lavanderia(self):
+        today = timezone.localdate()
+        with self.assertRaises(ValidationError) as ctx_partial:
+            create_laundry_remission(
+                user=self.boss,
+                lavanderia_id=self.prov.id,
+                lotes_seleccionados=[{"lote_id": self.lot1.id, "cantidad": 40}],
+                fecha_emision=today,
+            )
+        self.assertIn("completo", str(ctx_partial.exception.detail).lower())
+
+        with self.assertRaises(ValidationError):
+            create_laundry_remission(
+                user=self.boss,
+                lavanderia_id=self.non_laundry_prov.id,
+                lotes_seleccionados=[{"lote_id": self.lot1.id, "cantidad": 60}],
+                fecha_emision=today,
+            )
+
+    def test_no_se_puede_remitir_un_lote_que_ya_no_esta_en_planta_o_ya_recibido(self):
         today = timezone.localdate()
         # Remitir lote 1
-        create_laundry_remission(
+        remision = create_laundry_remission(
             user=self.boss,
             lavanderia_id=self.prov.id,
             lotes_seleccionados=[{"lote_id": self.lot1.id, "cantidad": 60}],
@@ -110,6 +149,24 @@ class RemisionesTests(ModelBase):
         )
 
         # Intentar remitirlo de nuevo debe fallar
+        with self.assertRaises(ValidationError):
+            create_laundry_remission(
+                user=self.boss,
+                lavanderia_id=self.prov.id,
+                lotes_seleccionados=[{"lote_id": self.lot1.id, "cantidad": 60}],
+                fecha_emision=today,
+            )
+
+        # Recibir el lote 1 de vuelta a PLANTA: no reaparece para enviar ni permite re-remitirse
+        create_laundry_reception(
+            user=self.boss,
+            remision_id=remision["id"],
+            fecha_recepcion=today,
+            factura_remision_externa="FAC-TEST-900",
+            lotes_recibidos=[{"lote_id": self.lot1.id, "cantidad_recibida_conforme": 60}],
+        )
+        available_ids = [l["id"] for l in get_available_lots_for_washing()]
+        self.assertNotIn(self.lot1.id, available_ids)
         with self.assertRaises(ValidationError):
             create_laundry_remission(
                 user=self.boss,

@@ -105,7 +105,9 @@ class Command(BaseCommand):
                 )
                 row = RemisionLavanderia.objects.get(codigo=remission["codigo"]).lotes_detalle.first()
                 create_laundry_reception(
-                    user=operator, remision_id=row.remision_id, fecha_recepcion=today, observaciones="Recepción de demostración de calidad",
+                    user=operator, remision_id=row.remision_id, fecha_recepcion=today,
+                    factura_remision_externa=f"FAC-DEMO-{lot.codigo}",
+                    observaciones="Recepción de demostración de calidad",
                     lotes_recibidos=[{
                         "remision_lote_id": row.id, "cantidad_recibida_conforme": lot.cantidad - 1, "cantidad_merma": 1,
                         "motivo_merma": "Extravío en tinas", "cantidad_danada": 0, "costo_unitario_prenda": "30000.00",

@@ -120,6 +120,7 @@ class PostgresVerificationTests(TransactionTestCase):
 
         recepcion = create_laundry_reception(
             remision_id=remision.id,
+            factura_remision_externa="FAC-PG-001",
             lotes_recibidos=[
                 {
                     "remision_lote_id": rl.id,
@@ -148,6 +149,95 @@ class PostgresVerificationTests(TransactionTestCase):
             fecha=today,
         )
         self.assertEqual(ingreso.aptas, 20)
+
+    def test_te172_recepcion_cero_conformes_en_postgres_conserva_cantidad_original(self):
+        """TE-172: recibir 0 conformes y pérdida total no viola CheckConstraint(cantidad >= 1) en PostgreSQL."""
+        boss = make_user("pg_jefe2@t.co", "PRODUCCION")
+        store = make_user("pg_alm2@t.co", "ALMACENISTA")
+        today = timezone.localdate()
+        tela = Producto.objects.create(
+            codigo="MAT-PG-172",
+            nombre="Denim PG 172",
+            tipo=inventory_catalog.RAW_MATERIAL,
+            categoria=inventory_catalog.CAT_FABRIC,
+            unidad="m",
+            stock_actual=Decimal("100.00"),
+            ancho_util=Decimal("1.50"),
+            composicion="100% algodón",
+        )
+        ref = Referencia.objects.create(
+            codigo="REF-PG-172",
+            nombre="Jean PG 172",
+            ajuste="RECTO",
+            estado=reference_catalog.ACTIVE,
+        )
+        orden_salida = OrdenSalida.objects.create(
+            codigo="OP-PG-172",
+            tipo=inventory_catalog.ORDER_PRODUCTION,
+            fecha_salida=today,
+            responsable="Planta",
+            referencia=ref,
+            ficha_tecnica=ref.codigo,
+            producto_resultado=tela,
+            cantidad_prendas=Decimal("40"),
+            registrado_por=boss,
+        )
+        orden = OrdenProduccion.objects.create(
+            orden_salida=orden_salida,
+            codigo="OP-PG-172",
+            referencia=ref,
+            cantidad=40,
+            creado_por=boss,
+        )
+        lote = Lote.objects.create(
+            orden=orden,
+            numero=1,
+            codigo="OP-PG-172-L01",
+            cantidad=40,
+            estado_inventario=production_catalog.LOT_INV_IN_TRANSIT,
+        )
+
+        prov = Proveedor.objects.create(
+            nit="901777222",
+            nit_dv="5",
+            razon_social="Lavandería PG Cero Conformes",
+            categoria=inventory_catalog.CAT_LAUNDRY,
+            ciudad="Medellín",
+        )
+        remision = RemisionLavanderia.objects.create(
+            codigo="REM-LAV-PG-0172",
+            lavanderia=prov,
+            fecha_emision=today,
+            transportador_nombre="Carlos",
+            vehiculo_placa="PG172",
+            tulas_bultos=1,
+            peso_kg=Decimal("12.00"),
+            estado=production_catalog.REMISSION_IN_TRANSIT,
+            creado_por=boss,
+        )
+        rl = RemisionLote.objects.create(remision=remision, lote=lote, cantidad=40, receta=None)
+
+        recepcion = create_laundry_reception(
+            remision_id=remision.id,
+            factura_remision_externa="FAC-PG-172",
+            lotes_recibidos=[
+                {
+                    "remision_lote_id": rl.id,
+                    "cantidad_recibida_conforme": 0,
+                    "cantidad_merma": 40,
+                    "motivo_merma": "Pérdida total en proceso",
+                    "cantidad_danada": 0,
+                    "costo_unitario_prenda": "28000.00",
+                }
+            ],
+            user=store,
+            fecha_recepcion=today,
+        )
+        self.assertEqual(recepcion["total_recibido_conforme"], 0)
+        self.assertEqual(recepcion["total_merma"], 40)
+        lote.refresh_from_db()
+        self.assertEqual(lote.cantidad, 40)
+        self.assertEqual(lote.estado_inventario, production_catalog.LOT_INV_INTERNAL)
 
     def test_sprint3_fallo2_assign_guide_to_funciona_fuera_de_transaccion_externa(self):
         """

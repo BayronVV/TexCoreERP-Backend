@@ -268,22 +268,18 @@ indicados (pasan a `EN_TRANSITO`) y calcula el `costo_estimado` con la tarifa de
 curl -X POST http://localhost:8000/api/lavanderia/remisiones/   -H "Authorization: Bearer <access>" -H "Content-Type: application/json"   -d '{"lavanderia_id": 4, "fecha_emision": "2026-11-02", "fecha_entrega_estimada": "2026-11-06", "transportador_nombre": "Transportes Andina", "vehiculo_placa": "ABC123", "tulas_bultos": 2, "peso_kg": "38.5", "lotes": [{"lote_id": 12, "cantidad": 40, "receta_id": "REC-SW-01", "instrucciones_especiales": "Bigotes suaves"}]}'
 ```
 
-Respuesta `201` con la remisión (`REM-LAV-2026-0001`, estado `EN_TRANSITO`), la lavandería, el detalle de lotes, `total_prendas` y `costo_estimado`.
-Errores: `400` si no hay lotes, un lote se repite, la lavandería no existe, un lote ya no está en la planta o la cantidad supera las unidades del lote;
-`403` si el rol no tiene `lavanderia.gestionar`.
+Respuesta `201` con la remisión (`REM-LAV-2026-0001`, estado `EN_TRANSITO`), la lavandería, el detalle de lotes, `total_prendas` y `costo_estimado` (tarifa real de la receta elegida o `0` si no lleva receta).
+Errores: `400` si no hay lotes, un lote se repite, el proveedor no pertenece a la categoría `LAVANDERIA` o está inactivo, un lote ya no está en la planta o ya fue recibido, o la cantidad difiere del tamaño completo del lote (no se permiten remisiones parciales); `403` si el rol no tiene `lavanderia.gestionar`.
 
-Cuando la lavandería devuelve la mercancía se asienta la recepción contra la remisión, con el cotejo de **cada** lote de ella. Por lote,
-`cantidad_recibida_conforme` + `cantidad_merma` + `cantidad_danada` debe sumar exactamente lo enviado:
+Cuando la lavandería devuelve la mercancía se asienta la recepción contra la remisión, con el cotejo de **cada** lote de ella y la factura o remisión externa obligatoria. Por lote,
+`cantidad_recibida_conforme` + `cantidad_merma` + `cantidad_danada` debe sumar exactamente lo enviado (se acepta `0` conformes cuando el lote se pierde por completo):
 
 ```bash
 curl -X POST http://localhost:8000/api/lavanderia/recepciones/   -H "Authorization: Bearer <access>" -H "Content-Type: application/json"   -d '{"remision_id": 1, "fecha_recepcion": "2026-11-06", "factura_remision_externa": "FV-8841", "lotes": [{"lote_id": 12, "cantidad_recibida_conforme": 36, "cantidad_merma": 2, "motivo_merma": "Faltaron dos prendas en la entrega", "cantidad_danada": 2, "tipo_dano": "Quemadura de permanganato"}]}'
 ```
 
 Respuesta `201` con el acta (`REC-LAV-2026-0001`): totales enviado, conforme, merma y dañadas, `costo_total_perdida` (merma más dañadas por el
-`costo_unitario_prenda` de cada línea) y `costo_servicio_lavado`. La remisión pasa a `RETORNADA` y cada lote vuelve a la planta con **solo las
-conformes** como cantidad; esas conformes son las que aparecen después en `GET /api/calidad/pendientes/` para inspeccionarlas. Errores: `400` si la suma no
-cuadra (`«… deben sumar exactamente las 40 und enviadas»`), si hay merma sin `motivo_merma` o dañadas sin `tipo_dano`, si faltan lotes de la remisión por
-cotejar o uno no es de ella, o si la remisión ya fue retornada o está anulada.
+`costo_unitario_prenda` real tomado de la orden de producción o enviado en el cuerpo) y `costo_servicio_lavado`. La remisión pasa a `RETORNADA` y cada lote vuelve a la planta **conservando intacta su cantidad original** (`Lote.cantidad`), mientras que las conformes quedan registradas en el acta para `GET /api/calidad/pendientes/` (un lote con `0` conformes no entra a inspección). Errores: `400` si falta `factura_remision_externa`, la suma no cuadra (`«… deben sumar exactamente las 40 und enviadas»`), hay merma sin `motivo_merma` o dañadas sin `tipo_dano`, hay pérdidas sin costo calculado en la orden ni `costo_unitario_prenda`, faltan lotes de la remisión por cotejar o uno no es de ella, o la remisión ya fue retornada o está anulada.
 
 ## Ejemplo: conciliar un pago contraentrega
 

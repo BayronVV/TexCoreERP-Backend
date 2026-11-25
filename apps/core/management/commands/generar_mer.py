@@ -44,7 +44,8 @@ ABSORBED = {
 WEAK = {
     "OrdenLinea": "orden", "FichaLinea": "ficha", "LoteTalla": "lote", "EventoEtapa": "etapa_lote",
     "LineaCompra": "orden", "RecepcionLinea": "recepcion", "MarraDetalle": "inspeccion",
-    "IngresoLinea": "ingreso", "AjusteLinea": "ajuste", "DetalleVenta": "factura", "EventoGuia": "guia",
+    "IngresoLinea": "ingreso", "AjusteLinea": "ajuste", "DetalleVenta": "factura",
+    "HistorialPrecioReferencia": "precio_referencia", "EventoGuia": "guia",
 }
 # Nombre curado (verbo en español) de cada clave foránea entre entidades de negocio:
 # (modelo que guarda la FK, campo) -> verbo. Cardinalidad: 1 en el lado referenciado, N en el que guarda la FK.
@@ -102,6 +103,7 @@ RELATION_NAMES = {
     ("MovimientoTerminado", "factura"): "Despacha",
     ("MovimientoTerminado", "lote"): "Rastrea",
     ("PrecioReferencia", "referencia"): "Tiene precio",
+    ("HistorialPrecioReferencia", "precio_referencia"): "Registra cambios",
     ("FacturaVenta", "cliente"): "Compra",
     ("DetalleVenta", "factura"): "Contiene",
     ("DetalleVenta", "variante"): "Se vende en",

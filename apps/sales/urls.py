@@ -9,6 +9,16 @@ urlpatterns = [
     path("ventas/clientes/<int:pk>/", views.ClienteDetailView.as_view(), name="ventas_cliente"),
     path("ventas/precios/", views.PrecioListView.as_view(), name="ventas_precios"),
     path("ventas/precios/<int:referencia>/", views.PrecioDetailView.as_view(), name="ventas_precio"),
+    path(
+        "ventas/precios/<int:referencia>/aplicar-costo/",
+        views.PrecioAplicarCostoView.as_view(),
+        name="ventas_precio_aplicar_costo",
+    ),
+    path(
+        "ventas/precios/<int:referencia>/historial/",
+        views.PrecioHistorialView.as_view(),
+        name="ventas_precio_historial",
+    ),
     path("ventas/facturas/", views.FacturaListCreateView.as_view(), name="ventas_facturas"),
     path("ventas/facturas/<int:pk>/", views.FacturaDetailView.as_view(), name="ventas_factura"),
     path("ventas/facturas/<int:pk>/pdf/", views.FacturaPdfView.as_view(), name="ventas_factura_pdf"),

@@ -7,7 +7,7 @@ from rest_framework import serializers
 from apps.shipping import catalog as shipping_catalog
 
 from . import catalog
-from .models import Cliente, DetalleVenta, FacturaVenta
+from .models import Cliente, DetalleVenta, FacturaVenta, HistorialPrecioReferencia
 
 
 def _name(user):
@@ -72,8 +72,39 @@ class ClienteSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class PrecioReferenciaSerializer(serializers.Serializer):
-    """Costo de fábrica y precios de una referencia (vacíos si todavía no se registran)."""
+class OrdenCostoResumenSerializer(serializers.Serializer):
+    """Resumen de una orden terminada usada para calcular el costo de fábrica (HU 4.7)."""
+    orden_id = serializers.IntegerField()
+    codigo = serializers.CharField()
+    fecha_cierre = serializers.DateField()
+    prendas_aptas = serializers.IntegerField()
+    materiales = serializers.CharField()
+    mano_obra = serializers.CharField()
+    lavanderia = serializers.CharField()
+    costo_total = serializers.CharField()
+    costo_por_prenda = serializers.IntegerField(allow_null=True)
+    completa = serializers.BooleanField()
+    faltantes = serializers.ListField(child=serializers.CharField())
+
+
+class CalculoCostoProduccionSerializer(serializers.Serializer):
+    """Cálculo consolidado del costo sugerido desde producción para una referencia (HU 4.7)."""
+    estado = serializers.ChoiceField(choices=[
+        catalog.CALC_STATUS_OK,
+        catalog.CALC_STATUS_INCOMPLETE,
+        catalog.CALC_STATUS_NO_ORDERS,
+    ])
+    costo_calculado = serializers.IntegerField(allow_null=True)
+    ventana_dias = serializers.IntegerField()
+    total_prendas_aptas = serializers.IntegerField()
+    ordenes_completas = serializers.IntegerField()
+    ordenes_incompletas = serializers.IntegerField()
+    faltantes = serializers.ListField(child=serializers.CharField())
+    ordenes = OrdenCostoResumenSerializer(many=True)
+
+
+class PrecioReferenciaBasicoSerializer(serializers.Serializer):
+    """Costo de fábrica y precios de venta visibles para consulta general (`ventas.ver`)."""
     referencia = serializers.IntegerField()
     codigo = serializers.CharField()
     nombre = serializers.CharField()
@@ -83,11 +114,21 @@ class PrecioReferenciaSerializer(serializers.Serializer):
     precio_mayorista = serializers.IntegerField(allow_null=True)
 
 
+class PrecioReferenciaSerializer(PrecioReferenciaBasicoSerializer):
+    """Costo de fábrica y precios de una referencia con cálculo desde producción (`ventas.precios`)."""
+    costo_calculado = serializers.IntegerField(allow_null=True, required=False)
+    diferencia_costo = serializers.IntegerField(allow_null=True, required=False)
+    costo_desactualizado = serializers.BooleanField(required=False)
+    precio_bajo_costo = serializers.BooleanField(required=False)
+    calculo_produccion = CalculoCostoProduccionSerializer(allow_null=True, required=False)
+
+
 class PrecioInputSerializer(serializers.Serializer):
     """Precios de una referencia en pesos enteros, antes de IVA: costo de fábrica ≤ mayorista ≤ detal."""
     costo_fabrica = serializers.IntegerField(min_value=1, max_value=100_000_000)
     precio_detal = serializers.IntegerField(min_value=1, max_value=100_000_000)
     precio_mayorista = serializers.IntegerField(min_value=1, max_value=100_000_000)
+    motivo = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
 
     def validate(self, attrs):
         if attrs["precio_mayorista"] < attrs["costo_fabrica"]:
@@ -95,6 +136,43 @@ class PrecioInputSerializer(serializers.Serializer):
         if attrs["precio_detal"] < attrs["precio_mayorista"]:
             raise serializers.ValidationError({"precio_detal": "El precio de detal no puede ser menor al mayorista."})
         return attrs
+
+
+class AplicarCostoInputSerializer(serializers.Serializer):
+    """Parámetros opcionales al aplicar el costo calculado desde producción (HU 4.7)."""
+    precio_mayorista = serializers.IntegerField(min_value=1, max_value=100_000_000, required=False, allow_null=True)
+    precio_detal = serializers.IntegerField(min_value=1, max_value=100_000_000, required=False, allow_null=True)
+    motivo = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+
+
+class HistorialPrecioSerializer(serializers.ModelSerializer):
+    """Registro de cambio en costo de fábrica o precios de venta de una referencia (HU 4.7)."""
+    origen_nombre = serializers.SerializerMethodField()
+    usuario_nombre = serializers.SerializerMethodField()
+
+    class Meta:
+        model = HistorialPrecioReferencia
+        fields = [
+            "id",
+            "costo_fabrica_anterior",
+            "costo_fabrica_nuevo",
+            "precio_mayorista_anterior",
+            "precio_mayorista_nuevo",
+            "precio_detal_anterior",
+            "precio_detal_nuevo",
+            "origen",
+            "origen_nombre",
+            "ordenes_respaldo",
+            "motivo",
+            "usuario_nombre",
+            "created_at",
+        ]
+
+    def get_origen_nombre(self, obj) -> str:
+        return catalog.PRICE_SOURCE_NAMES.get(obj.origen, obj.origen)
+
+    def get_usuario_nombre(self, obj) -> str:
+        return _name(obj.usuario)
 
 
 class DetalleVentaSerializer(serializers.ModelSerializer):

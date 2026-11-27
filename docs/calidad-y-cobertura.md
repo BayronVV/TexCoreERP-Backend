@@ -78,16 +78,16 @@ Convención de tipos de prueba en la tabla:
 | Producto terminado: ingreso y ajuste manual | TE-60, TE-61 | 50 / 31 | 16 *(`finished.test.js`)* | Lógica pura + Servicios + E2E API | **Sí (crítico):** bloqueo `of=("self",)` sobre `Inspeccion` en ingreso final |
 | Facturación POS interna, clientes, precios y costo desde producción | TE-62, TE-174 *(HU 4.7)* | 45 / 27 | 23 *(`sales.test.js`)* | Lógica pura + Servicios + Contrato UI + E2E API | **Sí (crítico):** promedio ponderado 90 días, `HistorialPrecioReferencia`, permisos `Vendedor` y N+1 (`apps.sales`) |
 | Guías de envío, relaciones de despacho y Track123 | TE-63 | 73 / 41 | 13 *(`shipping.test.js`)* | Lógica pura + Servicios (mock HTTP) + E2E API | **Sí (crítico):** `@transaction.atomic` en `assign_guide_to` en `TransactionTestCase` (Fallo 2 Sprint 3) |
-| Cartera y conciliación contraentrega | TE-64 | 8 / 6 | 4 *(`cartera` en `sales.test.js`)* | Lógica pura + Servicios + E2E API | Ejecutada en job PostgreSQL (`apps.sales`) |
+| Cartera y conciliación contraentrega | TE-64, TE-173 *(HU 7.5)* | 24 / 15 *(incl. `test_cartera_guias`)* | 14 *(`cartera` + `carteraAction` en `sales.test.js`)* | Lógica pura + Reglas cruzadas guía-cartera + Caja única + E2E API | Ejecutada en jobs PostgreSQL (`apps.sales` y `apps.shipping`) |
 | Tablero de reportes, filtros avanzados, paginación y devoluciones | TE-65, TE-177 *(HU 7.7)* | 13 / 5 | 13 *(`reports.test.js` + `usePersistedFilters.test.js`)* | Lógica pura + Exportación XLSX/CSV + Paginación >200 + Zona Colombia + N+1 + E2E API | **Sí (crítico):** `CREATE/REFRESH MATERIALIZED VIEW` v2 con `vendedor_id` y devoluciones en `apps.core.test_postgres` |
 | Núcleo, PostgreSQL transversal, ERD/MER y seeds | TE-180 / Sprint 1–3 | 27 / 6 | — | Servicios + Migraciones + PostgreSQL | **Sí:** `apps.core.test_postgres` |
 | Observabilidad, manejo de errores, OpenAPI y robustez API | TE-181 | +12 *(incl. en suites)* | — | Manejador global + Logging + E2E API + N+1 | Concurrencia multihilo Track123 (`ConcurrencyTrackingTests`) en `apps.shipping` |
 | Retiro de salida a lavandería provisional de Inventario | TE-171 *(HU 5.3)* | Incl. en `inventory` *(rechazo 400 + historial LV)* | +1 contrato UI *(`orderLines.test.js`)* | Servicios + Serializers + Contrato UI + E2E API | Validada en `apps.inventory` y flujo real lavandería (`apps.production`) |
 | Unificación de existencias de producto terminado | TE-170 *(HU 6.5)* | 6 / 3 | +2 *(`orderLines.test.js`)* | Lógica pura + Migración datos + Contrato UI + E2E API + N+1 | **Sí (crítico):** alta automática con `select_for_update`, restricción única por referencia, `heredado` y alertas vivas |
 | Seguridad, bloqueo, accesos y auditoría | TE-175, TE-179 | +70 *(incl. en suites)* | — | Throttling + Auditoría + Permisos + E2E API | Validada en `apps.users`, `apps.reports` y `apps.core` sobre PostgreSQL 16 |
-| **Total sistema** | **TE-42 a TE-181 + TE-170 a TE-177** | **1061** | **262** | **Lógica + Servicios/UI + E2E API** | **7 suites completas + `core.test_postgres` sobre PostgreSQL 16** |
+| **Total sistema** | **TE-42 a TE-181 + TE-170 a TE-177** | **1076** | **264** | **Lógica + Servicios/UI + E2E API** | **7 suites completas + `core.test_postgres` sobre PostgreSQL 16** |
 
-> Nota sobre el conteo de ejecución: el corredor de Django ejecuta **1061** casos (`OK`, con 2 pruebas multi-hilo condicionales en SQLite — `ConcurrencyOrderTests` y `ConcurrencyTrackingTests` — que corren obligatoriamente en el job PostgreSQL).
+> Nota sobre el conteo de ejecución: el corredor de Django ejecuta **1076** casos (`OK`, con 2 pruebas multi-hilo condicionales en SQLite — `ConcurrencyOrderTests` y `ConcurrencyTrackingTests` — que corren obligatoriamente en el job PostgreSQL).
 
 ---
 

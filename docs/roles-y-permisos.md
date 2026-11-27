@@ -14,7 +14,7 @@ tiene `<módulo>.ver`.
 | `ALMACENISTA` | Almacenista | Proveedores, materias primas, movimientos y **recepción de mercancía**. En envíos arma las relaciones de despacho, cambia los estados de las guías y registra la devolución física. |
 | `TERMINACION` | Personal de Terminación | Control de calidad: define los defectos e inspecciona los lotes que vuelven de lavandería. |
 | `SECRETARIA` | Secretaria | Producto terminado: ingresa al inventario final las prendas aptas de cada inspección, ajusta el inventario contra el conteo físico y consulta existencias y movimientos. En envíos anota guías, arma relaciones de despacho y cambia los estados. En cartera confirma los recaudos contraentrega (HU 7.5). |
-| `VENDEDOR` | Vendedor | Consulta el producto terminado disponible, registra clientes y emite las facturas POS internas de venta (descuenta el inventario) y **concilia el cobro contraentrega** de cada una (pagada o devolución). Anota la guía de la transportadora al facturar y consulta los envíos. |
+| `VENDEDOR` | Vendedor | Consulta el producto terminado disponible, registra clientes, emite las facturas POS internas de venta (descuenta el inventario) y consulta la cartera. Anota la guía de la transportadora al facturar y consulta los envíos; **no concilia sus propios pagos**. |
 | `PENDING` | Pendiente de aprobación | Cuenta recién registrada: **sin permisos** hasta que un administrador le asigne un rol. |
 
 Los roles base no se eliminan. Un administrador puede crear roles propios desde **Seguridad y Usuarios → Roles y
@@ -41,8 +41,7 @@ Cada módulo tiene `ver` (consultar) y `gestionar` (registrar y modificar). Marc
 
 ## Matriz inicial rol → permiso
 
-Es la que dejan las migraciones (`0003`, `0007`, `0008`, `0010`, `0011`, `0012` y `0013` de `apps/users`; las demás no tocan permisos). En total son 31 permisos en 12 módulos. El Sprint 3 no agregó permisos: la lavandería, la cartera y los reportes usan los que ya existían. Después se ajusta desde la pantalla de
-roles, así que la matriz real de un despliegue puede diferir. `ADMIN` no aparece porque lo tiene todo.
+Es la que dejan las migraciones (`0003`, `0007`, `0008`, `0010`, `0011`, `0012`, `0013`, `0015`, `0017` y `0018` de `apps/users`; las demás no tocan permisos). En total son 34 permisos en 12 módulos. Después se ajusta desde la pantalla de roles, así que la matriz real de un despliegue puede diferir. `ADMIN` no aparece porque lo tiene todo.
 
 | Permiso | GERENTE | PRODUCCION | ALMACENISTA | TERMINACION | SECRETARIA | VENDEDOR |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|
@@ -109,13 +108,14 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 | Consultar los ajustes manuales y sus motivos | `producto_terminado.ver` |
 | Ajustar el inventario de producto terminado contra el conteo físico | `producto_terminado.ajustar` |
 | Consultar clientes, precios, facturas (con su detalle y PDF), los metadatos de ventas y el resumen de cartera (`/api/ventas/cartera/resumen/`) | `ventas.ver` |
-| Registrar y modificar clientes; **emitir una factura** (descuenta el inventario); **conciliar el cobro contraentrega** de una factura (pagada o devolución) | `ventas.gestionar` |
+| Registrar y modificar clientes; **emitir una factura** (descuenta el inventario) | `ventas.gestionar` |
 | Registrar o actualizar el costo de fábrica y los precios de una referencia | `ventas.precios` |
 | Anular una factura | `ventas.anular` |
 | Confirmar el recaudo contraentrega y ver el saldo financiero (el Vendedor no concilia su propio pago) | `ventas.conciliar` |
 | Consultar los lotes disponibles, las lavanderías, las recetas, el historial de remisiones, las remisiones pendientes y las actas de recepción de lavandería | `lavanderia.ver` |
 | Despachar una remisión de salida a lavandería y asentar la recepción de lavandería | `lavanderia.gestionar` |
-| Consultar el tablero gerencial y sus filtros, y forzar el refresco de sus vistas (`/api/reportes/…`) | `reportes.ver` |
+| Consultar el tablero gerencial y sus filtros (`/api/reportes/…`) | `reportes.ver` |
+| Forzar el refresco de las vistas SQL materializadas de reportes (`/api/reportes/refrescar/`) | `reportes.gestionar` |
 | Consultar guías, su detalle e historial, las facturas sin guía, las relaciones de despacho (y su PDF), el resumen y los metadatos de envíos | `envios.ver` |
 | Anotar o reemplazar el número de guía de una factura ya emitida (`/api/envios/facturas/<id>/guia/`) | `envios.anotar` |
 | Armar una relación de despacho, cambiar el estado de una guía, registrar el flete, **consultar el estado en Track123** (gasta cuota de registros) y leer la cuota | `envios.gestionar` |

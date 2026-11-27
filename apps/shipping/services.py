@@ -177,6 +177,8 @@ def assign_guide_to(invoice, carrier, number, user, origin=catalog.ORIGIN_MANUAL
         fail("No se puede asignar una guía a una factura anulada.", "factura")
     if invoice.estado_cobro == sales_catalog.COLLECT_RETURNED:
         fail("La factura ya fue gestionada como devolución.", "factura")
+    if invoice.estado_cobro == sales_catalog.COLLECT_PAID:
+        fail("La factura ya fue recaudada y no admite una nueva guía.", "factura")
     carrier, number = clean_guide_input(carrier, number)
     current = Guia.objects.select_for_update(of=("self",)).filter(factura=invoice, vigente=True).first()
     if current is not None and current.transportadora == carrier and current.numero_guia == number:

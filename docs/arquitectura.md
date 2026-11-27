@@ -28,7 +28,7 @@ flowchart LR
 
 - Django es **MVT** (Model, View, Template): su *View* hace de controlador. Aquí la plantilla la sustituye
   una SPA de React que es un proyecto aparte, así que MVC solo describe una parte del sistema.
-- Cada capa se cambia y se prueba sin tocar las demás: las pruebas del backend (928) y las funciones puras del frontend no dependen de la interfaz.
+- Cada capa se cambia y se prueba sin tocar las demás: las pruebas del backend (1087) y las funciones puras del frontend (267) no dependen de la interfaz.
 - Permite repartir el trabajo (frontend y backend) y cumple el requisito de arquitectura modular (RNF09):
   `users`, `inventory`, `references`, `production`, `purchasing`, `quality`, `finished`, `sales`, `shipping`, `reports` y `core` son módulos independientes y los siguientes se añaden igual.
 
@@ -72,7 +72,7 @@ backend/
 | `finished` | `core`, `inventory`, `references`, `production`, `quality` | Ingreso de las aptas de una inspección al inventario final, existencias por talla y color y libro de movimientos; lee `Inspeccion` de `quality`, `Lote` y `LoteTalla` de `production`, `Variante` de `references` y reutiliza el consecutivo y el estado de la orden de salida de `inventory` |
 | `sales` | `core`, `inventory`, `references`, `finished` | Clientes, precios por referencia y factura POS interna (no electrónica) con su PDF (reportlab) y su anulación; al facturar descuenta el stock y escribe en el libro de `finished` (`SALIDA_VENTA` y `DEVOLUCION_VENTA`) reutilizando sus servicios de bloqueo de saldos, y el consecutivo y el formato de error de `inventory` |
 | `reports` | `core`, `inventory`, `references`, `sales` | Dos vistas SQL materializadas (`reportes_mv_produccion_ordenes` y `reportes_mv_ventas_referencias`, creadas por su migración `0001`) mapeadas como modelos de solo lectura (`managed = False`), y el servicio que las filtra y agrega: indicadores de producción, calidad y ventas. Lee además el saldo financiero de `sales` y los catálogos de `inventory`, `references` y `sales` para los filtros |
-| `shipping` | `core`, `inventory`, `sales` | Guías de envío de las facturas con su semáforo y su historial, relaciones de despacho `RD-0001` con PDF (reportlab), devolución física (reutiliza `reconcile_collection` de `sales`, que reingresa el stock) y rastreo opcional de Interrapidísimo con la API de Track123 (`track123.py` es el cliente HTTP y `tracking.py` aplica la respuesta); reutiliza el consecutivo y el formato de error de `inventory` |
+| `shipping` | `core`, `inventory`, `sales` | Guías de envío de las facturas con su semáforo y su historial, relaciones de despacho `RD-0001` con PDF (reportlab), devolución física (reutiliza `register_return` de `sales`, que reingresa el stock una sola vez desde la guía devuelta) y rastreo opcional de Interrapidísimo con la API de Track123 (`track123.py` es el cliente HTTP y `tracking.py` aplica la respuesta); reutiliza el consecutivo y el formato de error de `inventory` |
 
 `quality` depende de `production` (lee `Lote` y `RecepcionLote`, y no modifica ninguno); nada de `production` depende de `quality`. `inventory` y `references` se conocen entre sí: la orden de salida apunta a una referencia y la ficha técnica lee el catálogo de productos. `finished` depende de `quality` (lee la inspección y no la modifica) y de `production` (lee el lote y lo planificado por talla), y nada de ellas depende de `finished`. `sales` depende de `finished` (usa su libro y su bloqueo de saldos); la única referencia en sentido contrario es la llave foránea opcional `MovimientoTerminado.factura`, declarada con el nombre `"sales.FacturaVenta"` para no importar el modelo. `production` y `purchasing` solo consumen a `inventory` a través de sus servicios, nunca escriben saldos por su cuenta. `shipping` depende de `sales` (la guía apunta a la factura y la devolución usa su conciliación de cartera) y `sales` llama a `shipping.services` para crear la guía al facturar y para anular la guía al anular la factura; ese sentido contrario se resuelve con un import local dentro de la función, y `sales` solo lee la guía vigente para mostrarla en la factura (campo `guia`). `FacturaVenta.transportadora` y `numero_guia` son el espejo de la guía vigente y solo los escribe el servicio de guías. `reports` solo lee: cruza por SQL las tablas de producción, calidad, referencias y ventas, y ninguna otra app depende de ella. La lavandería vive dentro de `production` (no es una app aparte): `quality` lee sus recepciones para saber qué lotes inspeccionar.
 
@@ -99,7 +99,7 @@ cuando hay reglas de negocio, `services.py`. En `production` el motor de costeo 
 para probarlos por separado. Cada app guarda sus constantes en `catalog.py`.
 
 Las tablas llevan el prefijo de su módulo: `seguridad_`, `inventario_`, `referencias_`, `produccion_` (incluye las de lavandería), `compras_`, `calidad_`, `terminado_`, `ventas_` y `envios_`
-(ver [convenciones](convenciones-base-de-datos.md)). Son 54 tablas en 9 apps; los reportes agregan dos vistas SQL `reportes_mv_*` que no son tablas de modelo.
+(ver [convenciones](convenciones-base-de-datos.md)). Son 56 tablas en 9 apps; los reportes agregan dos vistas SQL materializadas `reportes_mv_*` que no son tablas de modelo. El detalle de clases por módulo está en el [diagrama de clases de análisis](diagrama-clases.md).
 
 ## Patrones que se repiten
 

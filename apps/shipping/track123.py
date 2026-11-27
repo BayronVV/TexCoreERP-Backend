@@ -44,6 +44,7 @@ def default_transport(method, url, headers, body):
 
 
 class Track123Client:
+    """Cliente HTTP para consultar cuota, inscribir y rastrear guías en Track123 v2.1."""
     def __init__(self, api_key, base_url=None, transport=None):
         self.api_key = api_key
         self.base_url = (base_url or settings.TRACK123_BASE_URL).rstrip("/")

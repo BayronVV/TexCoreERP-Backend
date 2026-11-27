@@ -85,9 +85,11 @@ Convención de tipos de prueba en la tabla:
 | Retiro de salida a lavandería provisional de Inventario | TE-171 *(HU 5.3)* | Incl. en `inventory` *(rechazo 400 + historial LV)* | +1 contrato UI *(`orderLines.test.js`)* | Servicios + Serializers + Contrato UI + E2E API | Validada en `apps.inventory` y flujo real lavandería (`apps.production`) |
 | Unificación de existencias de producto terminado | TE-170 *(HU 6.5)* | 6 / 3 | +2 *(`orderLines.test.js`)* | Lógica pura + Migración datos + Contrato UI + E2E API + N+1 | **Sí (crítico):** alta automática con `select_for_update`, restricción única por referencia, `heredado` y alertas vivas |
 | Seguridad, bloqueo, accesos y auditoría | TE-175, TE-179 | +70 *(incl. en suites)* | — | Throttling + Auditoría + Permisos + E2E API | Validada en `apps.users`, `apps.reports` y `apps.core` sobre PostgreSQL 16 |
-| **Total sistema** | **TE-42 a TE-181 + TE-170 a TE-177** | **1076** | **264** | **Lógica + Servicios/UI + E2E API** | **7 suites completas + `core.test_postgres` sobre PostgreSQL 16** |
+| Documentación, trazabilidad H07 y método de costeo H02 | TE-182 | `mkdocs build --strict` | — | Trazabilidad 100 % HUs + Clases + Costeo + Docstrings + READMEs | Publicado en GitHub Pages (`docs/`) |
+| Pruebas E2E sustentación, concurrencia ventas y 100 % RNF01 | TE-187 | 11 / 4 *(120→107, PT, concurrencia ventas, reportes, Track123, 123 rutas)* | 3 *(`uiErrorHandling.test.js` + `reports.test.js`)* | E2E flujo completo + Concurrencia PostgreSQL `Barrier(2)` + 100 % rutas `401`/`403` + Contratos UI | **Sí (crítico):** `ConcurrencyInvoicingTests`, `test_e2e_sustentacion` y `test_permisos_rutas` |
+| **Total sistema** | **TE-42 a TE-182 + TE-187** | **1087** | **267** | **Lógica + Servicios/UI + E2E API** | **7 suites completas + `core.*` sobre PostgreSQL 16** |
 
-> Nota sobre el conteo de ejecución: el corredor de Django ejecuta **1076** casos (`OK`, con 2 pruebas multi-hilo condicionales en SQLite — `ConcurrencyOrderTests` y `ConcurrencyTrackingTests` — que corren obligatoriamente en el job PostgreSQL).
+> Nota sobre el conteo de ejecución: el corredor de Django ejecuta **1087** casos (`OK`, con 3 pruebas multi-hilo condicionales en SQLite — `ConcurrencyOrderTests`, `ConcurrencyInvoicingTests` y `ConcurrencyTrackingTests` — que corren obligatoriamente en el job PostgreSQL). Ver el paso a paso en vivo en el [guion de sustentación](guion-sustentacion.md).
 
 ---
 

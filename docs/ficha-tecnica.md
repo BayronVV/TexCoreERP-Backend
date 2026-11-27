@@ -78,33 +78,21 @@ Tres sprints, todos cerrados. El Sprint 3 (19/10 – 09/11/2026) entregó las 9 
 - **Tablero de reportes gerenciales (HU 7.4, TE-65):** indicadores de producción, calidad y ventas con filtros, sobre vistas SQL materializadas.
 - **Datos de demostración:** comandos `seed_demo_*` y `seed_demo_completo` para poblar un entorno (en Render, con `SEED_DEMO_ON_DEPLOY`); los datos de los servidores desplegados son simulados.
 
-### Sprint 4 (planeado)
+### Sprint 4 (en cierre)
 
-Backlog de deuda técnica y mejoras en Jira (TE-169 a TE-178, TE-184 y subtareas TE-179 a TE-183 y TE-185; 40 puntos propuestos). Resumen en la [página principal](index.md).
+Entregas integradas en `pruebas` y `main`: compras con aprobación independiente (**TE-178**), unificación de producto terminado (**TE-170**), retiro de salida LV en Inventario (**TE-171**), lavandería confiable (**TE-172**), coherencia cartera-guías (**TE-173**), costo de fábrica desde producción (**TE-174**), filtros avanzados, paginación y devoluciones en reportes (**TE-177**), seguridad/auditoría (**TE-175**, **TE-179**), CI con PostgreSQL (**TE-180**), observabilidad/OpenAPI (**TE-181**), pruebas E2E de sustentación (**TE-187**) y documentación/trazabilidad completa (**TE-182**). Resumen en la [página principal](index.md) y en la [matriz de trazabilidad](matriz-trazabilidad.md).
 
 ## Calidad
 
 | Aspecto | Valor |
 |---|---|
-| Pruebas automatizadas del backend | 928 (usuarios, inventario, referencias, producción con lavandería, compras, calidad, producto terminado, ventas con cartera, envíos, reportes y salud), todas aprobadas |
-| Pruebas automatizadas del frontend | 221 (lógica de las pantallas), todas aprobadas |
-| Rutas de la API | 114 (sin contar la documentación): 8 públicas (salud, registro, inicio de sesión, renovación y recuperación de contraseña) y 106 que exigen sesión y un permiso |
-| Documentación de la API | 157 operaciones descritas; el esquema se valida con `manage.py spectacular --validate` y sale con **0 errores y 0 advertencias** (las vistas de lavandería y reportes ya describen su petición y su respuesta) |
-| Modelo de datos | 54 tablas en 9 apps (usuarios, inventario, referencias, producción, compras, calidad, producto terminado, ventas y envíos), con diagrama entidad-relación generado desde los modelos. La app de reportes no agrega tablas: lee dos vistas SQL materializadas |
+| Pruebas automatizadas del backend | 1087 (usuarios, inventario, referencias, producción con lavandería, compras, calidad, producto terminado, ventas con cartera y concurrencia, envíos, reportes, E2E de sustentación y 100 % rutas RNF01), todas aprobadas |
+| Pruebas automatizadas del frontend | 267 (lógica de las pantallas, persistencia de filtros y manejo de errores UI), todas aprobadas |
+| Rutas de la API | 123 (sin contar `/api/docs/`, `/api/redoc/` ni `/api/schema/`): 8 públicas (salud, registro, inicio de sesión, renovación y recuperación de contraseña), 1 de sesión (`/api/auth/me/`) y 114 que exigen sesión y un permiso (`HasPermission`) |
+| Documentación de la API | 166 operaciones descritas; el esquema se valida con `manage.py spectacular --validate --fail-on-warn` y sale con **0 errores y 0 advertencias** |
+| Modelo de datos | 56 tablas en 9 apps (usuarios, inventario, referencias, producción, compras, calidad, producto terminado, ventas y envíos), con diagrama entidad-relación generado desde los modelos y diagrama de clases de análisis. La app de reportes agrega dos vistas SQL materializadas |
 | Tiempo de respuesta medido | Consulta a la base en producción (`/api/health/db/`): mediana 0,41 s, n = 15 (7 oct 2026) |
 
 ## Requerimientos
 
-27 requerimientos funcionales y 10 no funcionales, trazados a 10 historias de usuario y 12 casos de uso en
-el documento de requerimientos del proyecto. Con el Sprint 3 quedaron abordados los requerimientos **RF17 a RF26**:
-
-| Requerimientos | Alcance | Historias |
-|---|---|---|
-| RF17 y RF18 | Remisión a lavandería y recepción con faltantes | TE-57, TE-58 |
-| RF19 y RF20 | Catálogo de defectos y registro de prendas aptas y marras | TE-59 |
-| RF21 y RF22 | Ingreso de producto terminado por talla y ajuste manual | TE-60, TE-61 |
-| RF23 | Facturación y descuento de inventario al facturar | TE-62 |
-| RF24 y RF25 | Guías de envío y recaudo contraentrega | TE-63, TE-64 |
-| RF26 | Reportes gerenciales | TE-65 |
-
-Pendiente: los filtros avanzados multicriterio (RF27) quedan para el Sprint 4 (TE-177); el tablero de reportes ya filtra por fechas, tipo de jean, referencia, estados y tipo de cliente.
+27 requerimientos funcionales (**RF01 a RF27**) y 10 no funcionales (**RNF01 a RNF10**), trazados a sus casos de uso e historias de usuario en la [matriz de trazabilidad](matriz-trazabilidad.md). Con el Sprint 3 y el Sprint 4 quedaron implementados los requerimientos **RF01 a RF27** (incluidos filtros avanzados multicriterio **RF27** en `TE-177`).

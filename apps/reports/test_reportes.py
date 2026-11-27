@@ -112,9 +112,20 @@ class ReportesGerencialesTests(SalesBase):
         role = Role.objects.create(code="CONSULTOR", name="Consultor")
         role.permissions.set(ModulePermission.objects.filter(code="reportes.ver"))
         reader = client_for(make_user("consultor@t.co", "CONSULTOR"))
-        self.assertEqual(reader.get(reverse("reportes-gerencial")).status_code, 200)  # consulta: sí
+        reader_res = reader.get(reverse("reportes-gerencial"))
+        self.assertEqual(reader_res.status_code, 200)  # consulta: sí
+        self.assertIsNone(reader_res.json()["kpis"]["saldo_financiero_empresa"])  # sin ventas.conciliar no ve la caja
         denied = reader.post(reverse("reportes-refrescar"))
         self.assertEqual(denied.status_code, 403)  # refrescar: no, solo con reportes.gestionar
+
+        self.manager.post(
+            reverse("ventas_factura_conciliar", args=[self.invoice1["id"]]),
+            {"nota": "Entregada en mano y pagada en efectivo"},
+            format="json",
+        )
+        manager_res = self.manager.get(reverse("reportes-gerencial"))
+        self.assertEqual(manager_res.status_code, 200)
+        self.assertEqual(manager_res.json()["kpis"]["saldo_financiero_empresa"], self.invoice1["total"])
         self.assertEqual(self.manager.post(reverse("reportes-refrescar")).status_code, 200)
 
     def test_fechas_y_referencia_invalidas_responden_400_con_mensaje(self):

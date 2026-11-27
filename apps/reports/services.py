@@ -408,7 +408,7 @@ def build_management_report(params, auto_refresh=False):
         sales_qs.filter(estado_cobro=sales_catalog.COLLECT_PENDING).aggregate(val=Sum("total"))["val"] or 0
     )
 
-    caja = SaldoFinanciero.objects.order_by("id").first()
+    caja = SaldoFinanciero.objects.filter(nombre=sales_catalog.CASH_BOX).first()
     saldo_empresa = caja.saldo_actual if caja else 0
 
     aptas_tot = prod_totals["prendas_aptas"] or 0

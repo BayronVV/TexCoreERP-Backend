@@ -703,58 +703,39 @@ stateDiagram-v2
 
 ### Reglas de la conciliación
 
-`POST /api/ventas/facturas/<id>/conciliar/` ejecuta `reconcile_collection` en una sola transacción, con la factura y la caja bloqueadas por fila:
+`POST /api/ventas/facturas/<id>/conciliar/` (`ventas.conciliar`) ejecuta `confirm_payment` en una sola transacción, con la factura y la `Caja General` bloqueadas por fila:
 
 | Regla | Detalle |
 |---|---|
-| Solo `PAGADO` o `DEVOLUCION` | El cuerpo lleva `estado_cobro` con uno de esos dos valores; cualquier otro responde `400`. |
 | Solo facturas emitidas y por cobrar | Una factura anulada responde `400` («No se puede conciliar una factura anulada.»), y una ya conciliada, «La factura ya fue gestionada como Pagado» (o «Devolución»). Una factura inexistente responde `404`. |
-| Recaudo (`PAGADO`) | Suma el `valor_a_recaudar` al saldo financiero, marca la factura `PAGADO` con `fecha_cobro` y `cobrado_por`, y escribe un movimiento `RECAUDO` con el saldo antes y después. Las `observaciones` (hasta 500) son opcionales; si no vienen, el movimiento dice «Recaudo de FV-0001 confirmado». |
-| Devolución (`DEVOLUCION`) | Exige `motivo` de **5 a 255 caracteres** (sin contar espacios de los extremos). Reingresa **todas las líneas** de la factura con un movimiento `DEVOLUCION_VENTA` en el libro de [producto terminado](#producto-terminado-ajuste-manual-hu-63-te-61) (motivo «Devolución contraentrega de FV-0001: …»), marca la factura `DEVOLUCION` y guarda el motivo. El saldo financiero no cambia: el movimiento de cartera `DEVOLUCION` queda con monto cero. |
-| Devolución completa | Se devuelve la factura entera; no hay devoluciones parciales. |
+| Guía entregada o sin guía con nota | Si la factura tiene guía vigente, solo se confirma el pago cuando está `ENTREGADA`; en otro estado responde `400` indicando el estado actual de la guía. Si no tiene guía, `nota` es obligatoria (**10 a 255 caracteres**). |
+| Recaudo (`PAGADO`) | Suma el `valor_a_recaudar` al saldo financiero de `Caja General`, marca la factura `PAGADO` con `fecha_cobro` y `cobrado_por`, y escribe un movimiento `RECAUDO` con el saldo antes y después. La `nota` (o su alias `observaciones`, hasta 255 caracteres) queda en el movimiento de cartera y **no modifica `observaciones` de la factura**; si no viene y tiene guía entregada, el movimiento dice «Recaudo de FV-0001 confirmado». |
+| Camino único a la devolución | La devolución física **solo** se registra desde `POST /api/envios/guias/<id>/devolucion/` (`envios.devolucion`), que exige guía `DEVUELTA` y factura por cobrar. Ejecuta `register_return` una sola vez: reingresa **todas las líneas** con `DEVOLUCION_VENTA` en [producto terminado](#producto-terminado-ajuste-manual-hu-63-te-61), marca `DEVOLUCION` con motivo (5 a 255) y registra un movimiento de cartera con monto cero sin alterar la caja. |
 | Sin doble efecto | Como la factura sale de `POR_COBRAR` una sola vez, un segundo envío (doble clic, reintento) responde `400` y no suma dos veces ni reingresa dos veces el stock. |
-| Otro camino a la devolución | `POST /api/envios/guias/<id>/devolucion/` (módulo de [Envíos](#envios-guias-de-envio-y-relaciones-de-despacho-hu-72-te-63)) llama a la misma función con el motivo de la guía devuelta, y exige que la factura siga por cobrar. |
 
-`GET /api/ventas/cartera/resumen/` calcula, **solo sobre facturas emitidas**: `saldo_financiero` (el de la caja), `total_por_cobrar` y `conteo_por_cobrar`,
-`total_recaudado` y `conteo_pagadas`, y `total_devoluciones` y `conteo_devoluciones` (suma del valor de la mercancía devuelta, no dinero). El listado de facturas
-(`GET /api/ventas/facturas/`) acepta el filtro `estado_cobro` (`POR_COBRAR`, `PAGADO` o `DEVOLUCION`) y la factura trae `estado_cobro_nombre`, `fecha_cobro`,
-`cobrado_por_nombre` y `motivo_devolucion`.
+`GET /api/ventas/cartera/resumen/` (`ventas.ver`) calcula en el servidor, **solo sobre facturas emitidas**: `saldo_financiero` (`null` si el usuario no tiene `ventas.conciliar`), `total_por_cobrar` y `conteo_por_cobrar`, `total_recaudado` y `conteo_pagadas`, y `total_devoluciones` y `conteo_devoluciones` (suma del valor de la mercancía devuelta, no dinero). De forma equivalente, `GET /api/ventas/panel/` calcula en el servidor las cifras diarias del Panel de ventas (`facturas_hoy`, `vendido_hoy`, `anuladas_hoy`, `por_cobrar`, `facturas_por_cobrar`). El listado `GET /api/ventas/facturas/` acepta los filtros combinables `estado_cobro`, `estado`, `transportadora`, `cliente`, `vendedor`, `referencia`, `desde`, `hasta` y `q`, además de paginación (`page`, `page_size`), y expone `estado_cobro_nombre`, `fecha_cobro`, `cobrado_por_nombre`, `motivo_devolucion`, `guia` y `accion_cartera`.
 
 ### Rutas y permisos
 
 | Ruta | Operaciones | Permiso |
 |---|---|---|
-| `/api/ventas/facturas/<id>/conciliar/` | `POST` con `estado_cobro`, `motivo` (devolución) y `observaciones` (recaudo): responde la factura actualizada | `ventas.gestionar` |
-| `/api/ventas/cartera/resumen/` | `GET`: totales de cartera y saldo financiero | `ventas.ver` |
-| `/api/ventas/facturas/` | `GET` con el filtro `estado_cobro` | `ventas.ver` |
+| `/api/ventas/facturas/<id>/conciliar/` | `POST` con `nota` (opcional con guía `ENTREGADA`; obligatoria ≥ 10 caracteres sin guía): responde la factura actualizada | `ventas.conciliar` |
+| `/api/ventas/cartera/resumen/` | `GET`: totales de cartera y `saldo_financiero` (nulo sin `ventas.conciliar`) | `ventas.ver` |
+| `/api/ventas/panel/` | `GET`: cifras del día y cartera pendiente calculadas en base de datos | `ventas.ver` |
+| `/api/ventas/facturas/` | `GET` paginado y combinable (`estado_cobro`, `estado`, `transportadora`, `desde`, `hasta`, `q`) | `ventas.ver` |
 
-**Permisos:** no hay un permiso propio de cartera. Conciliar usa `ventas.gestionar`, que tienen el **Vendedor** y el Administrador; el resumen usa `ventas.ver` (Vendedor,
-Gerente y Administrador). Una cuenta sin `ventas.gestionar` (la Secretaria, por ejemplo) recibe `403`. Ver [roles y permisos](roles-y-permisos.md).
+**Permisos:** `ventas.conciliar` separa la facturación del recaudo (lo tienen **Gerente**, **Secretaria** y Administrador; el **Vendedor** recibe `403` y tampoco ve el saldo financiero de la caja). La devolución exige `envios.devolucion` (Gerente y Almacenista). Consultar cartera y el resumen usa `ventas.ver`. Ver [roles y permisos](roles-y-permisos.md).
 
-**Errores `400` más comunes:** `estado_cobro` distinto de `PAGADO` o `DEVOLUCION`, factura anulada, factura ya gestionada, devolución sin motivo o con un motivo de
-menos de 5 caracteres, y `motivo` de más de 255 u `observaciones` de más de 500 caracteres.
+**Errores `400` más comunes:** factura anulada, factura ya conciliada, guía vigente en estado distinto de `ENTREGADA`, factura sin guía con `nota` menor a 10 caracteres, o `nota` mayor a 255 caracteres.
 
-**Pantalla** (*Ventas y Despachos → Gestión de cartera*, `/ventas/cartera`, con `ventas.ver`): tarjetas con el saldo financiero, lo pendiente de recaudo, lo recaudado y las
-devoluciones; pestañas *Pendientes de recaudo* (la de entrada), *Todas las facturas*, *Pagadas* y *Devoluciones*; búsqueda y filtro de transportadora; y, con `ventas.gestionar`, las acciones
-**Confirmar recaudo** y **Registrar devolución** (con su motivo). Muestra el estado de la guía de cada factura, pero solo como información.
+**Pantalla** (*Ventas y Despachos → Gestión de cartera*, `/ventas/cartera`, con `ventas.ver`): tarjetas con el saldo financiero (visible solo con `ventas.conciliar`), lo pendiente de recaudo, lo recaudado y las devoluciones; pestañas *Pendientes de recaudo* (la de entrada), *Todas las facturas*, *Pagadas* y *Devoluciones*; búsqueda combinable con transportadora y rango de fechas, filtros persistidos en sesión con limpieza en un clic y paginación en servidor (`ListPager`); el estado de la guía y `accion_cartera` determinan qué botón ve el usuario: **Confirmar pago** (con `ventas.conciliar`) o **Devolución en Envíos** (con `envios.devolucion`, enlace prefiltrado a `/envios/guias?estado=DEVUELTA&q=<factura>`).
 
-**Pruebas:** `apps/sales/test_ventas.py`, clase de cartera, cubre que el recaudo actualice el saldo y escriba el movimiento con el saldo antes y después, que la devolución
-reingrese el stock sin tocar el saldo, que no se pueda conciliar dos veces ni una factura anulada, que una factura recaudada no se pueda anular, el resumen con el filtro `estado_cobro`
-y los permisos (la Secretaria recibe `403` y el Administrador puede). Para correrlas: `python manage.py test apps.sales.test_ventas --noinput`.
+**Pruebas:** `apps/sales/test_ventas.py` (cartera, caja única, segregación de funciones, panel > 200 facturas y resumen) y `apps/shipping/test_cartera_guias.py` (reglas cruzadas guía-pago-devolución, factura ya recaudada y permisos). Para correrlas: `python manage.py test apps.sales.test_ventas apps.shipping.test_cartera_guias --noinput`.
 
 !!! warning "Alcance y límites actuales"
-    La auditoría de deuda técnica del Sprint 4 (`Deuda-Tecnica-Sprint-4.md`) los agrupa en la **HU 7.5 «Coherencia entre cartera y guías de envío» (TE-173)**
-    y en la tarea de seguridad **TE-179** (subtarea de TE-184):
-
-    - **La conciliación no mira la guía de envío:** se puede cobrar con la guía devuelta, o reingresar el stock con la guía en tránsito. Solo la ruta de Envíos (`…/guias/<id>/devolucion/`) lo protege. Una guía `ENTREGADA` solo avisa en el resumen de Envíos; no obliga a recaudar (TE-173).
-    - **Permiso del Vendedor:** quien factura puede dar por pagadas sus propias facturas, porque `conciliar` usa `ventas.gestionar`. Se prevé un permiso propio `ventas.conciliar` (TE-173).
-    - **Nota del cobro dentro de la factura:** el recaudo concatena las observaciones en `observaciones` de la factura, que debería ser inalterable, y el resultado puede superar los 500 caracteres en PostgreSQL. Se propone guardarla solo en el movimiento de cartera (TE-173).
-    - **Caja sin restricción de unicidad:** `SaldoFinanciero.nombre` no es único, así que una carrera podría duplicar la «Caja General» (TE-173).
-    - **Resumen visible para el Vendedor:** el saldo de la empresa lo ve cualquiera con `ventas.ver`; decidir quién debe verlo es parte de TE-179.
-    - **Indicadores del Panel de ventas:** se calculan en el cliente con las últimas 200 facturas, y la pantalla de cartera también pide 200; con más facturas, «Por cobrar» y «Vendido hoy» pueden salir mal. Se pasarán al servidor, como ya hace `cartera/resumen` (TE-173).
-    - **Sin contado, crédito ni abonos:** toda la venta es contraentrega y el cobro es de una sola vez. Es una decisión del PM y no está en el Sprint 4.
-    - **Sin comisión ni plazo de la transportadora:** el recaudo entra completo, sin descontar la comisión ni modelar cuándo gira la transportadora; el flete de una devolución se reporta en Envíos, no se descuenta aquí.
-    - **Sin contabilidad:** el «saldo financiero» es un acumulado de recaudos, no una caja contable; el alcance del proyecto excluye la contabilidad.
+    - **Sin contado, crédito ni abonos:** toda la venta es contraentrega y el cobro es de una sola vez. Es una decisión del PM y no está en el alcance del Sprint 4.
+    - **Sin comisión ni plazo de la transportadora:** el recaudo entra completo, sin descontar la comisión ni modelar cuándo gira la transportadora; el flete de una devolución se reporta en Envíos y en el tablero de reportes, no se descuenta aquí.
+    - **Sin contabilidad:** el «saldo financiero» es un acumulado de recaudos en `Caja General`, no una caja contable; el alcance del proyecto excluye la contabilidad.
 
 ## Envíos: guías de envío y relaciones de despacho (HU 7.2, TE-63)
 

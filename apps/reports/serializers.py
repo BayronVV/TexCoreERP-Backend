@@ -44,7 +44,7 @@ class ReporteKpisSerializer(serializers.Serializer):
     utilidad_bruta = serializers.IntegerField()
     recaudado_periodo = serializers.IntegerField()
     pendiente_recaudo_periodo = serializers.IntegerField()
-    saldo_financiero_empresa = serializers.IntegerField()
+    saldo_financiero_empresa = serializers.IntegerField(allow_null=True)
     devoluciones_guias = serializers.IntegerField()
     flete_devoluciones_total = serializers.IntegerField()
 

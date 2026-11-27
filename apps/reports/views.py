@@ -5,6 +5,8 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.sales import catalog as sales_catalog
+
 from . import catalog, services
 from .serializers import MetadatosReporteSerializer, ReporteGerencialSerializer, ReporteRefrescoSerializer
 
@@ -32,6 +34,8 @@ class ReporteGerencialView(APIView):
 
     @extend_schema(
         summary="Consultar tablero analítico gerencial con filtros avanzados",
+        description="Consolida producción, calidad, ventas y devoluciones por vendedor según los filtros. "
+                    "`kpis.saldo_financiero_empresa` llega en `null` si el usuario no tiene `ventas.conciliar`.",
         parameters=[
             OpenApiParameter("desde", str, description="Fecha inicial (AAAA-MM-DD)"),
             OpenApiParameter("hasta", str, description="Fecha final (AAAA-MM-DD)"),
@@ -51,6 +55,8 @@ class ReporteGerencialView(APIView):
     )
     def get(self, request):
         data = services.build_management_report(request.query_params)
+        if not request.user.has_permission_code(sales_catalog.SALES_RECONCILE):
+            data["kpis"]["saldo_financiero_empresa"] = None
         return Response(ReporteGerencialSerializer(data).data)
 
 

@@ -227,12 +227,17 @@ class CatalogCreateTests(CatalogBase):
         self.assertEqual(self.new_product(nombre="En rollos", unidad="rollo").status_code, 201)
 
     def test_pantalones_solo_en_unidades(self):
-        for category in ("PANTALON_GENERICO", "PRODUCTO_TERMINADO"):
-            bad = self.new_product(nombre=category, categoria=category, unidad="m", ancho_util=None, composicion="")
-            self.assertEqual(bad.status_code, 400)
-        ok = self.new_product(nombre="MOD-SLIM", categoria="PRODUCTO_TERMINADO", unidad="unidad", ancho_util=None,
-                              composicion="").json()
-        self.assertEqual((ok["tipo"], ok["codigo"][:3]), ("TERMINADO", "PT-"))
+        bad = self.new_product(nombre="PANTALON_GENERICO", categoria="PANTALON_GENERICO", unidad="m",
+                               ancho_util=None, composicion="")
+        self.assertEqual(bad.status_code, 400)
+        ok_gen = self.new_product(nombre="Genérico 14oz", categoria="PANTALON_GENERICO", unidad="unidad",
+                                  ancho_util=None, composicion="").json()
+        self.assertEqual((ok_gen["tipo"], ok_gen["codigo"][:3]), ("GENERICO", "PG-"))
+        # Producto terminado ya no se crea manualmente en el catálogo (TE-170): nace desde Referencias.
+        blocked = self.new_product(nombre="MOD-SLIM", categoria="PRODUCTO_TERMINADO", unidad="unidad",
+                                   ancho_util=None, composicion="")
+        self.assertEqual(blocked.status_code, 400)
+        self.assertIn("Referencias", str(blocked.json()["categoria"][0]))
 
     def test_nombre_repetido_en_la_misma_categoria(self):
         self.assertEqual(self.new_product().status_code, 201)

@@ -299,6 +299,44 @@ class PostgresVerificationTests(TransactionTestCase):
         self.assertIn("kpis", report)
         self.assertIn("consolidado_tipo_jean", report)
 
+    def test_te170_unificacion_pt_bloqueos_y_restricciones_en_postgres(self):
+        """TE-170: alta automática con select_for_update, unicidad por referencia y cálculo vivo en PostgreSQL."""
+        from apps.finished.models import StockTerminado
+        from apps.inventory.finished_link import ensure_finished_product_for_reference
+        from apps.inventory.services import stock_alerts
+
+        ref = Referencia.objects.create(
+            codigo="REF-PG-170",
+            nombre="Jean PG Unificado",
+            ajuste="RECTO",
+            estado=reference_catalog.ACTIVE,
+        )
+        var = Variante.objects.create(referencia=ref, talla="30", color="Azul")
+        pt = ensure_finished_product_for_reference(ref)
+        pt_same = ensure_finished_product_for_reference(ref)
+        self.assertEqual(pt.id, pt_same.id)
+        self.assertEqual(pt.stock_minimo, Decimal("30"))
+
+        StockTerminado.objects.create(variante=var, cantidad=24)
+        admin = client_for(make_user("pg_alm_170@t.co", "ADMIN"))
+        rows = admin.get(reverse("inventario_productos"), {"tipo": "TERMINADO"}).json()
+        hit = next(row for row in rows if row["id"] == pt.id)
+        self.assertEqual(hit["stock_actual"], "24.00")
+        self.assertTrue(hit["bajo_minimo"])
+        self.assertTrue(any(a["id"] == pt.id and a["stock"] == "24.00" for a in stock_alerts()))
+
+        with transaction.atomic():
+            with self.assertRaises(Exception):
+                Producto.objects.create(
+                    codigo="PT-PG-DUP",
+                    nombre="Duplicado",
+                    tipo=inventory_catalog.FINISHED_PANTS,
+                    categoria=inventory_catalog.CAT_FINISHED,
+                    unidad="unidad",
+                    referencia=ref,
+                    heredado=True,
+                )
+
 
 class MaxLengthValidationTests(TestCase):
     """Verifica que entradas que exceden max_length responden 400 y no causan DataError (500) en PostgreSQL."""

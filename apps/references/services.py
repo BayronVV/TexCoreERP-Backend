@@ -4,7 +4,9 @@ transacción: o se guarda todo (referencia, variantes, imágenes) o no se guarda
 """
 from django.db import IntegrityError, transaction
 
+from apps.finished.models import StockTerminado
 from apps.inventory import catalog as inventory_catalog
+from apps.inventory.finished_link import ensure_finished_product_for_reference
 from apps.inventory.services import IMAGE_TYPES, detect_type, fail, next_code
 
 from . import catalog
@@ -72,6 +74,8 @@ def create_reference(*, user, data, variants):
     except IntegrityError:
         fail("Ya existe una referencia con ese nombre.", "nombre")
     sync_variants(reference, variants)
+    if variants:
+        ensure_finished_product_for_reference(reference)
     return reference
 
 
@@ -99,6 +103,8 @@ def update_reference(reference, data, variants=None):
             reference.save()
     except IntegrityError:
         fail("Ya existe una referencia con ese nombre.", "nombre")
+    if reference.variantes.exists() or reference.productos_terminados.exists():
+        ensure_finished_product_for_reference(reference)
     return reference
 
 
@@ -121,6 +127,8 @@ def change_state(reference, new_state):
             fail("Para activarla sube al menos una imagen del prototipo.", "estado")
     reference.estado = new_state
     reference.save(update_fields=["estado", "updated_at"])
+    if new_state == catalog.ACTIVE:
+        ensure_finished_product_for_reference(reference)
     return reference
 
 
@@ -134,11 +142,14 @@ def archive_reference(reference):
         fail("Descontinúa la referencia antes de archivarla.", "estado")
     if reference.ordenes.filter(estado=inventory_catalog.STATUS_OPEN).exists():
         fail("La referencia tiene órdenes en proceso; ciérralas o anúlalas antes de archivarla.", "estado")
+    if StockTerminado.objects.filter(variante__referencia=reference, cantidad__gt=0).exists():
+        fail("La referencia tiene existencias en Producto Terminado; ajústalas a cero antes de archivarla.", "estado")
     for ficha in reference.fichas.all():
         ficha.lineas.all().delete()
     reference.fichas.all().delete()
     reference.variantes.all().delete()
     reference.imagenes.all().delete()
+    reference.productos_terminados.all().delete()
     reference.delete()
 
 

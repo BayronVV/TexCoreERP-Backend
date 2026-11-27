@@ -126,6 +126,7 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
   administradores, asignar roles con permisos de Seguridad, dar o quitar esos permisos ni editar los de su propio rol.
 - **Nadie sobre sí mismo:** no se cambia el propio rol ni se desactiva o elimina la propia cuenta, y siempre queda al
   menos un administrador activo.
+- **Unificación de existencias de producto terminado (HU 6.5, TE-170):** sin importar el permiso de Inventario, los productos `PRODUCTO_TERMINADO` (`PT-xxxx`) no se crean manualmente (nacen desde Referencias) ni admiten movimientos manuales desde `/api/inventario/ingresos/` o `/api/inventario/ordenes/`. Su saldo en Inventario es de solo lectura calculado en vivo desde Producto Terminado; los productos heredados anteriores no se editan ni eliminan para conservar trazabilidad.
 - **Calidad no se corrige:** una inspección registrada no se edita ni se borra, ni siquiera con `calidad.gestionar` o siendo
   administrador; la ruta no existe.
 - **Un ingreso no se edita:** un ingreso de producto terminado registrado no se modifica ni se borra, ni siquiera con

@@ -4,7 +4,7 @@ from decimal import Decimal
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from . import catalog, services
+from . import catalog, finished_link, services
 from .models import Evidencia, Movimiento, OrdenSalida, Producto, Proveedor
 
 
@@ -14,11 +14,17 @@ def category_name(obj):
 
 
 class ProductoSerializer(serializers.ModelSerializer):
-    """Vista de inventario: con existencias. Es de solo lectura; el catálogo es quien edita."""
+    """Vista de inventario: con existencias. Para producto terminado enlazado lee el libro de Producto Terminado."""
 
     tipo_nombre = serializers.CharField(source="get_tipo_display", read_only=True)
     categoria_nombre = serializers.SerializerMethodField()
+    stock_actual = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True, source="stock_efectivo")
     bajo_minimo = serializers.SerializerMethodField()
+    referencia = serializers.IntegerField(source="referencia_id", allow_null=True, read_only=True)
+    referencia_codigo = serializers.CharField(source="referencia.codigo", read_only=True, default="")
+    referencia_nombre = serializers.CharField(source="referencia.nombre", read_only=True, default="")
+    referencia_estado = serializers.CharField(source="referencia.estado", read_only=True, default="")
+    es_terminado_enlazado = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Producto
@@ -26,6 +32,8 @@ class ProductoSerializer(serializers.ModelSerializer):
             "id", "codigo", "nombre", "tipo", "tipo_nombre", "categoria", "categoria_nombre", "unidad",
             "stock_actual", "stock_minimo", "bajo_minimo", "costo_promedio", "descripcion", "ancho_util", "color",
             "composicion", "tiene_imagen", "imagen_version",
+            "referencia", "referencia_codigo", "referencia_nombre", "referencia_estado",
+            "heredado", "es_terminado_enlazado",
         ]
         read_only_fields = fields
 
@@ -33,7 +41,11 @@ class ProductoSerializer(serializers.ModelSerializer):
         return category_name(obj)
 
     def get_bajo_minimo(self, obj) -> bool:
-        return obj.stock_minimo > 0 and obj.stock_actual <= obj.stock_minimo
+        return (
+            finished_link.is_alertable_product(obj)
+            and obj.stock_minimo > 0
+            and obj.stock_efectivo <= obj.stock_minimo
+        )
 
 
 class CatalogoSerializer(serializers.ModelSerializer):
@@ -43,6 +55,10 @@ class CatalogoSerializer(serializers.ModelSerializer):
     tipo_nombre = serializers.CharField(source="get_tipo_display", read_only=True)
     categoria_nombre = serializers.SerializerMethodField()
     unidades_permitidas = serializers.SerializerMethodField()
+    referencia = serializers.IntegerField(source="referencia_id", allow_null=True, read_only=True)
+    referencia_codigo = serializers.CharField(source="referencia.codigo", read_only=True, default="")
+    referencia_nombre = serializers.CharField(source="referencia.nombre", read_only=True, default="")
+    heredado = serializers.BooleanField(read_only=True)
     nombre = serializers.CharField(max_length=150)
     categoria = serializers.ChoiceField(choices=catalog.CATEGORY_CHOICES)
     unidad = serializers.ChoiceField(choices=catalog.UNITS)
@@ -61,9 +77,13 @@ class CatalogoSerializer(serializers.ModelSerializer):
         fields = [
             "id", "codigo", "nombre", "tipo", "tipo_nombre", "categoria", "categoria_nombre", "unidad",
             "unidades_permitidas", "stock_minimo", "descripcion", "ancho_util", "color", "composicion",
-            "tiene_imagen", "imagen_version", "created_at",
+            "tiene_imagen", "imagen_version", "referencia", "referencia_codigo", "referencia_nombre", "heredado",
+            "created_at",
         ]
-        read_only_fields = ["id", "codigo", "tipo", "tiene_imagen", "imagen_version", "created_at"]
+        read_only_fields = [
+            "id", "codigo", "tipo", "tiene_imagen", "imagen_version",
+            "referencia", "referencia_codigo", "referencia_nombre", "heredado", "created_at",
+        ]
 
     def get_categoria_nombre(self, obj) -> str:
         return category_name(obj)

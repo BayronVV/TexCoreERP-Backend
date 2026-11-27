@@ -42,7 +42,6 @@ PRODUCTS = [
     ("Remache", catalog.CAT_BUTTON, "unidad", "1500", "400", None, "Cobre", ""),
     ("Etiqueta de marca", catalog.CAT_LABEL, "unidad", "700", "200", None, "", ""),
     ("Pantalón genérico", catalog.CAT_GENERIC, "unidad", "0", "0", None, "", ""),
-    ("MOD-SKINNY 5 BOTONES V2", catalog.CAT_FINISHED, "unidad", "0", "0", None, "", ""),
 ]
 
 

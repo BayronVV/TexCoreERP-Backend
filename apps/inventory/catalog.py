@@ -1,4 +1,5 @@
 """Valores fijos del módulo de inventario, nombrados una sola vez."""
+from decimal import Decimal
 
 INVENTORY_VIEW = "inventario.ver"
 INVENTORY_MANAGE = "inventario.gestionar"
@@ -88,6 +89,8 @@ ORDER_LAUNDRY = "LAVANDERIA"
 ORDER_TYPES = [(ORDER_PRODUCTION, "Producción"), (ORDER_LAUNDRY, "Lavandería")]
 ORDER_PREFIX = {ORDER_PRODUCTION: "OP", ORDER_LAUNDRY: "LV"}
 LAUNDRY_REDIRECT_MSG = "El envío a lavandería se hace desde Producción → Lavandería."
+FINISHED_REDIRECT_MSG = "Las existencias de producto terminado se gestionan desde Producto Terminado."
+DEFAULT_FINISHED_MIN_STOCK = Decimal("30")
 
 STATUS_OPEN = "EN_PROCESO"
 STATUS_DONE = "COMPLETADA"

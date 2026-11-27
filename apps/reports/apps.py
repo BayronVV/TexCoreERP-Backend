@@ -8,6 +8,7 @@ REPORT_SOURCE_MODELS = (
     "quality.Inspeccion",
     "sales.FacturaVenta",
     "sales.DetalleVenta",
+    "shipping.Guia",
     "references.Variante",
     "references.Referencia",
 )

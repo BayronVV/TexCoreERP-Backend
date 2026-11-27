@@ -37,7 +37,7 @@ class VistaProduccionOrden(models.Model):
 class VistaVentasReferencia(models.Model):
     """
     Fila pre-agregada de ventas por factura y referencia de jean en la vista materializada `reportes_mv_ventas_referencias`.
-    Cruza facturas de venta, líneas de detalle, variantes y referencias (tipo de jean).
+    Cruza facturas de venta, vendedor, líneas de detalle, variantes y referencias (tipo de jean).
     """
     linea_id = models.BigIntegerField(primary_key=True)
     factura_id = models.BigIntegerField()
@@ -48,6 +48,8 @@ class VistaVentasReferencia(models.Model):
     cliente_tipo = models.CharField(max_length=12)
     cliente_nombre = models.CharField(max_length=150)
     transportadora = models.CharField(max_length=16)
+    vendedor_id = models.BigIntegerField(null=True)
+    vendedor_nombre = models.CharField(max_length=254)
     referencia_id = models.BigIntegerField()
     referencia_codigo = models.CharField(max_length=20)
     referencia_nombre = models.CharField(max_length=150)
@@ -66,4 +68,3 @@ class VistaVentasReferencia(models.Model):
         managed = False
         db_table = catalog.MV_SALES_BY_REFERENCE
         ordering = ["-fecha", "-linea_id"]
-

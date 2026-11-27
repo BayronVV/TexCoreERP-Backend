@@ -4,18 +4,20 @@ Consulta las vistas SQL materializadas (`reportes_mv_produccion_ordenes` y `repo
 para agrupar, sumar y formatear los indicadores solicitados por la gerencia sin sobrecargar las tablas transaccionales.
 """
 from contextlib import nullcontext
-from datetime import date
 import logging
 
 from django.db import DatabaseError, connection, transaction
 from django.db.models import Count, Sum
+from django.db.models.functions import Coalesce
 
+from apps.core.listing import parse_date_range, parse_int_param, seller_options
 from apps.inventory import catalog as inventory_catalog
-from apps.inventory.services import fail
 from apps.references import catalog as reference_catalog
 from apps.references.models import Referencia
 from apps.sales import catalog as sales_catalog
-from apps.sales.models import SaldoFinanciero
+from apps.sales.models import DetalleVenta, SaldoFinanciero
+from apps.shipping import catalog as shipping_catalog
+from apps.shipping.models import Guia
 
 from .models import VistaProduccionOrden, VistaVentasReferencia
 
@@ -85,36 +87,22 @@ def schedule_views_refresh(**kwargs):
     transaction.on_commit(_run_scheduled_refresh)
 
 
-def _parse_filter_date(raw, field_name):
-    if not raw:
-        return None
-    try:
-        return date.fromisoformat(raw)
-    except ValueError:
-        fail(f"La fecha '{field_name}' no es válida. Usa el formato AAAA-MM-DD.", field_name)
-
-
 def validate_report_params(params):
     """Valida los parámetros de consulta del tablero gerencial antes de ejecutar filtros SQL."""
-    desde = (params.get("desde") or "").strip()
-    hasta = (params.get("hasta") or "").strip()
-    desde_date = _parse_filter_date(desde, "desde")
-    hasta_date = _parse_filter_date(hasta, "hasta")
-    if desde_date and hasta_date and desde_date > hasta_date:
-        fail("La fecha 'desde' no puede ser posterior a la fecha 'hasta'.", "desde")
-
-    referencia_id = (params.get("referencia") or "").strip()
-    if referencia_id and (not referencia_id.isdigit() or int(referencia_id) < 1):
-        fail("El filtro 'referencia' debe ser un número entero positivo.", "referencia")
+    desde_date, hasta_date = parse_date_range(params)
+    referencia_id = parse_int_param(params, "referencia", minimum=1)
+    vendedor_id = parse_int_param(params, "vendedor", minimum=1)
 
     return {
-        "desde": desde,
-        "hasta": hasta,
+        "desde": desde_date.isoformat() if desde_date else "",
+        "hasta": hasta_date.isoformat() if hasta_date else "",
         "tipo_jean": (params.get("tipo_jean") or "").strip(),
-        "referencia_id": int(referencia_id) if referencia_id else None,
+        "referencia_id": referencia_id,
         "estado_orden": (params.get("estado_orden") or "").strip(),
         "estado_cobro": (params.get("estado_cobro") or "").strip(),
         "tipo_cliente": (params.get("tipo_cliente") or "").strip(),
+        "vendedor_id": vendedor_id,
+        "transportadora": (params.get("transportadora") or "").strip().upper(),
     }
 
 
@@ -131,8 +119,65 @@ def get_filter_metadata():
         "estados_orden": [{"codigo": code, "nombre": name} for code, name in inventory_catalog.ORDER_STATUSES],
         "estados_cobro": [{"codigo": code, "nombre": name} for code, name in sales_catalog.COLLECT_STATES],
         "tipos_cliente": [{"codigo": code, "nombre": name} for code, name in sales_catalog.CLIENT_TYPES],
+        "vendedores": seller_options(),
+        "transportadoras": [{"codigo": code, "nombre": name} for code, name in sales_catalog.CARRIERS],
         "referencias": referencias,
     }
+
+
+def _returns_by_seller(filters):
+    """Agrupa las guías devueltas vigentes por vendedor y suma el flete a su cargo (reporte informativo)."""
+    qs = Guia.objects.filter(
+        vigente=True,
+        estado=shipping_catalog.RETURNED,
+        factura__deleted_at__isnull=True,
+        factura__estado=sales_catalog.STATUS_ISSUED,
+    )
+    if filters["desde"]:
+        qs = qs.filter(factura__fecha__gte=filters["desde"])
+    if filters["hasta"]:
+        qs = qs.filter(factura__fecha__lte=filters["hasta"])
+    if filters["vendedor_id"] is not None:
+        qs = qs.filter(factura__vendedor_id=filters["vendedor_id"])
+    if filters["transportadora"]:
+        qs = qs.filter(transportadora=filters["transportadora"])
+    if filters["tipo_cliente"]:
+        qs = qs.filter(factura__cliente_tipo=filters["tipo_cliente"])
+    if filters["estado_cobro"]:
+        qs = qs.filter(factura__estado_cobro=filters["estado_cobro"])
+    if filters["referencia_id"] is not None or filters["tipo_jean"]:
+        lines_sub = DetalleVenta.objects.all()
+        if filters["referencia_id"] is not None:
+            lines_sub = lines_sub.filter(variante__referencia_id=filters["referencia_id"])
+        if filters["tipo_jean"]:
+            lines_sub = lines_sub.filter(variante__referencia__ajuste=filters["tipo_jean"])
+        qs = qs.filter(factura_id__in=lines_sub.values("factura_id"))
+
+    aggregated = (
+        qs.values(
+            "factura__vendedor_id",
+            "factura__vendedor__first_name",
+            "factura__vendedor__last_name",
+            "factura__vendedor__email",
+            "factura__vendedor__username",
+        )
+        .annotate(
+            guias_devueltas=Count("id"),
+            flete_vendedor=Coalesce(Sum("flete_vendedor"), 0),
+        )
+    )
+    rows = []
+    for item in aggregated:
+        full_name = f"{item['factura__vendedor__first_name'] or ''} {item['factura__vendedor__last_name'] or ''}".strip()
+        seller_name = full_name or item["factura__vendedor__email"] or item["factura__vendedor__username"] or "Sin vendedor"
+        rows.append({
+            "vendedor_id": item["factura__vendedor_id"],
+            "vendedor_nombre": seller_name,
+            "guias_devueltas": item["guias_devueltas"] or 0,
+            "flete_vendedor": item["flete_vendedor"] or 0,
+        })
+    rows.sort(key=lambda r: (-r["flete_vendedor"], -r["guias_devueltas"], r["vendedor_nombre"]))
+    return rows
 
 
 def build_management_report(params, auto_refresh=False):
@@ -144,6 +189,8 @@ def build_management_report(params, auto_refresh=False):
     - `estado_orden`: estado de la orden de producción (EN_PROCESO, COMPLETADA, ANULADA)
     - `estado_cobro`: estado de cartera de las ventas (POR_COBRAR, PAGADO, DEVOLUCION)
     - `tipo_cliente`: tipo de cliente en ventas (DETAL, MAYORISTA, DISTRIBUIDOR)
+    - `vendedor`: ID del vendedor de la factura
+    - `transportadora`: transportadora de la factura / guía
     """
     filters = validate_report_params(params)
 
@@ -158,6 +205,8 @@ def build_management_report(params, auto_refresh=False):
     estado_orden = filters["estado_orden"]
     estado_cobro = filters["estado_cobro"]
     tipo_cliente = filters["tipo_cliente"]
+    vendedor_id = filters["vendedor_id"]
+    transportadora = filters["transportadora"]
 
     # 1. Filtrado sobre la vista materializada de Producción
     prod_qs = VistaProduccionOrden.objects.all()
@@ -186,6 +235,10 @@ def build_management_report(params, auto_refresh=False):
         sales_qs = sales_qs.filter(estado_cobro=estado_cobro)
     if tipo_cliente:
         sales_qs = sales_qs.filter(cliente_tipo=tipo_cliente)
+    if vendedor_id is not None:
+        sales_qs = sales_qs.filter(vendedor_id=vendedor_id)
+    if transportadora:
+        sales_qs = sales_qs.filter(transportadora=transportadora)
 
     # --- Desglose de órdenes de producción ---
     ordenes_rows = []
@@ -274,6 +327,8 @@ def build_management_report(params, auto_refresh=False):
             "cliente_nombre": v.cliente_nombre,
             "cliente_tipo": v.cliente_tipo,
             "cliente_tipo_nombre": CLIENT_TYPE_NAMES.get(v.cliente_tipo, v.cliente_tipo),
+            "vendedor_nombre": v.vendedor_nombre,
+            "transportadora": v.transportadora,
             "estado_cobro": v.estado_cobro,
             "estado_cobro_nombre": COLLECT_STATE_NAMES.get(v.estado_cobro, v.estado_cobro),
             "referencia_codigo": v.referencia_codigo,
@@ -363,6 +418,9 @@ def build_management_report(params, auto_refresh=False):
 
     base_tot = sales_totals["base_gravable"] or 0
     costo_tot = sales_totals["costo_estimado"] or 0
+    devoluciones_por_vendedor = _returns_by_seller(filters)
+    devoluciones_guias = sum(r["guias_devueltas"] for r in devoluciones_por_vendedor)
+    flete_devoluciones_total = sum(r["flete_vendedor"] for r in devoluciones_por_vendedor)
 
     kpis = {
         "total_ordenes": prod_totals["total_ordenes"] or 0,
@@ -377,6 +435,8 @@ def build_management_report(params, auto_refresh=False):
         "recaudado_periodo": recaudado_total,
         "pendiente_recaudo_periodo": pendiente_cobro,
         "saldo_financiero_empresa": saldo_empresa,
+        "devoluciones_guias": devoluciones_guias,
+        "flete_devoluciones_total": flete_devoluciones_total,
     }
 
     return {
@@ -388,11 +448,14 @@ def build_management_report(params, auto_refresh=False):
             "estado_orden": estado_orden,
             "estado_cobro": estado_cobro,
             "tipo_cliente": tipo_cliente,
+            "vendedor": vendedor_id,
+            "transportadora": transportadora,
         },
         "kpis": kpis,
         "consolidado_tipo_jean": consolidado_tipo_jean,
         "ordenes_produccion": ordenes_rows,
         "ventas_por_referencia": ventas_por_referencia,
         "ventas_detalle": ventas_detalle,
+        "devoluciones_por_vendedor": devoluciones_por_vendedor,
     }
 

@@ -1,18 +1,26 @@
 """Vistas de producción: simulación (HU 4.1), órdenes y lotes (4.2), tiempos (4.3), recursos (4.4), monitor (4.5) y costeo (4.6)."""
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Prefetch, Q, Subquery
 from django.http import Http404
 from django.utils import timezone
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.listing import (
+    PAGINATION_PARAMS,
+    paginate_or_limit,
+    parse_date_range,
+    parse_int_param,
+    user_search_q,
+)
+from apps.inventory import catalog as inventory_catalog
 from apps.inventory.services import fail
-from apps.inventory.views import apply_filters, limited
+from apps.inventory.views import apply_filters
 from apps.references import fichas
 
 from . import catalog, costing, monitor, resources, services, tracking
-from .models import AsignacionEtapa, EventoEtapa, Lote, Maquina, Operario, OrdenProduccion, TarifaManoObra
+from .models import AsignacionEtapa, EtapaLote, EventoEtapa, Lote, Maquina, Operario, OrdenProduccion, TarifaManoObra
 from .serializers import (
     AccionLoteSerializer,
     AnulacionProduccionSerializer,
@@ -21,6 +29,7 @@ from .serializers import (
     AsignarInputSerializer,
     DesvincularInputSerializer,
     EventoEtapaSerializer,
+    LoteListadoSerializer,
     LoteSerializer,
     MaquinaInputSerializer,
     MaquinaSerializer,
@@ -79,16 +88,77 @@ class OrdenProduccionListCreateView(generics.ListAPIView):
     serializer_class = OrdenProduccionSerializer
     pagination_class = None
 
-    @extend_schema(summary="Listar las órdenes de producción (filtros: estado, referencia, limit)")
+    @extend_schema(
+        summary="Listar las órdenes de producción (filtros combinables y paginación)",
+        parameters=[
+            *PAGINATION_PARAMS,
+            OpenApiParameter("limit", int, description="Máximo de registros (por defecto 100)"),
+            OpenApiParameter("estado", str, description="EN_PROCESO, COMPLETADA o ANULADA"),
+            OpenApiParameter("referencia", int, description="Id de la referencia"),
+            OpenApiParameter("lote", str, description="Código de lote"),
+            OpenApiParameter("etapa", str, description="CORTE, CONFECCION o TERMINACION"),
+            OpenApiParameter("responsable", str, description="Responsable de la orden o etapa"),
+            OpenApiParameter("desde", str, description="Fecha de salida mínima (AAAA-MM-DD)"),
+            OpenApiParameter("hasta", str, description="Fecha de salida máxima (AAAA-MM-DD)"),
+            OpenApiParameter("q", str, description="Código de orden, referencia o responsable"),
+        ],
+    )
     def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
+        return paginate_or_limit(self.get_queryset(), request, self.get_serializer_class())
 
     def get_queryset(self):
-        queryset = apply_filters(
-            order_queryset(), self.request.query_params,
-            (("estado", "orden_salida__estado"), ("referencia", "referencia_id")),
-        )
-        return limited(queryset, self.request)
+        params = self.request.query_params
+        desde, hasta = parse_date_range(params)
+        referencia_id = parse_int_param(params, "referencia", minimum=1)
+
+        queryset = order_queryset()
+        if referencia_id is not None:
+            queryset = queryset.filter(referencia_id=referencia_id)
+        if desde is not None:
+            queryset = queryset.filter(orden_salida__fecha_salida__gte=desde)
+        if hasta is not None:
+            queryset = queryset.filter(orden_salida__fecha_salida__lte=hasta)
+
+        lote_raw = (params.get("lote") or "").strip()
+        if lote_raw:
+            queryset = queryset.filter(
+                id__in=Lote.objects.filter(codigo__icontains=lote_raw).values("orden_id")
+            )
+
+        etapa_raw = (params.get("etapa") or "").strip().upper()
+        if etapa_raw:
+            current_stage_sq = (
+                EtapaLote.objects.filter(lote=OuterRef("pk"))
+                .exclude(estado=catalog.STAGE_DONE)
+                .order_by("secuencia")
+                .values("etapa")[:1]
+            )
+            matching_lots = Lote.objects.annotate(_cur=current_stage_sq).filter(_cur=etapa_raw)
+            queryset = queryset.filter(id__in=matching_lots.values("orden_id"))
+
+        responsable_raw = (params.get("responsable") or "").strip()
+        if responsable_raw:
+            if responsable_raw.isdigit():
+                stage_lots = EtapaLote.objects.filter(responsable_id=int(responsable_raw)).values("lote__orden_id")
+                queryset = queryset.filter(id__in=stage_lots)
+            else:
+                stage_lots = EtapaLote.objects.filter(
+                    user_search_q("responsable", responsable_raw)
+                ).values("lote__orden_id")
+                queryset = queryset.filter(
+                    Q(orden_salida__responsable__icontains=responsable_raw) | Q(id__in=stage_lots)
+                )
+
+        q = (params.get("q") or "").strip()
+        if q:
+            queryset = queryset.filter(
+                Q(codigo__icontains=q)
+                | Q(referencia__codigo__icontains=q)
+                | Q(referencia__nombre__icontains=q)
+                | Q(orden_salida__responsable__icontains=q)
+            )
+
+        return apply_filters(queryset, params, (("estado", "orden_salida__estado"),))
 
     @extend_schema(
         summary="Crear una orden de producción con sus lotes y tallas (HU 4.2, TE-114)",
@@ -215,14 +285,126 @@ class MonitorView(APIView):
     required_permissions = catalog.PRODUCTION_VIEW
 
     def get(self, request):
+        desde, hasta = parse_date_range(request.query_params)
         board = monitor.build_board(
             limit=_query_int(request, "limite", monitor.DEFAULT_LIMIT, 1, monitor.MAX_LIMIT),
             order_id=_query_int(request, "orden"),
             reference_id=_query_int(request, "referencia"),
             done_days=_query_int(request, "terminadas_dias", monitor.DEFAULT_DONE_DAYS, 1, monitor.MAX_DONE_DAYS),
             include_cancelled=_query_bool(request, "canceladas"),
+            desde=desde,
+            hasta=hasta,
+            stage=(request.query_params.get("etapa") or "").strip().upper() or None,
+            responsable=(request.query_params.get("responsable") or "").strip() or None,
+            q=(request.query_params.get("q") or "").strip() or None,
         )
         return Response(MonitorSerializer(board, context={"now": board["generado_at"]}).data)
+
+
+@extend_schema(tags=["produccion"])
+class LoteListView(APIView):
+    """Lista paginada de lotes con filtros combinables (HU 7.7 / TE-177)."""
+    required_permissions = catalog.PRODUCTION_VIEW
+
+    @extend_schema(
+        summary="Listar lotes de producción (filtros combinables y paginación)",
+        parameters=[
+            *PAGINATION_PARAMS,
+            OpenApiParameter("limit", int, description="Máximo de registros (por defecto 100)"),
+            OpenApiParameter("orden", str, description="Id o código de la orden"),
+            OpenApiParameter("referencia", int, description="Id de la referencia"),
+            OpenApiParameter("lote", str, description="Código del lote"),
+            OpenApiParameter("estado", str, description="PLANEADA, EN_PROCESO, EN_PAUSA, TERMINADA o CANCELADA"),
+            OpenApiParameter("etapa", str, description="CORTE, CONFECCION o TERMINACION"),
+            OpenApiParameter("responsable", str, description="Responsable de la orden o etapa"),
+            OpenApiParameter("desde", str, description="Fecha de salida mínima (AAAA-MM-DD)"),
+            OpenApiParameter("hasta", str, description="Fecha de salida máxima (AAAA-MM-DD)"),
+            OpenApiParameter("q", str, description="Código de lote, orden, referencia o responsable"),
+        ],
+        responses={200: LoteListadoSerializer(many=True)},
+    )
+    def get(self, request):
+        params = request.query_params
+        desde, hasta = parse_date_range(params)
+        referencia_id = parse_int_param(params, "referencia", minimum=1)
+
+        lots = Lote.objects.filter(orden__deleted_at__isnull=True).select_related(
+            "orden", "orden__orden_salida", "orden__referencia"
+        ).prefetch_related(
+            "tallas",
+            Prefetch("etapas", queryset=EtapaLote.objects.select_related("responsable").order_by("secuencia")),
+        ).order_by("-orden__created_at", "orden_id", "numero")
+
+        orden_raw = (params.get("orden") or "").strip()
+        if orden_raw:
+            if orden_raw.isdigit():
+                lots = lots.filter(orden_id=int(orden_raw))
+            else:
+                lots = lots.filter(orden__codigo__icontains=orden_raw)
+
+        if referencia_id is not None:
+            lots = lots.filter(orden__referencia_id=referencia_id)
+
+        lote_raw = (params.get("lote") or "").strip()
+        if lote_raw:
+            lots = lots.filter(codigo__icontains=lote_raw)
+
+        if desde is not None:
+            lots = lots.filter(orden__orden_salida__fecha_salida__gte=desde)
+        if hasta is not None:
+            lots = lots.filter(orden__orden_salida__fecha_salida__lte=hasta)
+
+        etapa_raw = (params.get("etapa") or "").strip().upper()
+        if etapa_raw:
+            current_stage_sq = Subquery(
+                EtapaLote.objects.filter(lote=OuterRef("pk"))
+                .exclude(estado=catalog.STAGE_DONE)
+                .order_by("secuencia")
+                .values("etapa")[:1]
+            )
+            lots = lots.annotate(_current_stage=current_stage_sq).filter(_current_stage=etapa_raw)
+
+        responsable_raw = (params.get("responsable") or "").strip()
+        if responsable_raw:
+            if responsable_raw.isdigit():
+                lots = lots.filter(
+                    Exists(EtapaLote.objects.filter(lote=OuterRef("pk"), responsable_id=int(responsable_raw)))
+                )
+            else:
+                stage_resp = Exists(
+                    EtapaLote.objects.filter(user_search_q("responsable", responsable_raw), lote=OuterRef("pk"))
+                )
+                lots = lots.filter(Q(orden__orden_salida__responsable__icontains=responsable_raw) | stage_resp)
+
+        estado_raw = (params.get("estado") or "").strip().upper()
+        if estado_raw:
+            cancelled_q = Q(orden__orden_salida__estado=inventory_catalog.STATUS_CANCELLED)
+            has_stages = Exists(EtapaLote.objects.filter(lote=OuterRef("pk")))
+            has_running = Exists(EtapaLote.objects.filter(lote=OuterRef("pk"), estado=catalog.STAGE_RUNNING))
+            has_paused = Exists(EtapaLote.objects.filter(lote=OuterRef("pk"), estado=catalog.STAGE_PAUSED))
+            has_done = Exists(EtapaLote.objects.filter(lote=OuterRef("pk"), estado=catalog.STAGE_DONE))
+            has_not_done = Exists(EtapaLote.objects.filter(lote=OuterRef("pk")).exclude(estado=catalog.STAGE_DONE))
+            if estado_raw == catalog.STATE_CANCELLED:
+                lots = lots.filter(cancelled_q)
+            elif estado_raw == catalog.STATE_DONE:
+                lots = lots.filter(~cancelled_q & has_stages & ~has_not_done)
+            elif estado_raw == catalog.STATE_RUNNING:
+                lots = lots.filter(~cancelled_q & (has_running | (~has_paused & has_done & has_not_done)))
+            elif estado_raw == catalog.STATE_PAUSED:
+                lots = lots.filter(~cancelled_q & ~has_running & has_paused)
+            elif estado_raw == catalog.STATE_PLANNED:
+                lots = lots.filter(~cancelled_q & ~has_running & ~has_paused & ~has_done)
+
+        q = (params.get("q") or "").strip()
+        if q:
+            lots = lots.filter(
+                Q(codigo__icontains=q)
+                | Q(orden__codigo__icontains=q)
+                | Q(orden__referencia__codigo__icontains=q)
+                | Q(orden__referencia__nombre__icontains=q)
+                | Q(orden__orden_salida__responsable__icontains=q)
+            )
+        return paginate_or_limit(lots, request, LoteListadoSerializer)
 
 
 # --- Tarifas de mano de obra y costos de producción (HU 4.6, TE-129 / TE-130) ---

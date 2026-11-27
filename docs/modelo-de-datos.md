@@ -163,7 +163,7 @@ Un nodo por módulo y una flecha por cada par de módulos con dependencia por cl
         m_inventario -->|"1 relación"| m_referencias
         m_produccion -->|"2 relaciones"| m_calidad
         m_produccion -->|"2 relaciones"| m_terminado
-        m_referencias -->|"1 relación"| m_inventario
+        m_referencias -->|"2 relaciones"| m_inventario
         m_referencias -->|"2 relaciones"| m_produccion
         m_referencias -->|"4 relaciones"| m_terminado
         m_referencias -->|"2 relaciones"| m_ventas
@@ -316,6 +316,7 @@ Cada flecha va de la tabla referenciada a la tabla que guarda la clave foránea.
         Referencia --> OrdenProduccion
         Referencia --> OrdenSalida
         Referencia --> PrecioReferencia
+        Referencia --> Producto
         Referencia --> Variante
         RelacionDespacho --> Guia
         RemisionLavanderia --> RecepcionLavanderia
@@ -474,6 +475,8 @@ Relaciones con otros módulos (solo clave): `Referencia` (Referencias), `FichaLi
             bytea imagen
             varchar_20 imagen_tipo
             int imagen_version
+            bigint referencia FK
+            boolean heredado
         }
         OrdenSalida {
             bigint id PK
@@ -569,6 +572,7 @@ Relaciones con otros módulos (solo clave): `Referencia` (Referencias), `FichaLi
         Proveedor ||--o{ Recepcion : "proveedor"
         Proveedor ||--o{ RemisionLavanderia : "lavanderia"
         Referencia |o--o{ OrdenSalida : "referencia"
+        Referencia |o--o{ Producto : "referencia"
     ```
 
 ### Compras
@@ -652,7 +656,7 @@ Relaciones con otros módulos (solo clave): `Proveedor` (Inventario), `Producto`
 
 Tablas: `Referencia`, `Variante`, `ImagenReferencia`, `FichaTecnica`, `FichaLinea`.
 
-Relaciones con otros módulos (solo clave): `OrdenSalida` (Inventario), `Producto` (Inventario), `OrdenProduccion` (Producción y lavandería), `LoteTalla` (Producción y lavandería), `StockTerminado` (Producto terminado), `IngresoLinea` (Producto terminado), `AjusteLinea` (Producto terminado), `MovimientoTerminado` (Producto terminado), `PrecioReferencia` (Ventas y cartera), `DetalleVenta` (Ventas y cartera).
+Relaciones con otros módulos (solo clave): `Producto` (Inventario), `OrdenSalida` (Inventario), `OrdenProduccion` (Producción y lavandería), `LoteTalla` (Producción y lavandería), `StockTerminado` (Producto terminado), `IngresoLinea` (Producto terminado), `AjusteLinea` (Producto terminado), `MovimientoTerminado` (Producto terminado), `PrecioReferencia` (Ventas y cartera), `DetalleVenta` (Ventas y cartera).
 
 [![Esquema físico del módulo Referencias (pata de gallo)](img/modulo-referencias.svg)](img/modulo-referencias.svg){ target=_blank }
 
@@ -704,10 +708,10 @@ Relaciones con otros módulos (solo clave): `OrdenSalida` (Inventario), `Product
             decimal_5_2 merma
             varchar_120 observaciones
         }
-        OrdenSalida {
+        Producto {
             bigint id PK
         }
-        Producto {
+        OrdenSalida {
             bigint id PK
         }
         OrdenProduccion {
@@ -737,6 +741,7 @@ Relaciones con otros módulos (solo clave): `OrdenSalida` (Inventario), `Product
         FichaTecnica ||--o{ FichaLinea : "ficha"
         Producto ||--o{ FichaLinea : "producto"
         Referencia |o--o{ OrdenSalida : "referencia"
+        Referencia |o--o{ Producto : "referencia"
         Referencia ||--o{ FichaTecnica : "referencia"
         Referencia ||--o{ ImagenReferencia : "referencia"
         Referencia ||--o{ OrdenProduccion : "referencia"
@@ -1428,6 +1433,8 @@ erDiagram
         bytea imagen
         varchar_20 imagen_tipo
         int imagen_version
+        bigint referencia FK
+        boolean heredado
     }
     OrdenSalida {
         bigint id PK
@@ -2036,6 +2043,7 @@ erDiagram
     RecepcionLote ||--o{ Inspeccion : "recepcion_lote"
     RecetaLavado |o--o{ RemisionLote : "receta"
     Referencia |o--o{ OrdenSalida : "referencia"
+    Referencia |o--o{ Producto : "referencia"
     Referencia ||--o{ FichaTecnica : "referencia"
     Referencia ||--o{ ImagenReferencia : "referencia"
     Referencia ||--o{ OrdenProduccion : "referencia"
@@ -2284,6 +2292,8 @@ Producto del catálogo (HU 2.2): materia prima, insumo, pantalón genérico o te
 | `imagen` | bytea | nulo |  |
 | `imagen_tipo` | varchar(20) |  |  |
 | `imagen_version` | int |  |  |
+| `referencia` | bigint | FK, nulo | → `Referencia` |
+| `heredado` | boolean |  |  |
 
 ### OrdenSalida (`inventario_orden`)
 

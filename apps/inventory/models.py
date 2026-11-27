@@ -95,6 +95,15 @@ class Producto(BaseModel):
     imagen = models.BinaryField(null=True, blank=True, editable=False)
     imagen_tipo = models.CharField(max_length=20, blank=True)
     imagen_version = models.PositiveIntegerField(default=0)  # sube con cada cambio de imagen
+    # Vínculo 1:1 con Referencia para producto terminado (TE-170 / HU 6.5): el saldo vive en terminado_stock.
+    referencia = models.ForeignKey(
+        "references.Referencia",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="productos_terminados",
+    )
+    heredado = models.BooleanField(default=False)
 
     objects = ProductoManager()
     all_objects = ProductoAllManager()
@@ -106,9 +115,18 @@ class Producto(BaseModel):
             models.UniqueConstraint(
                 fields=["codigo"], condition=Q(deleted_at__isnull=True), name="uq_producto_codigo_activo"
             ),
+            models.UniqueConstraint(
+                fields=["referencia"],
+                condition=Q(referencia__isnull=False, deleted_at__isnull=True),
+                name="uq_producto_referencia_activa",
+            ),
             models.CheckConstraint(condition=Q(stock_actual__gte=0), name="ck_producto_stock_no_negativo"),
             models.CheckConstraint(condition=Q(stock_minimo__gte=0), name="ck_producto_minimo_no_negativo"),
             models.CheckConstraint(condition=Q(costo_promedio__gte=0), name="ck_producto_costo_no_negativo"),
+            models.CheckConstraint(
+                condition=~(Q(heredado=True) & Q(referencia__isnull=False)),
+                name="ck_producto_heredado_sin_referencia",
+            ),
         ]
 
     def __str__(self):
@@ -117,6 +135,21 @@ class Producto(BaseModel):
     @property
     def tiene_imagen(self) -> bool:
         return bool(self.imagen_tipo)
+
+    @property
+    def es_terminado_enlazado(self) -> bool:
+        return self.tipo == catalog.FINISHED_PANTS and self.referencia_id is not None
+
+    @property
+    def stock_efectivo(self):
+        """Saldo visible en Inventario: vivo desde `terminado_stock` si está enlazado a una referencia."""
+        if hasattr(self, "_live_stock"):
+            return self._live_stock
+        if self.es_terminado_enlazado:
+            from .finished_link import finished_totals_by_reference
+
+            return finished_totals_by_reference([self.referencia_id]).get(self.referencia_id, 0)
+        return self.stock_actual
 
 
 class OrdenSalida(BaseModel):

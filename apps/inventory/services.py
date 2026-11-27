@@ -15,7 +15,7 @@ from rest_framework.exceptions import ValidationError
 from apps.references import catalog as reference_catalog
 from apps.references.models import Referencia
 
-from . import catalog
+from . import catalog, finished_link
 from .models import Consecutivo, Evidencia, Movimiento, OrdenLinea, OrdenSalida, Producto, Proveedor
 
 MAX_QUANTITY = Decimal("9999999999.99")
@@ -168,7 +168,7 @@ def clean_product_fields(*, categoria, unidad, ancho_util, composicion, color):
 
 def _same_name_exists(nombre, categoria, exclude_id=None):
     # Se compara en Python: "iexact" de SQLite solo ignora mayúsculas ASCII (ñ, í, é...).
-    queryset = Producto.objects.filter(categoria=categoria)
+    queryset = Producto.objects.filter(categoria=categoria, heredado=False)
     if exclude_id:
         queryset = queryset.exclude(pk=exclude_id)
     wanted = nombre.casefold()
@@ -180,7 +180,14 @@ def create_product(*, nombre, categoria, unidad, stock_minimo=0, descripcion="",
                    color="", composicion=""):
     """Crea un producto del catálogo (HU 2.2). El código sale del consecutivo de su categoría y se validan
     nombre único, unidad compatible, ancho útil (telas) y composición (telas e hilos).
+
+    Los productos terminados ya no se crean manualmente aquí (TE-170): nacen al crear/activar una referencia.
     """
+    if categoria == catalog.CAT_FINISHED:
+        fail(
+            "Los productos terminados se crean automáticamente al crear o activar una referencia en Referencias.",
+            "categoria",
+        )
     name = nombre.strip()
     if _same_name_exists(name, categoria):
         fail("Ya existe un producto con ese nombre en esta categoría.", "nombre")
@@ -197,6 +204,8 @@ def create_product(*, nombre, categoria, unidad, stock_minimo=0, descripcion="",
 def update_product(product, **data):
     """Edita un producto del catálogo. El stock no se toca: solo cambia con movimientos."""
     product = Producto.objects.select_for_update().get(pk=product.pk)
+    if product.heredado:
+        fail("Este producto terminado es heredado (solo consulta histórica) y no se puede editar.")
     values = {
         "nombre": data.get("nombre", product.nombre).strip(),
         "categoria": data.get("categoria", product.categoria),
@@ -205,6 +214,12 @@ def update_product(product, **data):
         "composicion": data.get("composicion", product.composicion),
         "color": data.get("color", product.color),
     }
+    if product.es_terminado_enlazado and (
+        values["categoria"] != product.categoria
+        or values["unidad"] != product.unidad
+        or values["nombre"] != product.nombre
+    ):
+        fail("El nombre, la categoría y la unidad de un producto terminado dependen de su referencia.", "nombre")
     structural = values["categoria"] != product.categoria or values["unidad"] != product.unidad
     if structural and (product.stock_actual != 0 or Movimiento.objects.filter(producto=product).exists()):
         fail("La categoría y la unidad no se pueden cambiar cuando el producto ya tiene movimientos.", "categoria")
@@ -233,6 +248,10 @@ def archive_product(product):
     Bloquea la fila del producto y lee su saldo ya bloqueado: un ingreso simultáneo no puede dejar un
     producto archivado con existencias."""
     product = Producto.objects.select_for_update().get(pk=product.pk)
+    if product.es_terminado_enlazado:
+        fail("Este producto está enlazado a una referencia; descontinúa y archiva la referencia desde Referencias.")
+    if product.heredado:
+        fail("Los productos terminados heredados no se eliminan para conservar su historial y sus órdenes.")
     if product.stock_actual > 0:
         fail("No se puede eliminar un producto con existencias.")
     if OrdenSalida.objects.filter(estado=catalog.STATUS_OPEN, producto_resultado=product).exists():
@@ -374,10 +393,15 @@ def register_entry(*, user, producto_id, cantidad, fecha, proveedor_id=None, ord
             lote=lote.strip(), observaciones=observaciones.strip(), registrado_por=user, costo_unitario=cost,
         )
 
-    # Producto terminado ya no ingresa desde Inventario (HU 5.3 / TE-171); pantalón genérico solo entra por orden OP.
+    # Producto terminado ya no ingresa desde Inventario (HU 5.3 / TE-171 y HU 6.5 / TE-170); pantalón genérico entra por orden OP.
     if product.tipo == catalog.FINISHED_PANTS:
+        if product.referencia_id is not None:
+            fail(
+                f"{catalog.FINISHED_REDIRECT_MSG} Registra ingresos o ajustes desde Producto Terminado ({product.referencia.codigo}).",
+                "producto",
+            )
         fail(
-            f"{catalog.LAUNDRY_REDIRECT_MSG} El ingreso de producto terminado se registra desde Producto Terminado.",
+            f"{catalog.LAUNDRY_REDIRECT_MSG} {catalog.FINISHED_REDIRECT_MSG}",
             "producto",
         )
     if not orden_id:
@@ -435,6 +459,8 @@ def create_order(*, user, tipo, fecha_salida, responsable, referencia_id, produc
     products = lock_products(ids + [producto_resultado_id])
 
     result = products[producto_resultado_id]
+    if result.tipo == catalog.FINISHED_PANTS:
+        fail(catalog.FINISHED_REDIRECT_MSG, "producto_resultado")
     if result.tipo != rules["output_type"]:
         label = dict(catalog.PRODUCT_TYPES)[rules["output_type"]].lower()
         fail(f"El resultado de una orden de este tipo debe ser un {label}.", "producto_resultado")
@@ -442,6 +468,8 @@ def create_order(*, user, tipo, fecha_salida, responsable, referencia_id, produc
     quantities, shortages, planned = {}, [], None
     for line in lineas:
         product = products[line["producto"]]
+        if product.tipo == catalog.FINISHED_PANTS:
+            fail(f"{product.nombre}: {catalog.FINISHED_REDIRECT_MSG}", "lineas")
         if product.tipo not in rules["input_types"]:
             fail(f"{product.nombre} no puede salir en una orden de {dict(catalog.ORDER_TYPES)[tipo].lower()}.", "lineas")
         quantity = parse_quantity(line["cantidad"], product.unidad, "lineas")
@@ -521,22 +549,33 @@ def cancel_order(*, user, order_id, motivo):
 # --- Alertas de stock mínimo (HU 2.4) -------------------------------------------
 
 def stock_alerts():
-    """Productos con mínimo definido cuyo saldo llegó o bajó de ese mínimo."""
+    """Productos activos no heredados con mínimo definido cuyo saldo llegó o bajó de ese mínimo.
+    Para productos terminados enlazados usa en vivo el saldo de `terminado_stock` (TE-170).
+    """
+    products = finished_link.annotate_products_with_live_stock(
+        Producto.objects.filter(heredado=False, stock_minimo__gt=0).select_related("referencia")
+    )
+    candidates = [
+        product
+        for product in products
+        if finished_link.is_alertable_product(product) and product.stock_efectivo <= product.stock_minimo
+    ]
+    candidates.sort(key=lambda product: (product.stock_efectivo, product.nombre))
     alerts = []
-    products = Producto.objects.filter(stock_minimo__gt=0).order_by("stock_actual", "nombre")
-    for product in products:
-        if product.stock_actual > product.stock_minimo:
-            continue
-        out = product.stock_actual <= 0
+    for product in candidates:
+        effective = product.stock_efectivo
+        out = effective <= 0
         alerts.append({
             "id": product.id,
             "codigo": product.codigo,
             "name": product.nombre,
-            "stock": str(product.stock_actual),
+            "stock": str(effective),
             "threshold": str(product.stock_minimo),
             "unit": product.unidad,
             "severity": "critical" if out else "warning",
             "message": "Sin existencias." if out else "Existencias en el mínimo o por debajo.",
+            "referencia": product.referencia_id,
+            "referencia_codigo": product.referencia.codigo if product.referencia_id else "",
         })
     return alerts
 

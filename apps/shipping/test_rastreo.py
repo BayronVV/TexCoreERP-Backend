@@ -363,6 +363,44 @@ class RefreshTests(ShippingBase):
         self.assertEqual(self.fake.paths().count("POST /track/import"), 1)
         self.assertEqual(self.fake.paths().count("POST /track/query"), 1)
 
+    def test_te187_track123_sin_respuesta_timeout_responde_503_y_conserva_guia(self):
+        self.fake.raise_error = track123.Track123Error(
+            "El servicio de rastreo tardó demasiado en responder.", kind="network"
+        )
+        response = self.refresh()
+        self.assertEqual(response.status_code, 503)
+        self.guide.refresh_from_db()
+        self.assertEqual(self.guide.estado, catalog.PENDING)
+        self.assertIsNone(self.guide.rastreo_consultado_en)
+
+    def test_te187_track123_cuota_agotada_en_cero_rechaza_400_sin_importar(self):
+        self.fake.quota_remaining = 0
+        self.deliver()
+        response = self.refresh()
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("reserva", response.json()["rastreo"][0])
+        self.assertNotIn("POST /track/import", self.fake.paths())
+        self.guide.refresh_from_db()
+        self.assertEqual(self.guide.estado, catalog.PENDING)
+
+    def test_te187_track123_guia_inexistente_en_transportadora_no_altera_estado(self):
+        response = self.refresh()  # FakeTrack123 responde rejected A0400 trackNo not registered
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("no devolvió información", response.json()["aviso"])
+        self.guide.refresh_from_db()
+        self.assertEqual(self.guide.estado, catalog.PENDING)
+        self.assertFalse(self.guide.rastreo_registrado)
+
+    def test_te187_track123_datos_desactualizados_no_revierten_estado_actual(self):
+        self.dispatch([self.guide])
+        self.state(self.guide, catalog.DELIVERED)
+        self.deliver(transit="IN_TRANSIT", sub="IN_TRANSIT_01", detail="En camino", delivered=None)
+        response = self.refresh(forzar=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("no se aplica", response.json()["aviso"])
+        self.guide.refresh_from_db()
+        self.assertEqual(self.guide.estado, catalog.DELIVERED)
+
 
 @unittest.skipUnless(connection.vendor == "postgresql", "La carrera real entre hilos requiere PostgreSQL")
 @override_settings(TRACK123_ENABLED=True, TRACK123_API_KEY="fake-test-key")

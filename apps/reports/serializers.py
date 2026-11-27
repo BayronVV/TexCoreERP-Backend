@@ -3,17 +3,20 @@ from rest_framework import serializers
 
 
 class OpcionCatalogoSerializer(serializers.Serializer):
+    """Opción de catálogo `{codigo, nombre}` para selectores de filtros."""
     codigo = serializers.CharField()
     nombre = serializers.CharField()
 
 
 class VendedorFiltroSerializer(serializers.Serializer):
+    """Vendedor disponible para filtrar ventas y devoluciones en reportes."""
     id = serializers.IntegerField()
     nombre = serializers.CharField()
     email = serializers.CharField()
 
 
 class ReferenciaFiltroSerializer(serializers.Serializer):
+    """Referencia de jean disponible para filtrar el tablero gerencial."""
     id = serializers.IntegerField()
     codigo = serializers.CharField()
     nombre = serializers.CharField()
@@ -23,6 +26,7 @@ class ReferenciaFiltroSerializer(serializers.Serializer):
 
 
 class MetadatosReporteSerializer(serializers.Serializer):
+    """Catálogos combinados que alimentan los filtros avanzados del tablero."""
     tipos_jean = OpcionCatalogoSerializer(many=True)
     estados_orden = OpcionCatalogoSerializer(many=True)
     estados_cobro = OpcionCatalogoSerializer(many=True)
@@ -33,6 +37,7 @@ class MetadatosReporteSerializer(serializers.Serializer):
 
 
 class ReporteKpisSerializer(serializers.Serializer):
+    """Indicadores globales consolidados del periodo filtrado en el tablero gerencial."""
     total_ordenes = serializers.IntegerField()
     prendas_planificadas = serializers.IntegerField()
     prendas_aptas = serializers.IntegerField()
@@ -50,6 +55,7 @@ class ReporteKpisSerializer(serializers.Serializer):
 
 
 class ConsolidadoTipoJeanSerializer(serializers.Serializer):
+    """Totales de producción y ventas agrupados por silueta / ajuste de jean."""
     tipo_jean = serializers.CharField()
     tipo_jean_nombre = serializers.CharField()
     ordenes_count = serializers.IntegerField()
@@ -62,6 +68,7 @@ class ConsolidadoTipoJeanSerializer(serializers.Serializer):
 
 
 class OrdenProduccionReporteSerializer(serializers.Serializer):
+    """Fila analítica de orden de producción con calidad y avance por lotes."""
     orden_id = serializers.IntegerField()
     codigo = serializers.CharField()
     fecha_salida = serializers.CharField()
@@ -83,6 +90,7 @@ class OrdenProduccionReporteSerializer(serializers.Serializer):
 
 
 class VentaReferenciaReporteSerializer(serializers.Serializer):
+    """Resumen de ingresos, costos estimados y margen por referencia vendida."""
     referencia_id = serializers.IntegerField()
     referencia_codigo = serializers.CharField()
     referencia_nombre = serializers.CharField()
@@ -101,6 +109,7 @@ class VentaReferenciaReporteSerializer(serializers.Serializer):
 
 
 class VentaDetalleReporteSerializer(serializers.Serializer):
+    """Línea individual de factura para consulta y exportación en Excel/CSV."""
     linea_id = serializers.IntegerField()
     factura_id = serializers.IntegerField()
     numero_factura = serializers.CharField()
@@ -127,6 +136,7 @@ class VentaDetalleReporteSerializer(serializers.Serializer):
 
 
 class DevolucionVendedorReporteSerializer(serializers.Serializer):
+    """Resumen informativo de guías devueltas y flete a cargo de cada vendedor."""
     vendedor_id = serializers.IntegerField(allow_null=True)
     vendedor_nombre = serializers.CharField()
     guias_devueltas = serializers.IntegerField()
@@ -134,6 +144,7 @@ class DevolucionVendedorReporteSerializer(serializers.Serializer):
 
 
 class ReporteGerencialSerializer(serializers.Serializer):
+    """Respuesta completa del tablero gerencial: filtros, KPIs y tablas analíticas."""
     filtros_aplicados = serializers.DictField()
     kpis = ReporteKpisSerializer()
     consolidado_tipo_jean = ConsolidadoTipoJeanSerializer(many=True)

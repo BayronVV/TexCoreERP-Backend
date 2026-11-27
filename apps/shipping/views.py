@@ -45,10 +45,12 @@ RETURN_PERMISSIONS = {"POST": catalog.SHIPPING_RETURN}
 
 
 def guide_queryset():
+    """QuerySet base de guías con sus relaciones precargadas para evitar N+1."""
     return Guia.objects.select_related("factura", "factura__vendedor", "relacion").prefetch_related("eventos", "eventos__usuario")
 
 
 def get_guide(pk):
+    """Obtiene una guía por clave primaria o lanza `Http404`."""
     guide = guide_queryset().filter(pk=pk).first()
     if guide is None:
         raise Http404("La guía no existe.")
@@ -257,6 +259,7 @@ class RelacionListCreateView(APIView):
 
 @extend_schema(tags=["envios"])
 class RelacionDetailView(APIView):
+    """Consulta el detalle y listado de guías de una relación de despacho."""
     required_permissions = VIEW_PERMISSIONS
 
     @extend_schema(summary="Detalle de una relación de despacho", responses={200: RelacionDetailSerializer})

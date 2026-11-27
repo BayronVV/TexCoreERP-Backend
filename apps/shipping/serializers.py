@@ -10,6 +10,7 @@ from .models import EventoGuia, Guia, RelacionDespacho
 
 
 class EventoGuiaSerializer(serializers.ModelSerializer):
+    """Evento histórico del cambio de estado o anotación sobre una guía de envío."""
     estado_antes_nombre = serializers.SerializerMethodField()
     estado_despues_nombre = serializers.SerializerMethodField()
     usuario_nombre = serializers.SerializerMethodField()
@@ -134,6 +135,7 @@ class FacturaSinGuiaSerializer(serializers.Serializer):
 
 
 class RelacionSerializer(serializers.ModelSerializer):
+    """Cabecera de una relación de despacho `RD-0001`."""
     transportadora_nombre = serializers.SerializerMethodField()
     creada_por_nombre = serializers.SerializerMethodField()
     total_guias = serializers.SerializerMethodField()
@@ -154,6 +156,7 @@ class RelacionSerializer(serializers.ModelSerializer):
 
 
 class RelacionDetailSerializer(RelacionSerializer):
+    """Detalle completo de una relación de despacho con sus guías incluidas."""
     guias = GuiaSerializer(many=True, read_only=True)
 
     class Meta(RelacionSerializer.Meta):
@@ -162,24 +165,29 @@ class RelacionDetailSerializer(RelacionSerializer):
 
 
 class AsignarGuiaInputSerializer(serializers.Serializer):
+    """Datos para anotar o reemplazar la guía de una factura emitida."""
     transportadora = serializers.ChoiceField(choices=catalog.CARRIERS)
     numero_guia = serializers.CharField(max_length=60)
 
 
 class EstadoGuiaInputSerializer(serializers.Serializer):
+    """Cambio manual de estado de una guía con motivo opcional u obligatorio."""
     estado = serializers.ChoiceField(choices=catalog.GUIDE_STATES)
     nota = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
 
 
 class FleteInputSerializer(serializers.Serializer):
+    """Valor entero del flete cobrado por la transportadora para la guía."""
     valor_flete = serializers.IntegerField(min_value=0)
 
 
 class RastrearInputSerializer(serializers.Serializer):
+    """Opciones de consulta manual contra Track123 (permite forzar estado final)."""
     forzar = serializers.BooleanField(required=False, default=False)
 
 
 class RelacionInputSerializer(serializers.Serializer):
+    """Datos para crear una relación de despacho atómica e idempotente."""
     transportadora = serializers.ChoiceField(choices=catalog.CARRIERS)
     guias = serializers.ListField(child=serializers.IntegerField(), allow_empty=False)
     token = serializers.UUIDField()
@@ -189,6 +197,7 @@ class RelacionInputSerializer(serializers.Serializer):
 
 
 class OpcionEnvioSerializer(serializers.Serializer):
+    """Opción de estado o transportadora para metadatos de envíos."""
     codigo = serializers.CharField()
     nombre = serializers.CharField()
     color = serializers.CharField(required=False)
@@ -196,12 +205,14 @@ class OpcionEnvioSerializer(serializers.Serializer):
 
 
 class VendedorEnvioSerializer(serializers.Serializer):
+    """Vendedor disponible para filtrar guías de envío."""
     id = serializers.IntegerField()
     nombre = serializers.CharField()
     email = serializers.CharField()
 
 
 class MetadatosEnvioSerializer(serializers.Serializer):
+    """Reglas, catálogos y estado del rastreo expuestos a la interfaz de envíos."""
     estados = OpcionEnvioSerializer(many=True)
     transportadoras = OpcionEnvioSerializer(many=True)
     vendedores = VendedorEnvioSerializer(many=True)
@@ -214,6 +225,7 @@ class MetadatosEnvioSerializer(serializers.Serializer):
 
 
 def metadata():
+    """Construye el diccionario de catálogos, transiciones y plazos de envíos."""
     return {
         "estados": [{"codigo": code, "nombre": name, "color": catalog.STATE_COLORS[code]} for code, name in catalog.GUIDE_STATES],
         "transportadoras": [{"codigo": code, "nombre": name, "rastreable": code in catalog.TRACKING_COURIERS} for code, name in catalog.CARRIERS],

@@ -21,6 +21,7 @@ def _on_report_source_change(sender, **kwargs):
 
 
 class ReportsConfig(AppConfig):
+    """Configuración del módulo de reportes gerenciales y conexión de señales de refresco."""
     default_auto_field = "django.db.models.BigAutoField"
     name = "apps.reports"
     verbose_name = "Reportes Gerenciales"

@@ -33,21 +33,15 @@ Los datos que hay hoy en los servidores de Render son **simulados**: sirven para
     La deuda técnica y las mejoras detectadas en el Sprint 3 quedaron en el backlog de Jira (claves TE-169 a TE-178, TE-184 y las subtareas
     TE-179 a TE-183 y TE-185; 40 puntos propuestos, para no pasar mucho de la velocidad del Sprint 3):
 
-    - **Historias de producto:** valoración y liquidación de marras (TE-169),
-      bloqueo por intentos fallidos y auditoría de accesos (TE-175),
-      trazabilidad de punta a punta (TE-176).
-      Ya entregadas en Sprint 4: órdenes de compra con aprobación independiente (**TE-178**), unificación de existencias de producto terminado (**TE-170**), retiro de la salida a lavandería provisional de Inventario (**TE-171**), lavandería confiable sin datos simulados ni pérdida de prendas (**TE-172**), coherencia entre cartera y guías de envío (**TE-173**), costo de fábrica calculado desde la producción (**TE-174**), filtros avanzados, paginación y devoluciones en los reportes (**TE-177**).
-    - **Calidad de vida (TE-184):** seguridad (TE-179), calidad continua con CI y PostgreSQL (TE-180), observabilidad (TE-181),
-      documentación al día (TE-182), datos de demostración coherentes (TE-183) y separación de los ambientes de desarrollo y producción (TE-185).
-
-    Hasta que esas historias se entreguen, las limitaciones conocidas de cada módulo están en [módulos y reglas de negocio](modulos.md).
+    - **Historias pendientes de cierre por equipo:** valoración y liquidación de marras (TE-169), trazabilidad de punta a punta (TE-176), datos de demostración coherentes (TE-183) y separación de ambientes (TE-185).
+    - **Ya entregadas en Sprint 4:** órdenes de compra con aprobación independiente (**TE-178**), unificación de existencias de producto terminado (**TE-170**), retiro de la salida a lavandería provisional de Inventario (**TE-171**), lavandería confiable sin datos simulados ni pérdida de prendas (**TE-172**), coherencia entre cartera y guías de envío (**TE-173**), costo de fábrica calculado desde la producción (**TE-174**), seguridad, bloqueo y auditoría (**TE-175**, **TE-179**), filtros avanzados, paginación y devoluciones en reportes (**TE-177**), calidad continua CI/PostgreSQL (**TE-180**), observabilidad/OpenAPI (**TE-181**), documentación y trazabilidad (**TE-182**) y pruebas integrales de sustentación (**TE-187**).
 
 ## Cómo está organizada esta documentación
 
 | Necesito… | Voy a… |
 |---|---|
-| Entender cómo está construido el sistema | **Manual técnico**: [arquitectura](arquitectura.md), [módulos y reglas de negocio](modulos.md), [roles y permisos](roles-y-permisos.md), [API REST](api.md), [modelo de datos](modelo-de-datos.md), [convenciones de base de datos](convenciones-base-de-datos.md) |
-| Instalarlo, configurarlo o desplegarlo | **Manual del sistema**: [instalación y operación](manual-del-sistema.md), [despliegue en Render](despliegue-render.md) |
+| Entender cómo está construido el sistema | **Manual técnico**: [arquitectura](arquitectura.md), [módulos y reglas de negocio](modulos.md), [roles y permisos](roles-y-permisos.md), [API REST](api.md), [modelo de datos](modelo-de-datos.md), [diagrama de clases](diagrama-clases.md), [método de costeo](metodo-costeo.md), [matriz de trazabilidad](matriz-trazabilidad.md), [convenciones de base de datos](convenciones-base-de-datos.md) |
+| Instalarlo, configurarlo o ejecutar pruebas en vivo | **Manual del sistema**: [instalación y operación](manual-del-sistema.md), [despliegue en Render](despliegue-render.md), [calidad y cobertura](calidad-y-cobertura.md), **[guion de sustentación](guion-sustentacion.md)** |
 | Aprender a usarlo | **[Manual de usuario](manual-de-usuario.md)** |
 | Un resumen de datos técnicos | **[Ficha técnica](ficha-tecnica.md)** |
 

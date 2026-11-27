@@ -44,7 +44,7 @@ Cada ruta exige un permiso por rol (RNF01), por ejemplo `inventario.ver` para co
 
 ## Módulos
 
-La API tiene **114 rutas** y **157 operaciones**, todas descritas en Swagger con su etiqueta. Aquí solo el mapa; los detalles
+La API tiene **123 rutas** y **166 operaciones**, todas descritas en Swagger con su etiqueta. Aquí solo el mapa; los detalles
 de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permiso que exige cada operación está en
 [roles y permisos](roles-y-permisos.md), y las reglas de negocio de cada módulo en [módulos y reglas](modulos.md).
 

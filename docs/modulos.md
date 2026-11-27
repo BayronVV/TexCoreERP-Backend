@@ -890,58 +890,53 @@ Necesita antes `seed_demo_ventas` y stock de producto terminado. Orden: ver [man
     - **Una guía despachada no se reemplaza:** el servicio lo rechaza.
     - **Datos simulados:** las facturas, clientes y guías del sistema son de demostración; las tres guías reales de Interrapidísimo sirven de referencia.
 
-## Reportes gerenciales: vistas materializadas y exportación (HU 7.4, TE-65)
+## Reportes gerenciales: vistas materializadas, devoluciones y exportación (HU 7.4 y HU 7.7, TE-65 y TE-177)
 
-App nueva `apps/reports`, rutas bajo `/api/reportes/`. Es un tablero **de solo lectura** para el Gerente que cruza producción, calidad, ventas y cartera sin consultar
-las tablas transaccionales con cruces pesados. La app no tiene tablas propias: sus dos modelos (`models.py`) son `managed = False` y leen vistas SQL creadas por la
-migración `reports/0001_vistas_materializadas`. La consulta y el cálculo de indicadores están en `services.py`, los permisos y nombres de las vistas en `catalog.py`,
+App `apps/reports`, rutas bajo `/api/reportes/`. Es un tablero **de solo lectura** para el Gerente que cruza producción, calidad, ventas, envíos y cartera sin consultar
+las tablas transaccionales con cruces pesados. La app no tiene tablas propias: sus dos modelos (`models.py`) son `managed = False` y leen vistas SQL creadas por
+`reports/0001_vistas_materializadas` y ampliadas en `reports/0002_ventas_vendedor_en_vista` (que agrega `vendedor_id` y `vendedor_nombre` a la vista de ventas). La consulta y el cálculo de indicadores están en `services.py`, los permisos y nombres de las vistas en `catalog.py`,
 y los endpoints en `views.py`. Los campos están en [modelo de datos](modelo-de-datos.md).
 
 ### Vistas materializadas
 
-En **PostgreSQL** se crean como `MATERIALIZED VIEW` con índice único (necesario para el refresco concurrente) e índices de filtro; en **SQLite** (pruebas y desarrollo sin servidor)
-son `VIEW` comunes con el mismo esquema, que siempre están al día. La migración depende de las migraciones de inventario, referencias, producción, calidad y ventas
-(`sales/0002`), y excluye las filas con borrado lógico.
+En **PostgreSQL** se crean como `MATERIALIZED VIEW` con índice único (necesario para el refresco concurrente) e índices de filtro (incluyendo `vendedor_id` y `transportadora`); en **SQLite** (pruebas y desarrollo sin servidor)
+son `VIEW` comunes con el mismo esquema, que siempre están al día. Las migraciones excluyen filas con borrado lógico.
 
 | Vista | Una fila por | Columnas |
 |---|---|---|
 | `reportes_mv_produccion_ordenes` (`VistaProduccionOrden`) | Orden de producción | `orden_id`, `codigo`, `fecha_salida`, `estado_orden`, `responsable` (de la orden de salida de inventario); `referencia_id`, `referencia_codigo`, `referencia_nombre`, `tipo_jean` (el ajuste de la referencia); `prendas_planificadas`; y, sumados de sus lotes e inspecciones, `total_lotes`, `prendas_en_lotes`, `prendas_aptas` y `prendas_marras`. |
-| `reportes_mv_ventas_referencias` (`VistaVentasReferencia`) | Línea de factura | `linea_id`, `factura_id`, `numero_factura`, `fecha`, `estado_factura`, `estado_cobro`, `cliente_tipo`, `cliente_nombre`, `transportadora`; `referencia_id`, `referencia_codigo`, `referencia_nombre`, `tipo_jean`, `talla`, `color`; `unidades`, `subtotal`, `descuento`, `base_gravable`, `iva`, `total` y `costo_estimado` (el costo de fábrica copiado en la línea × la cantidad). |
+| `reportes_mv_ventas_referencias` (`VistaVentasReferencia`) | Línea de factura | `linea_id`, `factura_id`, `numero_factura`, `fecha`, `estado_factura`, `estado_cobro`, `cliente_tipo`, `cliente_nombre`, `transportadora`, `vendedor_id`, `vendedor_nombre`; `referencia_id`, `referencia_codigo`, `referencia_nombre`, `tipo_jean`, `talla`, `color`; `unidades`, `subtotal`, `descuento`, `base_gravable`, `iva`, `total` y `costo_estimado` (el costo de fábrica copiado en la línea × la cantidad). |
 
-**Refresco:** `refresh_materialized_views()` ejecuta `REFRESH MATERIALIZED VIEW CONCURRENTLY` sobre las dos vistas, solo si el motor es PostgreSQL; en SQLite no hace
-nada y devuelve `false`. Se dispara de dos formas: **cada vez que se consulta** `GET /api/reportes/gerencial/` en PostgreSQL (así el tablero nunca muestra datos viejos) y
-con el botón **Actualizar datos**, que llama a `POST /api/reportes/refrescar/`.
-
-!!! info "Aviso para quien cambie el modelo de datos"
-    El SQL de las vistas está **congelado dentro de la migración**. Si una migración futura cambia una columna que usan, hay que volver a crear las vistas en esa migración;
-    en PostgreSQL el `DROP … CASCADE` y el refresco fallarían, mientras que SQLite no lo muestra.
+**Refresco:** `refresh_materialized_views()` ejecuta `REFRESH MATERIALIZED VIEW CONCURRENTLY` sobre las dos vistas en PostgreSQL (cuando las señales sobre tablas fuente —incluida `shipping.Guia`— marcan las vistas como sucias o con `POST /api/reportes/refrescar/`). En SQLite devuelve `false`.
 
 ### Qué calcula el tablero
 
-`GET /api/reportes/gerencial/` filtra las dos vistas con los mismos criterios, pero cada filtro solo aplica a la vista que lo tiene:
+`GET /api/reportes/gerencial/` valida todos los parámetros en `apps/core/listing.py` (cualquier fecha mal formada, rango `desde > hasta` o entero inválido responde **`400`** con mensaje claro, nunca `500`) y aplica los filtros combinables:
 
 | Filtro | Aplica a | Detalle |
 |---|---|---|
-| `desde`, `hasta` (AAAA-MM-DD) | Producción y ventas | A la fecha de salida de la orden y a la fecha de la factura. |
-| `tipo_jean` | Producción y ventas | Código del ajuste de la referencia (`SKINNY`, `SLIM`, `RECTO`, `BOOTCUT`, `MOM`, `WIDE_LEG`, `JOGGER`, `OTRO`). |
-| `referencia` | Producción y ventas | Id de la referencia; si no es un número, se ignora. |
+| `desde`, `hasta` (AAAA-MM-DD) | Producción, ventas y devoluciones | A la fecha de salida de la orden y a la fecha de la factura. |
+| `tipo_jean` | Producción, ventas y devoluciones | Código del ajuste de la referencia (`SKINNY`, `SLIM`, `RECTO`, `BOOTCUT`, `MOM`, `WIDE_LEG`, `JOGGER`, `OTRO`). |
+| `referencia` | Producción, ventas y devoluciones | Id de la referencia; si no es entero positivo responde `400`. |
 | `estado_orden` | Solo producción | `EN_PROCESO`, `COMPLETADA` o `ANULADA`. |
-| `estado_cobro` | Solo ventas | `POR_COBRAR`, `PAGADO` o `DEVOLUCION` (ver [Cartera](#cartera-y-pagos-contraentrega-hu-73-te-64)). |
-| `tipo_cliente` | Solo ventas | `DETAL`, `MAYORISTA` o `DISTRIBUIDOR`. |
+| `estado_cobro` | Ventas y devoluciones | `POR_COBRAR`, `PAGADO` o `DEVOLUCION` (ver [Cartera](#cartera-y-pagos-contraentrega-hu-73-te-64)). |
+| `tipo_cliente` | Ventas y devoluciones | `DETAL`, `MAYORISTA` o `DISTRIBUIDOR`. |
+| `vendedor` | Ventas y devoluciones | Id del vendedor de la factura (`400` si no es entero positivo). |
+| `transportadora` | Ventas y devoluciones | `INTERRAPIDISIMO`, `ENVIA` u `OTRA`. |
 
-Las ventas incluyen **solo facturas emitidas** (las anuladas quedan fuera). La respuesta trae:
+Las ventas incluyen **solo facturas emitidas** (las anuladas quedan fuera). Para **`devoluciones_por_vendedor`** (HU 7.7 / TE-177), se agrupan en una única consulta agregada las guías vigentes en estado `DEVUELTA` (filtrando referencia/tipo de jean por subconsulta sobre `DetalleVenta` para no multiplicar fletes cuando una factura tiene varias líneas). Es un reporte **meramente informativo**: el sistema registra y suma el flete a cargo del vendedor pero **no ejecuta descuentos automáticos**.
 
 | Bloque | Contenido |
 |---|---|
-| `filtros_aplicados` | Los filtros tal como se interpretaron. |
-| `kpis` | `total_ordenes`, `prendas_planificadas`, `prendas_aptas`, `prendas_marras`, `tasa_calidad_pct`, `facturas_emitidas`, `unidades_vendidas`, `ingresos_totales`, `utilidad_bruta`, `recaudado_periodo`, `pendiente_recaudo_periodo` y `saldo_financiero_empresa` (la caja de cartera, que no depende de los filtros). |
+| `filtros_aplicados` | Los filtros tal como se interpretaron (`desde`, `hasta`, `tipo_jean`, `referencia`, `estado_orden`, `estado_cobro`, `tipo_cliente`, `vendedor`, `transportadora`). |
+| `kpis` | `total_ordenes`, `prendas_planificadas`, `prendas_aptas`, `prendas_marras`, `tasa_calidad_pct`, `facturas_emitidas`, `unidades_vendidas`, `ingresos_totales`, `utilidad_bruta`, `recaudado_periodo`, `pendiente_recaudo_periodo`, `saldo_financiero_empresa`, `devoluciones_guias` y `flete_devoluciones_total`. |
 | `consolidado_tipo_jean` | Por tipo de jean: órdenes, prendas planificadas, aptas y marras, unidades vendidas, ingresos y utilidad bruta. |
 | `ordenes_produccion` | Una fila por orden, con `tasa_calidad_pct` (aptas ÷ inspeccionadas; 100 si aún no hay inspecciones) y `avance_lotes_pct` (prendas en lotes ÷ planificadas). |
 | `ventas_por_referencia` | Por referencia: facturas, unidades, subtotal, descuento, base gravable, IVA, ingresos, costo estimado, `utilidad_bruta` (base gravable − costo) y `margen_pct`. |
-| `ventas_detalle` | Las **250 líneas** de factura más recientes que cumplen los filtros. |
+| `ventas_detalle` | Las **250 líneas** de factura más recientes que cumplen los filtros (con `vendedor_nombre` y `transportadora`). |
+| `devoluciones_por_vendedor` | Por vendedor: `vendedor_id`, `vendedor_nombre`, `guias_devueltas` y `flete_vendedor` total a su cargo. |
 
-`GET /api/reportes/metadatos/` devuelve los catálogos de los filtros: tipos de jean, estados de orden, estados de cobro, tipos de cliente y las referencias (id, código, nombre,
-ajuste y estado).
+`GET /api/reportes/metadatos/` devuelve los catálogos de filtros: tipos de jean, estados de orden, estados de cobro, tipos de cliente, `vendedores`, `transportadoras` y `referencias`.
 
 ### Rutas y permisos
 
@@ -952,36 +947,26 @@ ajuste y estado).
 | `/api/reportes/refrescar/` | `POST`: refresca las vistas; responde `{"refreshed": true\|false, "detail": …}` (`false` en SQLite) | `reportes.gestionar` |
 
 **Permisos:** `reportes.ver` y `reportes.gestionar` los crea la migración `users/0003_roles_y_permisos` y los otorga al **Gerente**; el Administrador los tiene de forma implícita.
-Las rutas de consulta piden `reportes.ver` y refrescar las vistas pide `reportes.gestionar` (TE-179): con solo consultar no se puede disparar el refresco. Un Vendedor, por ejemplo, recibe `403`. El botón **Actualizar datos** solo se muestra a quien tiene `reportes.gestionar`. Ver [roles y permisos](roles-y-permisos.md).
+Las rutas de consulta piden `reportes.ver` y refrescar las vistas pide `reportes.gestionar` (TE-179). Un Vendedor recibe `403`.
 
-### Pantalla y exportación
+### Pantalla, zona horaria Colombia y exportación
 
 *Reportes → Tablero gerencial* (`/reportes`, exige `reportes.ver`; código en `frontend/src/components/Reports/`):
 
-- **Filtros avanzados:** fechas desde y hasta con atajos (*Últimos 7 días*, *Últimos 30 días*, *Este mes* y un botón para quitar las fechas), tipo de jean, referencia (la lista se acota al tipo de jean elegido),
-  estado de la orden, estado de cobro y tipo de cliente. El tablero se vuelve a consultar al cambiar cualquier filtro, y una insignia cuenta los filtros activos.
-- **Indicadores:** cuatro tarjetas (ingresos por ventas, utilidad bruta estimada con el saldo de la caja, estado de cartera del periodo y producción y calidad).
-- **Pestañas:** *Consolidado por Tipo de Jean*, *Órdenes de Producción*, *Ventas por Referencia* y *Detalle de Ventas*, cada una con su número de filas.
-- **Actualizar datos:** llama a `POST /api/reportes/refrescar/` y vuelve a cargar el tablero.
-- **Exportar:** `reports.js` arma las matrices con la biblioteca `xlsx` (SheetJS), en el navegador. *Exportar Excel (.xlsx)* genera **un libro con las cuatro hojas** (la de la pestaña activa
-  primero), y *Exportar CSV (.csv)* genera un archivo solo con la pestaña activa, con BOM UTF-8 para que Excel muestre bien las tildes. Los archivos se llaman, por ejemplo,
-  `reporte_consolidado_jean_AAAA-MM-DD.xlsx`; lo que se exporta es lo que devolvió el servidor con los filtros aplicados.
+- **Filtros combinables y persistentes:** fechas desde y hasta con atajos (*Últimos 7 días*, *Últimos 30 días*, *Este mes* y *Todo el historial*) calculados estrictamente con el calendario de **Colombia (`America/Bogota`, UTC-5)** mediante `colombiaTodayISO` y `quickRangeDates` (sin adelantarse un día después de las 7:00 p. m.), tipo de jean, referencia acotada, estado de orden, estado de cobro, tipo de cliente, **Vendedor** y **Transportadora**. Los filtros se conservan en la URL / `sessionStorage` (`usePersistedFilters`) y se limpian en un clic con **Limpiar filtros**.
+- **Indicadores:** cinco tarjetas (ingresos por ventas, utilidad bruta estimada con el saldo de la caja, estado de cartera del periodo, producción y calidad, y devoluciones por vendedor).
+- **Pestañas:** *Consolidado por Tipo de Jean*, *Órdenes de Producción*, *Ventas por Referencia*, *Detalle de Ventas* y **Devoluciones por vendedor**, cada una con su número de filas.
+- **Exportar:** `reports.js` arma las matrices con `xlsx` (SheetJS). *Exportar Excel (.xlsx)* genera un libro con **las cinco hojas** (la pestaña activa primero), incluida **`Devoluciones Vendedor`**; *Exportar CSV (.csv)* exporta la pestaña activa con BOM UTF-8.
 
-**Pruebas:** `apps/reports/test_reportes.py` comprueba que las vistas contengan producción y ventas, los metadatos, los indicadores consolidados, los filtros por tipo de jean, estado de orden y
-rango de fechas, el filtro de estado de cobro tras una conciliación y los permisos (el Vendedor recibe `403`, el Gerente puede refrescar). El frontend prueba las funciones puras de
-`reports.js` (filtros, matrices y CSV) en `reports.test.js`. Para el backend: `python manage.py test apps.reports --noinput`.
+**Listados combinables y paginación en el resto del ERP (HU 7.7 / TE-177):** todos los listados operativos (**Facturas**, **Guías**, **Órdenes de producción**, **Lotes** en el nuevo endpoint `GET /api/produccion/lotes/`, **Inspecciones**, **Movimientos de inventario** y **Movimientos de producto terminado**) comparten las utilidades de `apps/core/listing.py` (`parse_date_range`, `parse_int_param` y `paginate_or_limit`): aceptan filtros combinables, responden `400` ante fechas o identificadores inválidos, mantienen retrocompatibilidad devolviendo lista JSON cuando no se envía `?page=`, y devuelven `{count, page, page_size, total_pages, next, previous, results}` cuando el frontend solicita paginación (mostrando el total exacto con `ListPager` y conservando filtros al navegar con `usePersistedFilters`).
+
+**Pruebas:** `apps/reports/test_reportes.py` y `apps/reports/test_filtros_y_devoluciones.py` cubren las vistas SQL, metadatos, los cinco escenarios de aceptación de TE-177 (filtros combinados, paginación >200 registros, devoluciones por vendedor `$12.000 + $9.000 = $21.000`, fechas/parámetros inválidos `400`, permisos `403`), filtros combinables en los 6 listados y ausencia de consultas N+1 (`CaptureQueriesContext`), además de la verificación real en PostgreSQL 16 en `apps/core/test_postgres.py`. En frontend, `reports.test.js` y `usePersistedFilters.test.js` prueban la zona horaria Colombia (`2026-11-27T01:30:00Z` -> `2026-11-26`), devoluciones en Excel/CSV y la persistencia de filtros.
 
 !!! warning "Alcance y límites actuales"
-    Lo siguiente sale del código y de la auditoría de deuda técnica del Sprint 4 (`Deuda-Tecnica-Sprint-4.md`):
+    Lo siguiente permanece fuera de alcance según las decisiones del Sprint 4:
 
-    - **Filtros avanzados e impresión:** el tablero ya filtra por fecha, tipo de jean, referencia, estados y tipo de cliente, pero los filtros avanzados de otras pantallas (facturas, guías, producción, inventario, calidad) y la **paginación** son la HU 7.7 (TE-177). El flete de las devoluciones al vendedor tampoco está en el tablero todavía (TE-177).
-    - **Fechas inválidas:** una fecha mal escrita (`?desde=abc`) llega sin validar a la consulta y la auditoría la reporta como error `500` en vez de `400`; la robustez de la API está en TE-181 (subtarea de TE-184).
-    - **Refresco en cada consulta y sin manejo de fallos:** en PostgreSQL cada carga del tablero refresca las dos vistas y no atrapa un error del refresco; solo quien tiene `reportes.gestionar` puede dispararlo a mano (TE-179); sacar el refresco de la lectura está en la deuda del Sprint 4 y todavía no tiene historia propia.
-    - **Estado de los modelos:** `makemigrations --check` quiere crear una migración inicial para los modelos no gestionados de `reports`; se corregirá junto a la integración continua (TE-180).
-    - **Pruebas solo en SQLite:** como allí son vistas comunes, ninguna prueba ejercita `REFRESH MATERIALIZED VIEW` ni el comportamiento propio de PostgreSQL (TE-180).
-    - **Cifras que dependen de otros módulos:** `prendas_en_lotes` suma `Lote.cantidad`, que desde TE-172 se conserva intacta tras la recepción de lavandería (ver [Lavandería](#lavanderia-remision-de-salida-y-recepcion-con-cotejo-hu-51-y-52-te-57-y-te-58)); `costo_estimado` usa el costo de fábrica vigente en Precios (desde TE-174 sugerido como promedio ponderado de órdenes terminadas en los últimos 90 días y aplicado por el Gerente).
-    - **Ingresos y devoluciones:** los ingresos incluyen las facturas emitidas que terminaron en `DEVOLUCION` a menos que se filtre por estado de cobro; `ingresos_totales` suma el total con IVA, mientras que la utilidad usa la base gravable.
-    - **Exportación en el navegador:** el Excel y el CSV se arman en el cliente con la última respuesta (el detalle de ventas llega limitado a 250 líneas). La biblioteca `xlsx` tiene avisos de seguridad sin versión corregida en npm y va dentro del paquete principal (riesgo bajo porque solo exporta); su reemplazo y la carga diferida están en la deuda del Sprint 4 sin historia propia todavía.
+    - **El flete de devoluciones no se descuenta de nómina:** la sección *Devoluciones por vendedor* consolida el total y los fletes a cargo del vendedor a nivel informativo; el ERP no tiene módulo de nómina ni liquidación de comisiones.
+    - **Exportación en el navegador:** el detalle de ventas en el tablero se limita a las 250 líneas más recientes. La biblioteca `xlsx` va dentro del paquete principal.
 
 ## Datos de demostración
 

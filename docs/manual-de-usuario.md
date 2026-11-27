@@ -524,21 +524,24 @@ tiempos, **Liquidación de Órdenes**, **Procesos Externos (Lavandería)** (remi
 Menú **Reportes → Tablero gerencial** (la pantalla se titula *Tablero de Reportes Gerenciales*). Reúne en una sola página el desempeño de producción, calidad, ventas y cartera, con
 filtros, y permite llevarse los datos a Excel o CSV. Lo ve el Gerente y el Administrador, que tienen el permiso de **Reportes**; los demás roles no ven el menú.
 
-1. **Filtra el periodo.** En **Filtros avanzados** usa los botones rápidos **Últimos 7 días**, **Últimos 30 días**, **Este mes** o **Todo el historial**, o escribe las fechas **Desde** y **Hasta**.
-   Además puedes filtrar por **Tipo de jean (Silueta)**, **Referencia de jean** (si eliges un tipo, solo salen las referencias de ese tipo), **Estado de orden (Producción)**,
-   **Estado de cobro (Ventas)** y **Tipo de cliente**. Una insignia indica cuántos filtros están activos y **Limpiar filtros** los quita todos.
-2. **Lee los indicadores.** Cuatro tarjetas resumen el periodo: **Ingresos por ventas** (con el número de facturas y de prendas vendidas), **Utilidad bruta estimada** (con el *Saldo en caja
-   empresa*), **Estado de cartera del periodo** (lo recaudado y lo que sigue por cobrar) y **Producción y calidad** (prendas aptas, órdenes, marras y el porcentaje de calidad).
+1. **Filtra el periodo y combina criterios.** En **Filtros avanzados** usa los botones rápidos **Últimos 7 días**, **Últimos 30 días**, **Este mes** o **Todo el historial** (calculados siempre con el calendario de **Colombia**, de modo que después de las 7:00 p. m. no se adelantan un día), o escribe las fechas **Desde** y **Hasta**.
+   Además puedes combinar **Tipo de jean (Silueta)**, **Referencia de jean** (si eliges un tipo, solo salen las referencias de ese tipo), **Estado de orden (Producción)**,
+   **Estado de cobro (Ventas)**, **Tipo de cliente**, **Vendedor** y **Transportadora**. Los filtros se conservan si cambias de pantalla y vuelves, una insignia indica cuántos filtros están activos y **Limpiar filtros** los quita todos en un clic.
+2. **Lee los indicadores.** Cinco tarjetas resumen el periodo: **Ingresos por ventas**, **Utilidad bruta estimada** (con el *Saldo en caja empresa*), **Estado de cartera del periodo**, **Producción y calidad** y **Devoluciones por vendedor** (número de guías devueltas y total del flete a cargo del vendedor).
 3. **Cambia de vista con las pestañas**, cada una con su número de registros:
     - **Consolidado por Tipo de Jean**: por silueta, órdenes, prendas planificadas, aptas, marras, unidades vendidas, ingresos y utilidad bruta.
     - **Órdenes de Producción**: cada orden con su estado, referencia, responsable, lotes, aptas, marras y calidad.
     - **Ventas por Referencia**: facturas, unidades, subtotal, descuentos, base gravable, IVA, total, utilidad bruta y margen.
-    - **Detalle de Ventas**: cada línea vendida con su factura, cliente, estado de cobro, referencia, talla y color.
+    - **Detalle de Ventas**: cada línea vendida con su factura, cliente, vendedor, transportadora, estado de cobro, referencia, talla y color.
+    - **Devoluciones por vendedor**: número de guías devueltas y flete acumulado a cargo de cada vendedor (es solo informativo: el sistema no descuenta dinero automáticamente).
 4. **Actualiza los datos.** **Actualizar datos** vuelve a calcular los indicadores a partir de lo último registrado (útil si acabas de facturar o de inspeccionar y no lo ves). Al terminar
    verás *«Indicadores y vistas analíticas actualizados.»*
 5. **Exporta.**
-    - **Exportar Excel (.xlsx)** descarga un libro con **las cuatro vistas** (una hoja por cada pestaña, empezando por la que tienes abierta) respetando los filtros. Verás *«Archivo Excel (.xlsx) generado y descargado.»*
+    - **Exportar Excel (.xlsx)** descarga un libro con **las cinco hojas** (incluyendo *Devoluciones Vendedor*, empezando por la pestaña abierta) respetando los filtros. Verás *«Archivo Excel (.xlsx) generado y descargado.»*
     - **Exportar CSV (.csv)** descarga solo la **pestaña que estás viendo**. Verás *«Archivo CSV (.csv) de la vista actual descargado.»* Está desactivado si la vista no tiene registros.
+
+!!! tip "Filtros avanzados, persistencia y paginación en los listados"
+    En **Facturas**, **Guías de envío**, **Órdenes de producción y Lotes**, **Inspecciones**, **Kardex de inventario** y **Movimientos de producto terminado** puedes combinar filtros (fechas, cliente, vendedor, referencia, transportadora, lote, etapa, responsable o estado), ver el **total exacto** encontrado, recorrer todos los registros **página por página** (sin el antiguo límite oculto de 200 filas), conservar los filtros al volver a la pantalla y limpiarlos en un clic con **Limpiar filtros**.
 
 Si ningún registro cumple los filtros, la tabla dice *«No se encontraron registros para los filtros seleccionados»*: amplía el rango de fechas o quita algún filtro. El tablero es de
 **solo consulta**: no cambia nada de la operación.

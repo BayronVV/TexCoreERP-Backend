@@ -2,6 +2,7 @@
 from django.conf import settings
 from rest_framework import serializers
 
+from apps.core.listing import seller_options
 from apps.sales.serializers import _name
 
 from . import catalog, services, tracking
@@ -194,9 +195,16 @@ class OpcionEnvioSerializer(serializers.Serializer):
     rastreable = serializers.BooleanField(required=False)
 
 
+class VendedorEnvioSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    nombre = serializers.CharField()
+    email = serializers.CharField()
+
+
 class MetadatosEnvioSerializer(serializers.Serializer):
     estados = OpcionEnvioSerializer(many=True)
     transportadoras = OpcionEnvioSerializer(many=True)
+    vendedores = VendedorEnvioSerializer(many=True)
     transiciones = serializers.DictField(child=serializers.ListField(child=serializers.CharField()))
     estados_con_nota = serializers.ListField(child=serializers.CharField())
     nota_minima = serializers.IntegerField()
@@ -209,6 +217,7 @@ def metadata():
     return {
         "estados": [{"codigo": code, "nombre": name, "color": catalog.STATE_COLORS[code]} for code, name in catalog.GUIDE_STATES],
         "transportadoras": [{"codigo": code, "nombre": name, "rastreable": code in catalog.TRACKING_COURIERS} for code, name in catalog.CARRIERS],
+        "vendedores": seller_options(),
         "transiciones": {state: sorted(targets) for state, targets in catalog.TRANSITIONS.items()},
         "estados_con_nota": sorted(catalog.NOTE_REQUIRED),
         "nota_minima": catalog.MIN_NOTE,

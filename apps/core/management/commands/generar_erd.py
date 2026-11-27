@@ -37,8 +37,10 @@ MODULES = [
     ("ventas", "Ventas y cartera", ("sales",)),
     ("envios", "Envíos", ("shipping",)),
 ]
-REPORT_MIGRATION = "apps.reports.migrations.0001_vistas_materializadas"
-REPORT_VIEWS = ((catalog.MV_PRODUCTION_SUMMARY, "PRODUCTION_QUERY"), (catalog.MV_SALES_BY_REFERENCE, "SALES_QUERY"))
+REPORT_VIEWS = (
+    (catalog.MV_PRODUCTION_SUMMARY, "apps.reports.migrations.0001_vistas_materializadas", "PRODUCTION_QUERY"),
+    (catalog.MV_SALES_BY_REFERENCE, "apps.reports.migrations.0002_ventas_vendedor_en_vista", "SALES_QUERY_V2"),
+)
 USER_MODEL = "CustomUser"  # lo referencian casi todos los módulos (responsables); se omite en mapas y diagramas por módulo
 AUDIT_FIELDS = {"created_at", "updated_at", "deleted_at"}  # los trae BaseModel
 
@@ -205,11 +207,11 @@ def module_erd(key, models_):
 
 def report_views(models_):
     """Vistas materializadas de reportes: nombre, columnas (leídas del SQL de la migración) y tablas fuente."""
-    migration = importlib.import_module(REPORT_MIGRATION)
     table_names = {m._meta.db_table: m.__name__ for m in models_}
     view_models = {m._meta.db_table: m for m in apps.get_app_config("reports").get_models()}
     result = []
-    for view, query_name in REPORT_VIEWS:
+    for view, migration_module, query_name in REPORT_VIEWS:
+        migration = importlib.import_module(migration_module)
         query = getattr(migration, query_name)
         columns = []
         for line in query.splitlines():

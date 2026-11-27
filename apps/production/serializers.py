@@ -199,6 +199,71 @@ class LoteSerializer(serializers.ModelSerializer):
         return tracking.available_actions(self._states(obj), self._cancelled(obj))
 
 
+class LoteListadoSerializer(serializers.ModelSerializer):
+    """Fila de lote optimizada para listados combinables y paginados sin consultas N+1."""
+    tallas = LoteTallaSerializer(many=True, read_only=True)
+    orden_codigo = serializers.CharField(source="orden.codigo", read_only=True)
+    orden_estado = serializers.CharField(source="orden.orden_salida.estado", read_only=True)
+    fecha_salida = serializers.DateField(source="orden.orden_salida.fecha_salida", read_only=True)
+    responsable = serializers.CharField(source="orden.orden_salida.responsable", read_only=True)
+    referencia = serializers.IntegerField(source="orden.referencia_id", read_only=True)
+    referencia_codigo = serializers.CharField(source="orden.referencia.codigo", read_only=True)
+    referencia_nombre = serializers.CharField(source="orden.referencia.nombre", read_only=True)
+    estado = serializers.SerializerMethodField()
+    estado_nombre = serializers.SerializerMethodField()
+    etapa_actual = serializers.SerializerMethodField()
+    etapa_actual_nombre = serializers.SerializerMethodField()
+    etapa_responsable = serializers.SerializerMethodField()
+    tiempo_neto_segundos = serializers.SerializerMethodField()
+    acciones = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Lote
+        fields = [
+            "id", "codigo", "numero", "cantidad", "estado_inventario",
+            "orden", "orden_codigo", "orden_estado", "fecha_salida", "responsable",
+            "referencia", "referencia_codigo", "referencia_nombre",
+            "estado", "estado_nombre", "etapa_actual", "etapa_actual_nombre",
+            "etapa_responsable", "tiempo_neto_segundos", "acciones", "tallas",
+        ]
+
+    @staticmethod
+    def _cancelled(obj):
+        return obj.orden.orden_salida.estado == inventory_catalog.STATUS_CANCELLED
+
+    @staticmethod
+    def _stages(obj):
+        return list(obj.etapas.all())
+
+    def get_estado(self, obj) -> str:
+        return tracking.lot_state([s.estado for s in self._stages(obj)], self._cancelled(obj))
+
+    def get_estado_nombre(self, obj) -> str:
+        return catalog.STATE_NAMES[self.get_estado(obj)]
+
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_etapa_actual(self, obj):
+        stage = tracking.current_stage(self._stages(obj))
+        return stage.etapa if stage else None
+
+    def get_etapa_actual_nombre(self, obj) -> str:
+        stage = tracking.current_stage(self._stages(obj))
+        return catalog.STAGE_NAMES.get(stage.etapa, stage.etapa) if stage else ""
+
+    def get_etapa_responsable(self, obj) -> str:
+        stage = tracking.current_stage(self._stages(obj))
+        if stage and stage.responsable:
+            return stage.responsable.get_full_name() or stage.responsable.email
+        return obj.orden.orden_salida.responsable or ""
+
+    def get_tiempo_neto_segundos(self, obj) -> int:
+        return sum(tracking.net_seconds(stage) for stage in self._stages(obj))
+
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_acciones(self, obj):
+        return tracking.available_actions([s.estado for s in self._stages(obj)], self._cancelled(obj))
+
+
 class EventoEtapaSerializer(serializers.ModelSerializer):
     """Un evento del historial de una etapa: acción, usuario y momento."""
     etapa = serializers.CharField(source="etapa_lote.etapa", read_only=True)

@@ -298,6 +298,54 @@ class PostgresVerificationTests(TransactionTestCase):
         report = build_management_report({}, auto_refresh=True)
         self.assertIn("kpis", report)
         self.assertIn("consolidado_tipo_jean", report)
+        self.assertIn("devoluciones_por_vendedor", report)
+
+        seller = make_user("pg_rep_vend@t.co", "VENDEDOR")
+        customer = Cliente.objects.create(
+            codigo="CLI-PG-REP",
+            tipo_documento="CC",
+            documento="1090333444",
+            nombre="Cliente Reporte PG",
+            tipo=sales_catalog.CLIENT_DETAL,
+            ciudad="Bogotá",
+            direccion="Cra 7 # 10-20",
+            telefono="3002223344",
+        )
+        inv = FacturaVenta.objects.create(
+            numero="FV-PG-REP-1",
+            cliente=customer,
+            cliente_nombre=customer.nombre,
+            cliente_documento=customer.documento,
+            cliente_tipo=customer.tipo,
+            cliente_ciudad=customer.ciudad,
+            cliente_direccion=customer.direccion,
+            cliente_telefono=customer.telefono,
+            vendedor=seller,
+            fecha=timezone.localdate(),
+            subtotal=100_000,
+            descuento_total=0,
+            base_gravable=100_000,
+            iva_tarifa=19,
+            iva_total=19_000,
+            total=119_000,
+            valor_a_recaudar=119_000,
+            transportadora="ENVIA",
+            token="22222222-2222-2222-2222-222222222222",
+        )
+        Guia.objects.create(
+            factura=inv,
+            transportadora="ENVIA",
+            numero_guia="ENV-PG-177",
+            estado=shipping_catalog.RETURNED,
+            vigente=True,
+            flete_vendedor=12_500,
+        )
+        refresh_materialized_views()
+        filtered = build_management_report({"vendedor": str(seller.id), "transportadora": "ENVIA"})
+        self.assertEqual(filtered["kpis"]["devoluciones_guias"], 1)
+        self.assertEqual(filtered["kpis"]["flete_devoluciones_total"], 12_500)
+        self.assertEqual(len(filtered["devoluciones_por_vendedor"]), 1)
+        self.assertEqual(filtered["devoluciones_por_vendedor"][0]["vendedor_id"], seller.id)
 
     def test_te170_unificacion_pt_bloqueos_y_restricciones_en_postgres(self):
         """TE-170: alta automática con select_for_update, unicidad por referencia y cálculo vivo en PostgreSQL."""

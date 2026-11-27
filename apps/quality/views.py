@@ -6,7 +6,14 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.inventory.views import apply_filters, limited
+from apps.core.listing import (
+    PAGINATION_PARAMS,
+    paginate_or_limit,
+    parse_date_range,
+    parse_int_param,
+    user_search_q,
+)
+from apps.inventory.views import limited
 from apps.production.models import RecepcionLote
 
 from . import catalog, services
@@ -128,23 +135,72 @@ class InspeccionListCreateView(APIView):
     required_permissions = INSPECTIONS_PERMISSIONS
 
     @extend_schema(
-        summary="Listar las inspecciones (filtros: lote, orden, desde, hasta, q, limit)",
+        summary="Listar las inspecciones (filtros combinables y paginación)",
         parameters=[
-            LIMIT_PARAM, OpenApiParameter("lote", int, description="Id del lote"), OpenApiParameter("orden", int, description="Id de la orden"),
+            LIMIT_PARAM, *PAGINATION_PARAMS,
+            OpenApiParameter("lote", int, description="Id del lote"),
+            OpenApiParameter("lote_codigo", str, description="Código del lote"),
+            OpenApiParameter("orden", int, description="Id de la orden"),
+            OpenApiParameter("orden_codigo", str, description="Código de la orden"),
+            OpenApiParameter("referencia", int, description="Id de la referencia"),
+            OpenApiParameter("responsable", str, description="Id, nombre o correo del inspector"),
+            OpenApiParameter("estado", str, description="CON_MARRAS o SIN_MARRAS"),
             OpenApiParameter("desde", str, description="Fecha mínima (AAAA-MM-DD)"), OpenApiParameter("hasta", str, description="Fecha máxima"),
-            OpenApiParameter("q", str, description="Código de la inspección, del lote o de la orden"),
+            OpenApiParameter("q", str, description="Código de inspección, lote, orden, referencia o nota"),
         ],
         responses={200: InspeccionSerializer(many=True)},
     )
     def get(self, request):
-        inspections = apply_filters(
-            inspection_queryset(), request.query_params,
-            [("lote", "lote_id"), ("orden", "lote__orden_id"), ("desde", "fecha__gte"), ("hasta", "fecha__lte")],
-        )
+        desde, hasta = parse_date_range(request.query_params)
+        lote_id = parse_int_param(request.query_params, "lote", minimum=1)
+        orden_id = parse_int_param(request.query_params, "orden", minimum=1)
+        referencia_id = parse_int_param(request.query_params, "referencia", minimum=1)
+
+        inspections = inspection_queryset()
+        if lote_id is not None:
+            inspections = inspections.filter(lote_id=lote_id)
+        lote_codigo = (request.query_params.get("lote_codigo") or "").strip()
+        if lote_codigo:
+            inspections = inspections.filter(lote__codigo__icontains=lote_codigo)
+
+        if orden_id is not None:
+            inspections = inspections.filter(lote__orden_id=orden_id)
+        orden_codigo = (request.query_params.get("orden_codigo") or "").strip()
+        if orden_codigo:
+            inspections = inspections.filter(lote__orden__codigo__icontains=orden_codigo)
+
+        if referencia_id is not None:
+            inspections = inspections.filter(lote__orden__referencia_id=referencia_id)
+
+        responsable_raw = (request.query_params.get("responsable") or "").strip()
+        if responsable_raw:
+            if responsable_raw.isdigit():
+                inspections = inspections.filter(inspector_id=int(responsable_raw))
+            else:
+                inspections = inspections.filter(user_search_q("inspector", responsable_raw))
+
+        estado = (request.query_params.get("estado") or "").strip().upper()
+        if estado == "CON_MARRAS":
+            inspections = inspections.filter(marras__gt=0)
+        elif estado == "SIN_MARRAS":
+            inspections = inspections.filter(marras=0)
+
+        if desde is not None:
+            inspections = inspections.filter(fecha__gte=desde)
+        if hasta is not None:
+            inspections = inspections.filter(fecha__lte=hasta)
+
         q = request.query_params.get("q", "").strip()
         if q:
-            inspections = inspections.filter(Q(codigo__icontains=q) | Q(lote__codigo__icontains=q) | Q(lote__orden__codigo__icontains=q))
-        return Response(InspeccionSerializer(limited(inspections, request), many=True).data)
+            inspections = inspections.filter(
+                Q(codigo__icontains=q)
+                | Q(lote__codigo__icontains=q)
+                | Q(lote__orden__codigo__icontains=q)
+                | Q(lote__orden__referencia__codigo__icontains=q)
+                | Q(lote__orden__referencia__nombre__icontains=q)
+                | Q(observaciones__icontains=q)
+            )
+        return paginate_or_limit(inspections, request, InspeccionSerializer)
 
     @extend_schema(
         summary="Registrar la inspección de un lote", request=InspeccionInputSerializer, responses={201: InspeccionSerializer},

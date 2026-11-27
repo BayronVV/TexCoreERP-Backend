@@ -325,6 +325,12 @@ class OpcionSerializer(serializers.Serializer):
     nombre = serializers.CharField()
 
 
+class VendedorVentaSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    nombre = serializers.CharField()
+    email = serializers.CharField()
+
+
 class TipoClienteSerializer(OpcionSerializer):
     lista_precios = serializers.CharField(help_text="`detal` o `mayorista`")
     descuento_maximo = serializers.IntegerField(help_text="Descuento máximo (%) que el vendedor puede dar")
@@ -336,6 +342,7 @@ class MetadatosVentaSerializer(serializers.Serializer):
     tipos_documento = OpcionSerializer(many=True)
     transportadoras = OpcionSerializer(many=True)
     estados_cobro = OpcionSerializer(many=True)
+    vendedores = VendedorVentaSerializer(many=True)
     iva_tarifa = serializers.IntegerField()
     aviso = serializers.CharField()
     motivo_anulacion_minimo = serializers.IntegerField()

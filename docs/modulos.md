@@ -606,8 +606,9 @@ Rutas y permisos (la referencia exacta está en Swagger, etiqueta `ventas`):
 | `/api/ventas/facturas/<id>/` | `GET` con sus líneas | `ventas.ver` |
 | `/api/ventas/facturas/<id>/pdf/` | `GET`: descarga `FV-0001.pdf` | `ventas.ver` |
 | `/api/ventas/facturas/<id>/anular/` | `POST` con `motivo` | `ventas.anular` |
-| `/api/ventas/facturas/<id>/conciliar/` | `POST` con `estado_cobro` (`PAGADO` o `DEVOLUCION`), `motivo` u `observaciones` (HU 7.3; ver [Cartera](#cartera-y-pagos-contraentrega-hu-73-te-64)) | `ventas.gestionar` |
-| `/api/ventas/cartera/resumen/` | `GET`: totales de cartera y saldo financiero de la empresa (HU 7.3) | `ventas.ver` |
+| `/api/ventas/facturas/<id>/conciliar/` | `POST` con `nota`: confirma el recaudo si la guía está ENTREGADA o, sin guía, con nota (HU 7.3 y 7.5; ver [Cartera](#cartera-y-pagos-contraentrega-hu-73-te-64)) | `ventas.conciliar` |
+| `/api/ventas/cartera/resumen/` | `GET`: totales de cartera; `saldo_financiero` solo para `ventas.conciliar` (HU 7.3 y 7.5) | `ventas.ver` |
+| `/api/ventas/panel/` | `GET`: cifras del día del panel de ventas, calculadas en el servidor (HU 7.5) | `ventas.ver` |
 
 Validaciones de clientes y precios: el documento son de 5 a 15 dígitos, sin puntos ni guiones, y no puede repetirse entre clientes activos
 del mismo tipo de documento; el dígito de verificación (un solo número) solo aplica al NIT; el nombre pide al menos 3 caracteres y el
@@ -669,7 +670,7 @@ migración se prueban en `apps/users/tests.py`.
 
 Cierra el ciclo de la venta contraentrega de la [factura POS interna](#ventas-factura-pos-interna-y-descuento-de-inventario-hu-71-te-62): la transportadora recauda el
 dinero y la empresa **concilia** cada factura como cobrada o devuelta. Vive en `apps/sales/` (no hay una app aparte): la lógica está en `invoicing.py`
-(`reconcile_collection` y `get_cartera_summary`), los modelos en `models.py`, los permisos y estados en `catalog.py`, y las rutas se declaran junto a las de ventas.
+(`confirm_payment`, `register_return`, `get_cartera_summary` y `get_sales_panel`), los modelos en `models.py`, los permisos y estados en `catalog.py`, y las rutas se declaran junto a las de ventas.
 Cubre la parte de cobro de RF25.
 
 Tablas nuevas (migración `sales/0002_cartera_conciliacion`, que además añade campos a `ventas_factura`):
@@ -691,13 +692,13 @@ Tablas nuevas (migración `sales/0002_cartera_conciliacion`, que además añade 
 ```mermaid
 stateDiagram-v2
     [*] --> POR_COBRAR: factura emitida
-    POR_COBRAR --> PAGADO: conciliar PAGADO, saldo + valor a recaudar, movimiento RECAUDO
-    POR_COBRAR --> DEVOLUCION: conciliar DEVOLUCION con motivo, reingreso de stock, movimiento DEVOLUCION
+    POR_COBRAR --> PAGADO: guía ENTREGADA (o sin guía con nota), caja + valor a recaudar, movimiento RECAUDO
+    POR_COBRAR --> DEVOLUCION: guía DEVUELTA registrada en Envíos, reingreso de stock una vez, movimiento DEVOLUCION
     PAGADO --> [*]
     DEVOLUCION --> [*]
 ```
 
-`PAGADO` y `DEVOLUCION` son finales: no hay ruta para revertirlos. Una factura anulada tampoco se concilia, y una factura ya cobrada o devuelta no se puede anular
+**Coherencia con la guía (HU 7.5, TE-173):** el pago exige la guía vigente `ENTREGADA` (sin guía, una nota de al menos 10 caracteres) y `ventas.conciliar` (Gerente y Secretaria, nunca el Vendedor); la devolución solo entra por la guía `DEVUELTA` (`envios.devolucion`). La nota del recaudo queda en el movimiento de cartera, no en la factura. Hay una sola caja (`Caja General`, restricción única). `PAGADO` y `DEVOLUCION` son finales: no hay ruta para revertirlos. Una factura anulada tampoco se concilia, y una factura ya cobrada o devuelta no se puede anular
 (ver [Ventas](#ventas-factura-pos-interna-y-descuento-de-inventario-hu-71-te-62)).
 
 ### Reglas de la conciliación

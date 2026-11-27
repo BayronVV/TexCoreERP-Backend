@@ -126,7 +126,7 @@ class Command(BaseCommand):
         if paid.estado == catalog.PENDING:
             services.advance_to(paid, catalog.DELIVERED, "Entregada y recaudada (demostración)", catalog.ORIGIN_MANUAL, storekeeper)
         if paid.factura.estado_cobro == sales_catalog.COLLECT_PENDING:
-            invoicing.reconcile_collection(user=seller, factura_id=paid.factura_id, nuevo_estado=sales_catalog.COLLECT_PAID, observaciones="Giro de la transportadora (demostración)")
+            invoicing.confirm_payment(user=storekeeper, factura_id=paid.factura_id, nota="Giro de la transportadora (demostración)")
         back = synthetic("devolucion-registrada", "OTR-DEMO-0007", "OTRA")
         if back.estado == catalog.PENDING:
             services.advance_to(back, catalog.RETURNED, "El cliente no recibió el pedido (demostración)", catalog.ORIGIN_MANUAL, storekeeper)

@@ -179,6 +179,10 @@ class SaldoFinanciero(BaseModel):
     class Meta:
         db_table = "ventas_saldo_financiero"
         verbose_name = "Saldo financiero"
+        # Una sola caja por nombre (HU 7.5): dos conciliaciones simultáneas no pueden crear dos «Caja General».
+        constraints = [
+            models.UniqueConstraint(fields=["nombre"], condition=Q(deleted_at__isnull=True), name="uq_ventas_saldo_nombre"),
+        ]
 
     def __str__(self):
         return f"{self.nombre}: ${self.saldo_actual}"

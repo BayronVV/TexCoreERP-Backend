@@ -7,6 +7,7 @@ from apps.sales import catalog as sales_catalog
 from apps.sales.models import FacturaVenta, MovimientoCartera, SaldoFinanciero
 
 from . import catalog
+from .models import Guia
 from .test_envios import ShippingBase
 
 
@@ -91,3 +92,15 @@ class CrossRuleTests(ShippingBase):
             self.assertEqual(rows[invoice_id], action)
         self.confirm(delivered)
         self.assertEqual(self.seller.get(reverse("ventas_factura", args=[delivered.id])).json()["accion_cartera"], sales_catalog.CARTERA_NONE)
+
+    def test_factura_ya_recaudada_sin_guia_no_admite_asignar_guia_nueva(self):
+        invoice_id = self.sale().json()["id"]
+        invoice = FacturaVenta.objects.get(pk=invoice_id)
+        paid = self.confirm(invoice, nota="Entrega directa en bodega con pago en efectivo")
+        self.assertEqual(paid.status_code, 200, paid.content)
+
+        url = reverse("envios_factura_guia", args=[invoice.id])
+        assigned = self.seller.post(url, {"transportadora": "INTERRAPIDISIMO", "numero_guia": self.number(9)}, format="json")
+        self.assertEqual(assigned.status_code, 400, assigned.content)
+        self.assertIn("recaudada", assigned.content.decode())
+        self.assertFalse(Guia.objects.filter(factura=invoice).exists())

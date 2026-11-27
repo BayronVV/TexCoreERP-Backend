@@ -4,7 +4,7 @@ Guías de envío y despachos (HU 7.2).
 - Una factura tiene una sola guía vigente. `FacturaVenta.transportadora` y `numero_guia` son su espejo y solo se escriben aquí.
 - Todo cambio de estado sigue la tabla de transiciones de `catalog.TRANSITIONS` y deja un evento (solo inserción).
 - La relación de despacho es atómica: si una guía no sirve no cambia ninguna ni se gasta el consecutivo `RD`.
-- La devolución física reutiliza `reconcile_collection` de la HU 7.3: el stock se reingresa una sola vez y la factura queda en devolución.
+- La devolución física usa `register_return` de ventas (HU 7.3 y 7.5): es su único camino; el stock se reingresa una sola vez.
 - Las consultas con bloqueo usan `of=("self",)`: PostgreSQL no admite bloquear el lado opcional de un join.
 """
 import re
@@ -306,7 +306,7 @@ def return_to_stock(*, guide_id, user):
         name = sales_catalog.COLLECT_STATE_NAMES.get(invoice.estado_cobro, invoice.estado_cobro)
         fail(f"La factura ya fue gestionada como {name.lower()}.", "estado_cobro")
     reason = (guide.novedad or "Devolución del paquete por la transportadora")[:255]
-    sales_invoicing.reconcile_collection(user=user, factura_id=invoice.id, nuevo_estado=sales_catalog.COLLECT_RETURNED, motivo=reason)
+    sales_invoicing.register_return(user=user, factura_id=invoice.id, motivo=reason)
     record_event(guide, guide.estado, guide.estado, "Devolución registrada en cartera: las prendas volvieron al inventario", catalog.ORIGIN_MANUAL, user)
     return guide
 

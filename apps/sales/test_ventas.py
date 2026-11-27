@@ -277,10 +277,10 @@ class ReadAndPermissionTests(SalesBase):
         self.assertEqual(FacturaVenta.objects.count(), 0)
         self.assertEqual(self.sell([(self.v30, 1, 0)], client=self.admin).status_code, 201)
         self.assertEqual(self.sell([(self.v30, 1, 0)], client=self.seller).status_code, 201)
-        for client in (self.viewer, self.seller):
+        for client in (self.viewer, self.seller, self.secretary):  # la Secretaria consulta para conciliar la cartera (HU 7.5)
             self.assertEqual(client.get(reverse("ventas_facturas")).status_code, 200)
             self.assertEqual(client.get(reverse("ventas_metadatos")).status_code, 200)
-        for client in (self.store, self.finisher, self.secretary):
+        for client in (self.store, self.finisher):
             self.assertEqual(client.get(reverse("ventas_facturas")).status_code, 403)
 
     def test_lista_con_filtros(self):
@@ -412,124 +412,129 @@ class PriceTests(SalesBase):
 
 
 class CollectionTests(SalesBase):
-    """Pruebas de conciliación de cartera y pagos contraentrega (HU 7.3)."""
+    """Conciliación de cartera (HU 7.3) con las reglas de la HU 7.5. Aquí las facturas no tienen guía: confirmar exige una nota."""
 
-    def test_confirmar_recaudo_actualiza_saldo_financiero_y_registra_movimiento(self):
-        invoice_resp = self.sell([(self.v30, 2, 0)])
-        self.assertEqual(invoice_resp.status_code, 201)
-        invoice_id = invoice_resp.json()["id"]
-        invoice = FacturaVenta.objects.get(pk=invoice_id)
-        total = invoice.valor_a_recaudar
+    NOTE = "Entregada en mano en la bodega y pagada en efectivo"
 
-        url = reverse("ventas_factura_conciliar", args=[invoice_id])
-        response = self.seller.post(url, {"estado_cobro": "PAGADO", "observaciones": "Guía cancelada en efectivo"}, format="json")
+    def confirm(self, invoice_id, client=None, **body):
+        body.setdefault("nota", self.NOTE)
+        return (client or self.manager).post(reverse("ventas_factura_conciliar", args=[invoice_id]), body, format="json")
+
+    def test_confirmar_recaudo_sin_guia_con_nota_suma_a_la_caja_y_deja_la_nota_en_el_movimiento(self):
+        invoice_id = self.sell([(self.v30, 2, 0)], observaciones="Despachar antes del viernes").json()["id"]
+        total = FacturaVenta.objects.get(pk=invoice_id).valor_a_recaudar
+        response = self.confirm(invoice_id)
         self.assertEqual(response.status_code, 200, response.content)
         data = response.json()
-        self.assertEqual(data["estado_cobro"], "PAGADO")
-        self.assertEqual(data["estado_cobro_nombre"], "Pagado")
-        self.assertIsNotNone(data["fecha_cobro"])
+        self.assertEqual((data["estado_cobro"], data["estado_cobro_nombre"]), ("PAGADO", "Pagado"))
         self.assertTrue(data["cobrado_por_nombre"])
+        self.assertEqual(data["observaciones"], "Despachar antes del viernes")  # la factura no cambia
+        self.assertEqual(SaldoFinanciero.objects.get().saldo_actual, total)
+        move = MovimientoCartera.objects.get(factura_id=invoice_id)
+        self.assertEqual((move.tipo, move.monto, move.saldo_antes, move.saldo_despues), ("RECAUDO", total, 0, total))
+        self.assertEqual(move.observaciones, self.NOTE)
 
-        # Saldo financiero de la empresa actualizado
-        saldo = SaldoFinanciero.objects.first()
-        self.assertIsNotNone(saldo)
-        self.assertEqual(saldo.saldo_actual, total)
+    def test_sin_guia_la_nota_es_obligatoria(self):
+        invoice_id = self.sell([(self.v30, 1, 0)]).json()["id"]
+        response = self.confirm(invoice_id, nota="pagado")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("no tiene guía", response.content.decode())
+        self.assertEqual(FacturaVenta.objects.get(pk=invoice_id).estado_cobro, "POR_COBRAR")
+        self.assertFalse(SaldoFinanciero.objects.exists())
 
-        # Movimiento de cartera registrado
-        move = MovimientoCartera.objects.filter(factura=invoice).first()
-        self.assertIsNotNone(move)
-        self.assertEqual(move.tipo, "RECAUDO")
-        self.assertEqual(move.monto, total)
-        self.assertEqual(move.saldo_antes, 0)
-        self.assertEqual(move.saldo_despues, total)
-
-    def test_marcar_devolucion_reingresa_prendas_a_stock_sin_tocar_saldo(self):
-        initial_stock = self.stock(self.v30)  # 20
-        invoice_resp = self.sell([(self.v30, 3, 0)])
-        self.assertEqual(invoice_resp.status_code, 201)
-        invoice_id = invoice_resp.json()["id"]
-        self.assertEqual(self.stock(self.v30), initial_stock - 3)
-
-        url = reverse("ventas_factura_conciliar", args=[invoice_id])
-        response = self.seller.post(url, {"estado_cobro": "DEVOLUCION", "motivo": "Dirección errada no localizada"}, format="json")
-        self.assertEqual(response.status_code, 200, response.content)
-        data = response.json()
-        self.assertEqual(data["estado_cobro"], "DEVOLUCION")
-        self.assertEqual(data["motivo_devolucion"], "Dirección errada no localizada")
-
-        # Prendas devueltas al inventario de producto terminado
-        self.assertEqual(self.stock(self.v30), initial_stock)
-        return_move = MovimientoTerminado.objects.filter(factura_id=invoice_id, tipo=finished_catalog.SALE_RETURN).first()
-        self.assertIsNotNone(return_move)
-        self.assertEqual(return_move.cantidad, 3)
-
-        # Saldo financiero no incrementa
-        saldo = SaldoFinanciero.objects.first()
-        self.assertEqual(saldo.saldo_actual if saldo else 0, 0)
+    def test_la_devolucion_ya_no_se_registra_desde_cartera(self):
+        initial = self.stock(self.v30)
+        invoice_id = self.sell([(self.v30, 3, 0)]).json()["id"]
+        response = self.confirm(invoice_id, estado_cobro="DEVOLUCION", motivo="Dirección errada no localizada")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.stock(self.v30), initial - 3)  # el stock no cambia
+        self.assertEqual(FacturaVenta.objects.get(pk=invoice_id).estado_cobro, "POR_COBRAR")
 
     def test_no_se_puede_conciliar_dos_veces(self):
-        invoice_resp = self.sell([(self.v30, 1, 0)])
-        invoice_id = invoice_resp.json()["id"]
-        url = reverse("ventas_factura_conciliar", args=[invoice_id])
-        first = self.seller.post(url, {"estado_cobro": "PAGADO"}, format="json")
-        self.assertEqual(first.status_code, 200)
-
-        second = self.seller.post(url, {"estado_cobro": "PAGADO"}, format="json")
+        invoice_id = self.sell([(self.v30, 1, 0)]).json()["id"]
+        self.assertEqual(self.confirm(invoice_id).status_code, 200)
+        second = self.confirm(invoice_id)
         self.assertEqual(second.status_code, 400)
-        self.assertIn("ya fue gestionada", str(second.content))
-
-        third = self.seller.post(url, {"estado_cobro": "DEVOLUCION", "motivo": "Intento tardío"}, format="json")
-        self.assertEqual(third.status_code, 400)
+        self.assertIn("ya fue gestionada", second.content.decode())
+        self.assertEqual(MovimientoCartera.objects.filter(factura_id=invoice_id).count(), 1)
 
     def test_no_se_puede_conciliar_factura_anulada(self):
-        invoice_resp = self.sell([(self.v30, 1, 0)])
-        invoice_id = invoice_resp.json()["id"]
+        invoice_id = self.sell([(self.v30, 1, 0)]).json()["id"]
         self.manager.post(reverse("ventas_factura_anular", args=[invoice_id]), {"motivo": "Cancelada por error del cliente"}, format="json")
-
-        url = reverse("ventas_factura_conciliar", args=[invoice_id])
-        response = self.seller.post(url, {"estado_cobro": "PAGADO"}, format="json")
+        response = self.confirm(invoice_id)
         self.assertEqual(response.status_code, 400)
-        self.assertIn("anulada", str(response.content))
+        self.assertIn("anulada", response.content.decode())
 
     def test_no_se_puede_anular_factura_ya_recaudada(self):
-        invoice_resp = self.sell([(self.v30, 1, 0)])
-        invoice_id = invoice_resp.json()["id"]
-        self.seller.post(reverse("ventas_factura_conciliar", args=[invoice_id]), {"estado_cobro": "PAGADO"}, format="json")
-
-        cancel_resp = self.manager.post(reverse("ventas_factura_anular", args=[invoice_id]), {"motivo": "Intento de anulación post-pago"}, format="json")
-        self.assertEqual(cancel_resp.status_code, 400)
-        self.assertIn("recaudada", str(cancel_resp.content))
+        invoice_id = self.sell([(self.v30, 1, 0)]).json()["id"]
+        self.confirm(invoice_id)
+        cancel = self.manager.post(reverse("ventas_factura_anular", args=[invoice_id]), {"motivo": "Intento de anulación post-pago"}, format="json")
+        self.assertEqual(cancel.status_code, 400)
+        self.assertIn("recaudada", cancel.content.decode())
 
     def test_cartera_resumen_y_filtros(self):
-        # 1 factura por cobrar, 1 pagada
         inv1 = self.sell([(self.v30, 1, 0)]).json()
         inv2 = self.sell([(self.v32, 2, 0)]).json()
-        self.seller.post(reverse("ventas_factura_conciliar", args=[inv1["id"]]), {"estado_cobro": "PAGADO"}, format="json")
-
-        summary_resp = self.seller.get(reverse("ventas_cartera_resumen"))
-        self.assertEqual(summary_resp.status_code, 200)
-        summary = summary_resp.json()
-        self.assertEqual(summary["conteo_pagadas"], 1)
-        self.assertEqual(summary["total_recaudado"], inv1["valor_a_recaudar"])
+        self.confirm(inv1["id"])
+        summary = self.manager.get(reverse("ventas_cartera_resumen")).json()
+        self.assertEqual((summary["conteo_pagadas"], summary["total_recaudado"]), (1, inv1["valor_a_recaudar"]))
         self.assertEqual(summary["saldo_financiero"], inv1["valor_a_recaudar"])
-        self.assertEqual(summary["conteo_por_cobrar"], 1)
-        self.assertEqual(summary["total_por_cobrar"], inv2["valor_a_recaudar"])
+        self.assertEqual((summary["conteo_por_cobrar"], summary["total_por_cobrar"]), (1, inv2["valor_a_recaudar"]))
+        pending = self.seller.get(reverse("ventas_facturas") + "?estado_cobro=POR_COBRAR").json()
+        self.assertEqual([f["id"] for f in pending], [inv2["id"]])
 
-        # Filtro de facturas por estado_cobro
-        list_pending = self.seller.get(reverse("ventas_facturas") + "?estado_cobro=POR_COBRAR").json()
-        self.assertTrue(any(f["id"] == inv2["id"] for f in list_pending))
-        self.assertFalse(any(f["id"] == inv1["id"] for f in list_pending))
+    def test_el_vendedor_no_concilia_ni_ve_la_caja(self):
+        invoice_id = self.sell([(self.v30, 1, 0)]).json()["id"]
+        self.assertEqual(self.confirm(invoice_id, client=self.seller).status_code, 403)
+        summary = self.seller.get(reverse("ventas_cartera_resumen")).json()
+        self.assertIsNone(summary["saldo_financiero"])
+        self.assertEqual(summary["conteo_por_cobrar"], 1)  # sí ve su cartera
 
-    def test_permisos_conciliar(self):
-        invoice_resp = self.sell([(self.v30, 1, 0)])
-        invoice_id = invoice_resp.json()["id"]
-        url = reverse("ventas_factura_conciliar", args=[invoice_id])
+    def test_gerente_secretaria_y_admin_concilian(self):
+        for client in (self.manager, self.secretary, self.admin):
+            invoice_id = self.sell([(self.v30, 1, 0)]).json()["id"]
+            self.assertEqual(self.confirm(invoice_id, client=client).status_code, 200)
+        self.assertIsNotNone(self.secretary.get(reverse("ventas_cartera_resumen")).json()["saldo_financiero"])
 
-        # Secretaria no puede gestionar cartera
-        resp_sec = self.secretary.post(url, {"estado_cobro": "PAGADO"}, format="json")
-        self.assertEqual(resp_sec.status_code, 403)
+    def test_una_sola_caja(self):
+        from django.db import IntegrityError, transaction
 
-        # Admin sí puede
-        resp_admin = self.admin.post(url, {"estado_cobro": "PAGADO"}, format="json")
-        self.assertEqual(resp_admin.status_code, 200)
+        self.confirm(self.sell([(self.v30, 1, 0)]).json()["id"])
+        self.confirm(self.sell([(self.v32, 1, 0)]).json()["id"])
+        self.assertEqual(SaldoFinanciero.objects.count(), 1)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            SaldoFinanciero.objects.create(nombre=catalog.CASH_BOX, saldo_actual=0)
 
+
+class SalesPanelTests(SalesBase):
+    """Cifras del panel calculadas en el servidor (HU 7.5), no con las primeras 200 facturas."""
+
+    def test_por_cobrar_coincide_con_cartera_con_mas_de_200_facturas(self):
+        base = FacturaVenta.objects.get(pk=self.sell([(self.v30, 1, 0)]).json()["id"])
+        copies = []
+        for n in range(205):
+            copy = FacturaVenta.objects.get(pk=base.pk)
+            copy.pk = None
+            copy.id = None
+            copy.numero = f"FV-T{n:04d}"
+            copy.token = uuid.uuid4()
+            copies.append(copy)
+        FacturaVenta.objects.bulk_create(copies)
+        panel = self.seller.get(reverse("ventas_panel")).json()
+        summary = self.seller.get(reverse("ventas_cartera_resumen")).json()
+        self.assertEqual(panel["facturas_por_cobrar"], 206)
+        self.assertEqual(panel["por_cobrar"], summary["total_por_cobrar"])
+        self.assertEqual(panel["por_cobrar"], base.valor_a_recaudar * 206)
+        self.assertEqual(panel["vendido_hoy"], base.total * 206)
+
+    def test_el_panel_no_cuenta_anuladas_como_vendidas(self):
+        keep = self.sell([(self.v30, 1, 0)]).json()
+        drop = self.sell([(self.v32, 1, 0)]).json()
+        self.manager.post(reverse("ventas_factura_anular", args=[drop["id"]]), {"motivo": "Cliente desistió de la compra"}, format="json")
+        panel = self.seller.get(reverse("ventas_panel")).json()
+        self.assertEqual((panel["facturas_hoy"], panel["vendido_hoy"], panel["anuladas_hoy"]), (1, keep["total"], 1))
+
+    def test_el_panel_exige_sesion(self):
+        from rest_framework.test import APIClient
+
+        self.assertEqual(APIClient().get(reverse("ventas_panel")).status_code, 401)

@@ -591,50 +591,51 @@ y **su número no se reutiliza**: la nueva venta lleva el siguiente. Una factura
 ### Gestión de cartera: cobro y devoluciones
 
 Menú **Ventas y Despachos → Gestión de cartera**. Como toda venta es contraentrega, cada factura nace **pendiente de recaudo**: la transportadora cobra al cliente y gira el dinero después.
-Esta pantalla sirve para seguir ese cobro y, cuando el dinero llega o el paquete regresa, dejarlo registrado. La pantalla repite el aviso de que la factura es un comprobante interno.
+Esta pantalla sigue ese cobro y muestra, en cada factura, **en qué va su guía**. El cobro y la devolución dependen del estado real del paquete.
 
-**Indicadores (arriba):**
+**Quién hace qué:**
 
-- **Saldo Financiero de la Empresa**: el dinero recaudado y consolidado en caja.
-- **Pendiente de Recaudo**: el valor de los pedidos por cobrar y cuántos son.
-- **Total Recaudado**: lo cobrado y el número de facturas pagadas.
-- **Devoluciones**: cuántas facturas se devolvieron y el valor de la mercancía que retornó.
+- **Confirmar un pago** lo hacen el **Gerente** y la **Secretaria** (permiso *Confirmar recaudos contraentrega*). El **Vendedor** factura y ve su cartera, pero **no confirma su propio pago**.
+- **Registrar una devolución** lo hacen el **Almacenista** y el **Gerente**, desde **Envíos → Guías**, cuando el paquete devuelto llega a la bodega.
+- El **Saldo Financiero de la Empresa** solo lo ven quienes confirman pagos; el Vendedor no lo ve.
 
-**Pestañas y filtros:**
+**Indicadores (arriba):** *Saldo Financiero de la Empresa* (solo para quien concilia), *Pendiente de Recaudo*, *Total Recaudado* y *Devoluciones*. Los calcula el servidor con
+todas las facturas, así que no dependen de cuántas se muestren en la tabla.
 
-- Pestañas: **Pendientes de recaudo** (la que se abre primero), **Todas las facturas**, **Pagadas** y **Devoluciones**, cada una con su número entre paréntesis.
-- Un cuadro de búsqueda (*Buscar por factura, cliente, documento o guía…*), el selector **Todas las transportadoras** (*Interrapidísimo*, *Envía* u *Otra*) y las fechas **Desde** y **Hasta**.
-- La tabla muestra la factura, la fecha, el cliente, la transportadora y la guía, el **Valor a recaudar**, el **Estado de recaudo** (*Pendiente*, *Pagado* o *Devolución*) y una columna
-  de **Conciliación**: para lo pendiente, el estado de la guía (si la guía ya figura *Entregada* dice *«Guía entregada: ya puedes confirmar el pago»*; si no hay guía, *«Esperando reporte de transportadora»*);
-  para lo pagado, quién y cuándo lo confirmó; para lo devuelto, el motivo. **Ver** abre el detalle de la factura con el botón **Descargar PDF**.
+**Pestañas y filtros:** *Pendientes de recaudo* (la que se abre primero), *Todas las facturas*, *Pagadas* y *Devoluciones*; la búsqueda por factura, cliente, documento o guía,
+la transportadora y las fechas **Desde** y **Hasta**.
 
-**Confirmar un pago (botón Pagado).** En una factura pendiente:
+**Qué ofrece cada factura pendiente (columna Conciliación):**
 
-1. Pulsa **Pagado**. Se abre *Confirmar recaudo · FV-…* con el cliente, la ciudad, la transportadora, la guía y el **total a ingresar**.
-2. Si quieres, escribe la **referencia del giro** (por ejemplo, el número del giro o la consignación).
-3. Pulsa **Confirmar recaudo**. Verás *«Recaudo de FV-… confirmado. Se sumaron $ … al saldo financiero.»*
+| Estado de la guía | Qué dice la pantalla | Acción |
+|---|---|---|
+| *Entregada* | *Guía entregada: ya puedes confirmar el pago* | **Confirmar pago** |
+| *Por despachar*, *En tránsito* o *Con novedad* | *El pago se confirma cuando la guía esté entregada* | Ninguna: hay que esperar |
+| *Devuelta* | *Paquete devuelto: registra la devolución en Envíos* | **Devolución en Envíos** (lleva a *Envíos → Guías*) |
+| Sin guía (entrega en mano o recogida en bodega) | *Sin guía: se concilia con una nota* | **Confirmar pago** con una nota obligatoria |
 
-**Registrar una devolución (botón Devolución).** Cuando el cliente rechazó o no recibió el paquete:
+**Confirmar un pago:**
 
-1. Pulsa **Devolución**. Se abre *Registrar devolución · FV-…*.
-2. Escribe el **motivo** (obligatorio, mínimo 5 caracteres). Si lo dejas corto verás *«Escribe el motivo de la devolución (mínimo 5 caracteres).»*
-3. Pulsa **Registrar devolución**. Verás *«Devolución de FV-… registrada. Las prendas retornaron al inventario de producto terminado.»*
+1. Pulsa **Confirmar pago**. Se abre *Confirmar recaudo · FV-…* con el cliente, la guía y su estado, y el **total a ingresar**.
+2. Escribe la **nota**: con guía es opcional (por ejemplo, el número del giro); **sin guía es obligatoria** (mínimo 10 caracteres) y debe decir cómo se entregó y cobró.
+3. Pulsa **Confirmar recaudo**. Verás *«Recaudo de FV-… confirmado. Se sumaron $ … a la caja.»* El valor se suma a la caja y la nota queda en el **movimiento de cartera**;
+   la factura conserva sus observaciones originales.
 
-**Qué pasa con el saldo y con el stock:**
+**Registrar una devolución:** en **Envíos → Guías**, abre la guía *Devuelta* y pulsa **Registrar devolución** cuando el paquete esté de vuelta en la bodega. Las prendas
+**vuelven una sola vez** al inventario de producto terminado, la factura queda en *Devolución* y no entra dinero a la caja. Desde Cartera ya no se registran devoluciones.
 
-- **Pagado:** el valor a recaudar se **suma al saldo financiero** de la empresa y la factura queda *Pagado*, con quién y cuándo.
-- **Devolución:** las prendas **vuelven al inventario de producto terminado** (aparecen en *Producto Terminado → Movimientos*) y **no se suma dinero** al saldo. La factura queda en *Devolución* con su motivo.
-- Una factura se gestiona **una sola vez**: ya no se puede pasar de *Pagado* a *Devolución* ni al revés. Si te equivocas, avisa a quien administre el sistema. Una factura anulada no se puede conciliar.
-- Los botones **Pagado** y **Devolución** solo los ven quienes pueden gestionar ventas (el Vendedor y el Administrador) y solo en facturas emitidas y pendientes. El Gerente consulta la pantalla sin los botones.
+**Reglas:**
 
-**Mensajes que puedes ver:** *La factura ya fue gestionada como …* (ya se había pagado o devuelto) y *No se puede conciliar una factura anulada.*
+- Una factura se gestiona **una sola vez**: queda *Pagado* o *Devolución* y no se mueve. Una factura anulada no se concilia.
+- No se puede confirmar el pago de una guía que no esté *Entregada*, aunque escribas una nota.
+- Solo se cobra o devuelve la factura completa: no hay pagos parciales ni abonos. El flete de una devolución se registra en **Envíos**.
 
-!!! warning "Límites actuales"
-    - **El sistema no espera a la guía:** puedes marcar *Pagado* o *Devolución* aunque la guía siga en tránsito. Antes de hacerlo, revisa en **Envíos → Guías** que el paquete ya esté *Entregada* (para cobrar)
-      o *Devuelta* y de regreso en la bodega (para devolver).
-    - **Los indicadores usan las últimas 200 facturas** del periodo que filtres; con más facturas, acota las fechas para que las sumas sean confiables.
-    - **Solo se cobra o se devuelve la factura completa:** no hay pagos parciales, abonos ni devoluciones de una parte.
-    - **El flete de una devolución** se registra en **Envíos**, no aquí.
+**Mensajes que puedes ver:**
+
+- *La guía … está en tránsito: solo se confirma el pago de una guía entregada.* (o *por despachar*, *con novedad*, *devuelta*)
+- *La factura no tiene guía: explica en la nota cómo se entregó y cobró (mínimo 10 caracteres).*
+- *La factura ya fue gestionada como …* y *No se puede conciliar una factura anulada.*
+- *Tu rol no tiene permiso para realizar esta acción.* (el Vendedor que intenta confirmar un pago)
 
 ### Clientes
 

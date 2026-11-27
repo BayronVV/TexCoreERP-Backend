@@ -26,6 +26,7 @@ from .serializers import (
     FacturaSerializer,
     HistorialPrecioSerializer,
     MetadatosVentaSerializer,
+    PanelVentasSerializer,
     PrecioInputSerializer,
     PrecioReferenciaBasicoSerializer,
     PrecioReferenciaSerializer,
@@ -324,34 +325,47 @@ class FacturaAnularView(APIView):
 
 @extend_schema(tags=["ventas"])
 class CarteraResumenView(APIView):
-    """Totales consolidados de cartera y saldo financiero de la empresa (HU 7.3)."""
+    """Totales consolidados de cartera (HU 7.3). El saldo financiero solo lo ve quien concilia (HU 7.5)."""
     required_permissions = VIEW_PERMISSIONS
 
-    @extend_schema(summary="Resumen de cartera y saldo financiero", responses={200: CarteraResumenSerializer})
+    @extend_schema(
+        summary="Resumen de cartera y saldo financiero", responses={200: CarteraResumenSerializer},
+        description="`saldo_financiero` llega en null si el usuario no tiene `ventas.conciliar` (el Vendedor no ve la caja de la empresa).",
+    )
     def get(self, request):
-        return Response(CarteraResumenSerializer(invoicing.get_cartera_summary()).data)
+        summary = invoicing.get_cartera_summary()
+        if not request.user.has_permission_code(catalog.SALES_RECONCILE):
+            summary["saldo_financiero"] = None
+        return Response(CarteraResumenSerializer(summary).data)
+
+
+@extend_schema(tags=["ventas"])
+class PanelVentasView(APIView):
+    """Cifras del panel de ventas («Vendido hoy», «Por cobrar»...) calculadas en la base de datos (HU 7.5)."""
+    required_permissions = VIEW_PERMISSIONS
+
+    @extend_schema(summary="Cifras del panel de ventas del día", responses={200: PanelVentasSerializer})
+    def get(self, request):
+        return Response(PanelVentasSerializer(invoicing.get_sales_panel()).data)
 
 
 @extend_schema(tags=["ventas"])
 class FacturaConciliarView(APIView):
-    """Acción rápida para cambiar el estado de cartera a Pagado o Devolución (HU 7.3)."""
-    required_permissions = INVOICE_PERMISSIONS
+    """Confirma el recaudo contraentrega de una factura (HU 7.3 y 7.5)."""
+    required_permissions = {"POST": catalog.SALES_RECONCILE}
 
     @extend_schema(
-        summary="Conciliar recaudo o devolución de una factura",
+        summary="Confirmar el recaudo de una factura",
         request=ConciliarInputSerializer,
         responses={200: FacturaSerializer},
-        description="Cambia el estado de cobro a PAGADO (suma el recaudo al saldo financiero de la empresa) o a DEVOLUCION "
-                    "(reingresa las prendas a producto terminado por devolución contraentrega). Solo se permite sobre facturas emitidas por cobrar.",
+        description="Exige `ventas.conciliar` (Gerente y Secretaria: el Vendedor factura pero no confirma su propio pago). Solo se confirma "
+                    "si la guía vigente está ENTREGADA; una factura sin guía exige una nota que lo justifique. Suma el valor a recaudar a la "
+                    "caja y la nota queda en el movimiento de cartera (la factura no cambia). La devolución no se registra aquí: se registra "
+                    "desde la guía devuelta (`POST /api/envios/guias/{id}/devolucion/`).",
     )
     def post(self, request, pk):
         data = ConciliarInputSerializer(data=request.data)
         data.is_valid(raise_exception=True)
-        invoice = invoicing.reconcile_collection(
-            user=request.user,
-            factura_id=pk,
-            nuevo_estado=data.validated_data["estado_cobro"],
-            motivo=data.validated_data.get("motivo", ""),
-            observaciones=data.validated_data.get("observaciones", ""),
-        )
+        values = data.validated_data
+        invoice = invoicing.confirm_payment(user=request.user, factura_id=pk, nota=values.get("nota") or values.get("observaciones", ""))
         return Response(FacturaSerializer(invoice_queryset().get(pk=invoice.pk)).data)

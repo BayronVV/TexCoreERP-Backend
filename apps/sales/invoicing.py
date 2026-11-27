@@ -234,18 +234,27 @@ def cancel_invoice(*, user, factura_id, motivo):
     return invoice
 
 
-@transaction.atomic
-def reconcile_collection(*, user, factura_id, nuevo_estado, motivo="", observaciones=""):
-    """
-    Concilia una factura de venta (HU 7.3):
-    - PAGADO: confirma el recaudo de la transportadora, marca la factura PAGADO,
-      actualiza el saldo financiero de la empresa y registra el movimiento de cartera.
-    - DEVOLUCION: si el cliente no recibió o rechazó el pedido, reingresa las prendas
-      al inventario de producto terminado (SALE_RETURN), marca la factura DEVOLUCION y registra el motivo.
-    """
-    if nuevo_estado not in (catalog.COLLECT_PAID, catalog.COLLECT_RETURNED):
-        fail(f"Estado de cobro inválido. Debe ser {catalog.COLLECT_PAID} o {catalog.COLLECT_RETURNED}.", "estado_cobro")
+def cash_box():
+    """La única caja de la empresa, bloqueada para escribir. Si dos peticiones la crean a la vez, la restricción única deja una sola."""
+    box = SaldoFinanciero.objects.select_for_update().filter(nombre=catalog.CASH_BOX).first()
+    if box is not None:
+        return box
+    try:
+        with transaction.atomic():
+            SaldoFinanciero.objects.create(nombre=catalog.CASH_BOX, saldo_actual=0)
+    except IntegrityError:
+        pass  # otra petición la creó primero
+    return SaldoFinanciero.objects.select_for_update().get(nombre=catalog.CASH_BOX)
 
+
+def current_guide(invoice):
+    """Guía vigente de la factura (HU 7.2), o None si no tiene."""
+    from apps.shipping.models import Guia  # import tardío: shipping depende de sales
+
+    return Guia.objects.filter(factura=invoice, vigente=True).first()
+
+
+def _lock_pending_invoice(factura_id):
     invoice = FacturaVenta.objects.select_for_update().filter(pk=factura_id).first()
     if invoice is None:
         raise Http404("La factura no existe.")
@@ -254,83 +263,91 @@ def reconcile_collection(*, user, factura_id, nuevo_estado, motivo="", observaci
     if invoice.estado_cobro != catalog.COLLECT_PENDING:
         current_name = catalog.COLLECT_STATE_NAMES.get(invoice.estado_cobro, invoice.estado_cobro)
         fail(f"La factura ya fue gestionada como {current_name}.", "estado_cobro")
+    return invoice
 
-    saldo_obj, _ = SaldoFinanciero.objects.select_for_update().get_or_create(nombre="Caja General", defaults={"saldo_actual": 0})
-    before = saldo_obj.saldo_actual
-    now = timezone.now()
 
-    if nuevo_estado == catalog.COLLECT_PAID:
-        amount = invoice.valor_a_recaudar
-        after = before + amount
-        saldo_obj.saldo_actual = after
-        saldo_obj.save(update_fields=["saldo_actual", "updated_at"])
+@transaction.atomic
+def confirm_payment(*, user, factura_id, nota=""):
+    """
+    Confirma el recaudo contraentrega de una factura (HU 7.3 y 7.5):
+    - Con guía: solo si la guía vigente está ENTREGADA (el dinero no llega de un paquete en tránsito o devuelto).
+    - Sin guía (entrega en mano o recogida en bodega): solo con una nota que lo justifique.
+    Suma el valor a recaudar a la caja y deja el movimiento de cartera con la nota. La factura no se modifica más allá de su estado de cobro.
+    """
+    from apps.shipping import catalog as shipping_catalog
 
-        invoice.estado_cobro = catalog.COLLECT_PAID
-        invoice.fecha_cobro = now
-        invoice.cobrado_por = user
-        if observaciones:
-            obs = str(observaciones).strip()[:500]
-            invoice.observaciones = f"{invoice.observaciones} | Cobro: {obs}" if invoice.observaciones else f"Cobro: {obs}"
-        invoice.save(update_fields=["estado_cobro", "fecha_cobro", "cobrado_por", "observaciones", "updated_at"])
+    invoice = _lock_pending_invoice(factura_id)
+    note = str(nota or "").strip()
+    guide = current_guide(invoice)
+    if guide is not None and guide.estado != shipping_catalog.DELIVERED:
+        state = shipping_catalog.STATE_NAMES.get(guide.estado, guide.estado).lower()
+        fail(f"La guía {guide.numero_guia} está {state}: solo se confirma el pago de una guía entregada.", "guia")
+    if guide is None and len(note) < catalog.MIN_NO_GUIDE_NOTE:
+        fail(f"La factura no tiene guía: explica en la nota cómo se entregó y cobró (mínimo {catalog.MIN_NO_GUIDE_NOTE} caracteres).", "nota")
+    if len(note) > 255:
+        fail("La nota admite máximo 255 caracteres.", "nota")
 
-        MovimientoCartera.objects.create(
-            factura=invoice,
-            tipo=catalog.FINANCIAL_LEDGER_RECAUDO,
-            monto=amount,
-            saldo_antes=before,
-            saldo_despues=after,
-            usuario=user,
-            observaciones=str(observaciones or f"Recaudo de {invoice.numero} confirmado")[:255],
+    box = cash_box()
+    before = box.saldo_actual
+    amount = invoice.valor_a_recaudar
+    box.saldo_actual = before + amount
+    box.save(update_fields=["saldo_actual", "updated_at"])
+
+    invoice.estado_cobro = catalog.COLLECT_PAID
+    invoice.fecha_cobro = timezone.now()
+    invoice.cobrado_por = user
+    invoice.save(update_fields=["estado_cobro", "fecha_cobro", "cobrado_por", "updated_at"])
+
+    MovimientoCartera.objects.create(
+        factura=invoice, tipo=catalog.FINANCIAL_LEDGER_RECAUDO, monto=amount, saldo_antes=before, saldo_despues=box.saldo_actual,
+        usuario=user, observaciones=(note or f"Recaudo de {invoice.numero} confirmado (guía {guide.numero_guia} entregada)")[:255],
+    )
+    return invoice
+
+
+@transaction.atomic
+def register_return(*, user, factura_id, motivo):
+    """
+    Devolución contraentrega (HU 7.3 y 7.5). Único camino: la guía devuelta que llegó a bodega (`shipping.services.return_to_stock`).
+    Reingresa las prendas al inventario de producto terminado una sola vez y marca la factura en DEVOLUCION; la caja no cambia.
+    """
+    invoice = _lock_pending_invoice(factura_id)
+    reason = str(motivo or "").strip()
+    if len(reason) < 5:
+        fail("Indica el motivo de la devolución (mínimo 5 caracteres).", "motivo")
+    reason = reason[:255]
+
+    lines = list(invoice.lineas.order_by("variante_id"))
+    stocks = lock_stock([line.variante_id for line in lines])
+    for line in lines:
+        stock = stocks[line.variante_id]
+        s_before = stock.cantidad
+        stock.cantidad = s_before + line.cantidad
+        stock.save(update_fields=["cantidad", "updated_at"])
+        MovimientoTerminado.objects.create(
+            variante_id=line.variante_id, tipo=finished_catalog.SALE_RETURN, cantidad=line.cantidad, saldo_antes=s_before,
+            saldo_despues=stock.cantidad, factura=invoice, usuario=user,
+            motivo=f"Devolución contraentrega de {invoice.numero}: {reason}"[:255],
         )
 
-    elif nuevo_estado == catalog.COLLECT_RETURNED:
-        reason = str(motivo or "").strip()
-        if len(reason) < 5:
-            fail("Indica el motivo de la devolución (mínimo 5 caracteres).", "motivo")
-        if len(reason) > 255:
-            fail("El motivo de devolución admite máximo 255 caracteres.", "motivo")
+    invoice.estado_cobro = catalog.COLLECT_RETURNED
+    invoice.motivo_devolucion = reason
+    invoice.fecha_cobro = timezone.now()
+    invoice.cobrado_por = user
+    invoice.save(update_fields=["estado_cobro", "motivo_devolucion", "fecha_cobro", "cobrado_por", "updated_at"])
 
-        lines = list(invoice.lineas.order_by("variante_id"))
-        stocks = lock_stock([line.variante_id for line in lines])
-        for line in lines:
-            stock = stocks[line.variante_id]
-            s_before = stock.cantidad
-            stock.cantidad = s_before + line.cantidad
-            stock.save(update_fields=["cantidad", "updated_at"])
-            MovimientoTerminado.objects.create(
-                variante_id=line.variante_id,
-                tipo=finished_catalog.SALE_RETURN,
-                cantidad=line.cantidad,
-                saldo_antes=s_before,
-                saldo_despues=stock.cantidad,
-                factura=invoice,
-                usuario=user,
-                motivo=f"Devolución contraentrega de {invoice.numero}: {reason}"[:255],
-            )
-
-        invoice.estado_cobro = catalog.COLLECT_RETURNED
-        invoice.motivo_devolucion = reason
-        invoice.fecha_cobro = now
-        invoice.cobrado_por = user
-        invoice.save(update_fields=["estado_cobro", "motivo_devolucion", "fecha_cobro", "cobrado_por", "updated_at"])
-
-        MovimientoCartera.objects.create(
-            factura=invoice,
-            tipo=catalog.FINANCIAL_LEDGER_DEVOLUCION,
-            monto=0,
-            saldo_antes=before,
-            saldo_despues=before,
-            usuario=user,
-            observaciones=f"Devolución: {reason}"[:255],
-        )
-
+    box = cash_box()
+    MovimientoCartera.objects.create(
+        factura=invoice, tipo=catalog.FINANCIAL_LEDGER_DEVOLUCION, monto=0, saldo_antes=box.saldo_actual,
+        saldo_despues=box.saldo_actual, usuario=user, observaciones=f"Devolución: {reason}"[:255],
+    )
     return invoice
 
 
 def get_cartera_summary():
     """Calcula los totales de cartera y el saldo financiero actual de la empresa."""
-    saldo_obj = SaldoFinanciero.objects.first()
-    saldo_actual = saldo_obj.saldo_actual if saldo_obj else 0
+    box = SaldoFinanciero.objects.filter(nombre=catalog.CASH_BOX).first()
+    saldo_actual = box.saldo_actual if box else 0
 
     issued = FacturaVenta.objects.filter(estado=catalog.STATUS_ISSUED)
     por_cobrar = issued.filter(estado_cobro=catalog.COLLECT_PENDING)
@@ -345,4 +362,20 @@ def get_cartera_summary():
         "conteo_pagadas": pagadas.count(),
         "total_devoluciones": devoluciones.aggregate(s=Sum("valor_a_recaudar"))["s"] or 0,
         "conteo_devoluciones": devoluciones.count(),
+    }
+
+
+def get_sales_panel(today=None):
+    """Cifras del panel de ventas calculadas en la base de datos (HU 7.5), no con una lista parcial de facturas."""
+    today = today or timezone.localdate()
+    issued = FacturaVenta.objects.filter(estado=catalog.STATUS_ISSUED)
+    of_today = issued.filter(fecha=today)
+    pending = issued.filter(estado_cobro=catalog.COLLECT_PENDING)
+    return {
+        "fecha": today,
+        "facturas_hoy": of_today.count(),
+        "vendido_hoy": of_today.aggregate(s=Sum("total"))["s"] or 0,
+        "anuladas_hoy": FacturaVenta.objects.filter(estado=catalog.STATUS_CANCELLED, fecha=today).count(),
+        "por_cobrar": pending.aggregate(s=Sum("valor_a_recaudar"))["s"] or 0,
+        "facturas_por_cobrar": pending.count(),
     }

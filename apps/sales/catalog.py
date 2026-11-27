@@ -4,6 +4,9 @@ SALES_VIEW = "ventas.ver"
 SALES_MANAGE = "ventas.gestionar"  # crea clientes y emite facturas (Vendedor y Administrador)
 SALES_PRICES = "ventas.precios"  # administra precios y costo de fábrica (Gerente y Administrador)
 SALES_CANCEL = "ventas.anular"  # anula facturas (Gerente y Administrador)
+SALES_RECONCILE = "ventas.conciliar"  # confirma recaudos y ve el saldo financiero (Gerente y Secretaria; nunca el Vendedor) (HU 7.5)
+MIN_NO_GUIDE_NOTE = 10  # caracteres de la nota que justifica conciliar una factura sin guía (entrega en mano, recogida en bodega)
+CASH_BOX = "Caja General"  # la única caja: el saldo financiero no se duplica (HU 7.5)
 
 INVOICE_PREFIX = "FV"
 CLIENT_PREFIX = "CLI"
@@ -43,10 +46,16 @@ COLLECT_STATES = [
     (COLLECT_RETURNED, "Devolución"),
 ]
 CONCILIATION_STATES = [
-    (COLLECT_PAID, "Pagado"),
-    (COLLECT_RETURNED, "Devolución"),
+    (COLLECT_PAID, "Pagado"),  # la devolución ya no se concilia aquí: entra por la guía devuelta (HU 7.5)
 ]
 COLLECT_STATE_NAMES = dict(COLLECT_STATES)
+
+# Acción que admite una factura en cartera según el estado de su guía (HU 7.5)
+CARTERA_PAY = "CONFIRMAR_PAGO"  # guía entregada
+CARTERA_PAY_NO_GUIDE = "CONFIRMAR_SIN_GUIA"  # sin guía: confirmar exige una nota
+CARTERA_RETURN = "REGISTRAR_DEVOLUCION"  # guía devuelta: se registra desde Envíos, que reingresa el stock
+CARTERA_WAIT = "ESPERAR_GUIA"  # por despachar, en tránsito o con novedad: aún no hay nada que conciliar
+CARTERA_NONE = "NINGUNA"  # anulada o ya gestionada
 
 # Movimientos del saldo financiero y cartera (HU 7.3)
 FINANCIAL_LEDGER_RECAUDO = "RECAUDO"

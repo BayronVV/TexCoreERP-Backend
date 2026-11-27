@@ -222,16 +222,18 @@ class CascadeTests(OrderBase):
         self.assertEqual([(lot["codigo"], lot["cantidad"]) for lot in body["lotes"]], [("OP-0001-L01", 100)])
 
     def test_la_referencia_debe_estar_activa_y_tener_ficha(self):
-        before = self.snapshot()
         draft = self.new(nombre="Borrador", variantes=[{"talla": "30", "color": "Rojo"}])
-        for reference, message in ((draft["id"], "no está activa"), (999999, "no está activa")):
+        no_sheet = self.new(nombre="Sin ficha", variantes=[{"talla": "30", "color": "Rojo"}])
+        self.activate(no_sheet["id"])
+        before = self.snapshot()
+        for reference, message in (
+            (draft["id"], "no está activa"),
+            (999999, "no está activa"),
+            (no_sheet["id"], "ficha técnica"),
+        ):
             response = self.api.post(self.orders_url, {**self.order_body(), "referencia": reference}, format="json")
             self.assertEqual(response.status_code, 400)
             self.assertIn(message, response.json()["referencia"][0])
-        no_sheet = self.new(nombre="Sin ficha", variantes=[{"talla": "30", "color": "Rojo"}])
-        self.activate(no_sheet["id"])
-        response = self.api.post(self.orders_url, {**self.order_body(), "referencia": no_sheet["id"]}, format="json")
-        self.assertIn("ficha técnica", response.json()["referencia"][0])
         self.assertEqual(self.snapshot(), before)
 
     def test_el_resultado_debe_ser_un_pantalon_generico(self):

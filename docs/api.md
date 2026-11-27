@@ -53,8 +53,8 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | `auth` | `/api/register/`, `/api/token/`, `/api/token/refresh/`, `/api/auth/me/`, `/api/auth/password-reset/…` (`validate/` y `confirm/`) | TE-78, TE-42, TE-43 |
 | `users` | `/api/users/`, `/api/users/<id>/`, `/api/users/<id>/invite/`, `/api/users/<id>/unlock/`, `/api/seguridad/accesos/`, `/api/seguridad/auditoria/` (y `catalogo/`), `/api/roles/`, `/api/roles/<id>/`, `/api/permissions/` | TE-44 |
 | `proveedores` | `/api/inventario/proveedores/…` (listar, crear, editar, archivar) y `/api/inventario/proveedores/<id>/restaurar/` | TE-45 |
-| `catalogo` | `/api/inventario/catalogo/…`, `/api/inventario/catalogo/<id>/imagen/`, `/api/inventario/metadatos/` | TE-46 |
-| `inventario` | `/api/inventario/productos/` (con existencias y costo promedio), `/api/inventario/alertas/` | TE-47, TE-48 |
+| `catalogo` | `/api/inventario/catalogo/…`, `/api/inventario/catalogo/<id>/imagen/`, `/api/inventario/metadatos/` (incluye `creable_manualmente`, `referencia` y filtro opcional `heredados=true`) | TE-46, TE-170 |
+| `inventario` | `/api/inventario/productos/` (para `TERMINADO` enlazado calcula existencias en vivo desde `terminado_stock`; filtro `incluir_heredados=true`), `/api/inventario/alertas/` (evalúa alertas con saldo en vivo de Producto Terminado, omitiendo heredados y referencias no activas) | TE-47, TE-48, TE-170 |
 | `movimientos` | `/api/inventario/movimientos/` (kardex), `/api/inventario/ingresos/` (compras con `costo_unitario` o ingreso de pantalón genérico desde una orden `OP`. Ingresar producto terminado o cerrar órdenes `LV` responde `400` desde TE-171) | TE-47, TE-56, TE-171 |
 | `ordenes` | `/api/inventario/ordenes/…` (crear `PRODUCCION`, consultar historial `OP` y `LV` histórico en solo lectura, anular `OP`). Crear órdenes `LAVANDERIA` (`LV`) responde `400` redirigiendo a `/api/lavanderia/remisiones/` (HU 5.3 / TE-171) | TE-47, TE-171 |
 | `evidencias` | `/api/inventario/movimientos/<id>/evidencias/`, `/api/inventario/ordenes/<id>/evidencias/`, `/api/inventario/evidencias/<id>/archivo/` | TE-47 |

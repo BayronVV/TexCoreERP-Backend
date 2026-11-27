@@ -134,12 +134,9 @@ PRODUCTS = [
      [(TOTAL, 2000, "O-2609-T1", 18)]),
     ("Hang tag de cartón", O, "unidad", 500, None, "Kraft", "",
      [(GRAFICAS, 3000, "O-2609-G1", 9)]),
-    # Pantalones (sin compras: entran al cerrar órdenes)
+    # Pantalones (sin compras: entran al cerrar órdenes; los PT nacen desde Referencias)
     ("Pantalón genérico rígido", G, "unidad", 0, None, "", "", []),
     ("Pantalón genérico stretch", G, "unidad", 0, None, "", "", []),
-    ("REF-1427 Clásico 5 bolsillos frosteado", F, "unidad", 30, None, "Azul frosteado", "", []),
-    ("REF-G41 Recto azul claro lavado", F, "unidad", 30, None, "Azul claro", "", []),
-    ("REF-N22 Skinny negro stretch", F, "unidad", 30, None, "Negro", "", []),
 ]
 
 # Colores de la foto de referencia (RGB) por producto; lo que no esté aquí usa el de su categoría.

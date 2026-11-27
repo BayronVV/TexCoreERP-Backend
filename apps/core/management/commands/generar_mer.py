@@ -57,6 +57,7 @@ RELATION_NAMES = {
     ("PasswordResetToken", "user"): "Solicita",
     ("OrdenSalida", "referencia"): "Se prepara para",
     ("OrdenSalida", "producto_resultado"): "Resulta en",
+    ("Producto", "referencia"): "Representa",
     ("OrdenLinea", "orden"): "Detalla",
     ("OrdenLinea", "producto"): "Se consume en",
     ("Movimiento", "producto"): "Registra",

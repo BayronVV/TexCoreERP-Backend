@@ -13,7 +13,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import catalog, services
+from . import catalog, finished_link, services
 from .models import Evidencia, Movimiento, OrdenSalida, Producto, Proveedor
 from .serializers import (
     AnulacionInputSerializer,
@@ -73,6 +73,7 @@ class MetadatosView(APIView):
                     "tipo": data["tipo"],
                     "unidades": data["units"],
                     "compra": data["tipo"] in catalog.PURCHASED_TYPES,
+                    "creable_manualmente": code != catalog.CAT_FINISHED,
                     "requiere_ancho_util": code in catalog.WIDTH_REQUIRED,
                     "requiere_composicion": code in catalog.COMPOSITION_REQUIRED,
                 }
@@ -105,22 +106,32 @@ class AlertListView(APIView):
 
 @extend_schema_view(get=extend_schema(
     tags=["inventario"], summary="Productos con existencias",
-    parameters=[OpenApiParameter("tipo", str, description="Tipos separados por coma: MATERIA_PRIMA, INSUMO, GENERICO, TERMINADO")],
+    parameters=[
+        OpenApiParameter("tipo", str, description="Tipos separados por coma: MATERIA_PRIMA, INSUMO, GENERICO, TERMINADO"),
+        OpenApiParameter("incluir_heredados", bool, description="true para incluir productos PT heredados sin referencia"),
+    ],
 ))
 class ProductoListView(generics.ListAPIView):
     """Productos con sus existencias, para Inventario (ingresos, salidas y existencias).
-    Solo lectura: los productos se crean y editan en el catálogo."""
+    Para PRODUCTO_TERMINADO enlazado el saldo se calcula en vivo desde Producto Terminado (TE-170)."""
 
     required_permissions = catalog.INVENTORY_VIEW
     serializer_class = ProductoSerializer
     pagination_class = None
 
     def get_queryset(self):
-        queryset = Producto.objects.all()
+        queryset = Producto.objects.select_related("referencia")
+        if self.request.query_params.get("incluir_heredados") not in ("1", "true"):
+            queryset = queryset.filter(heredado=False)
         kind = self.request.query_params.get("tipo")
         if kind:
             queryset = queryset.filter(tipo__in=kind.split(","))
         return queryset
+
+    def list(self, request, *args, **kwargs):
+        products = finished_link.annotate_products_with_live_stock(self.filter_queryset(self.get_queryset()))
+        serializer = self.get_serializer(products, many=True)
+        return Response(serializer.data)
 
 
 # --- Catálogo de telas e insumos (HU 2.2) ---------------------------------------
@@ -128,7 +139,8 @@ class ProductoListView(generics.ListAPIView):
 @extend_schema_view(
     get=extend_schema(tags=["catalogo"], summary="Listar el catálogo (sin existencias)",
         parameters=[OpenApiParameter("categoria", str, description="Categorías separadas por coma (TELA, HILO...)"),
-                    OpenApiParameter("q", str, description="Busca en nombre, código y color")]),
+                    OpenApiParameter("q", str, description="Busca en nombre, código y color"),
+                    OpenApiParameter("heredados", bool, description="true para consultar los productos PT heredados")]),
     post=extend_schema(tags=["catalogo"], summary="Crear un producto (HU 2.2)",
         description="La categoría fija el tipo y las unidades permitidas. Las telas exigen `ancho_util` (0 a 5 m) y las telas e hilos, composición que sume 100 %."),
 )
@@ -139,7 +151,8 @@ class CatalogoListCreateView(generics.ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        queryset = Producto.objects.all().order_by("categoria", "nombre")
+        only_legacy = self.request.query_params.get("heredados") in ("1", "true")
+        queryset = Producto.objects.select_related("referencia").filter(heredado=only_legacy).order_by("categoria", "nombre")
         category = self.request.query_params.get("categoria")
         if category:
             queryset = queryset.filter(categoria__in=category.split(","))
@@ -170,7 +183,7 @@ class CatalogoDetailView(generics.RetrieveUpdateDestroyAPIView):
         "DELETE": catalog.INVENTORY_MANAGE,
     }
     serializer_class = CatalogoSerializer
-    queryset = Producto.objects.all()
+    queryset = Producto.objects.select_related("referencia")
     http_method_names = ["get", "patch", "delete", "head", "options"]
 
     def perform_destroy(self, instance):

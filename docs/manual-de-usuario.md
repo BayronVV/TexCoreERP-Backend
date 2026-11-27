@@ -97,7 +97,7 @@ Tres pestañas:
 
 **Existencias**
 : Consulta cuánto hay de cada producto y su **Costo promedio** (lo que cuesta cada unidad, calculado con el promedio ponderado de las compras). Un guion
-  significa que todavía no se conoce el costo. Filtra por tipo o busca por nombre o código. Es solo lectura: los productos se crean en el Catálogo.
+  significa que todavía no se conoce el costo. En los **productos terminados** enlazados a una referencia (**HU 6.5 / TE-170**), la cantidad que ves es en tiempo real la suma de todas sus tallas y colores en **Producto Terminado** y muestra un enlace **Ver tallas y colores →** para abrir esa matriz; cualquier venta, anulación, ingreso desde calidad o ajuste actualiza ambas pantallas al instante. Filtra por tipo o busca por nombre o código. Es solo lectura: los productos se crean en el Catálogo (o automáticamente desde Referencias en el caso de producto terminado).
 
 **Ingreso**
 : Registra lo que entra al almacén.
@@ -125,7 +125,7 @@ Tres pestañas:
 Fichas de telas e insumos organizadas por **categoría**. Cada producto tiene su código (TEL-, HIL-, CIE-...), unidad,
 **Stock mínimo** y, según la categoría, **Ancho útil** (telas) y **Composición** (telas e hilos, debe sumar 100 %).
 Puedes buscar, filtrar por categoría, **Editar** y agregar una imagen de referencia. El catálogo no muestra existencias.
-La categoría y la unidad no se pueden cambiar cuando el producto ya tiene movimientos.
+La categoría y la unidad no se pueden cambiar cuando el producto ya tiene movimientos. Los productos terminados (`PT-`) nacen vinculados de forma automática cuando creas o activas una referencia con variantes en **Referencias** (con mínimo inicial de 30 unidades); desde el Catálogo puedes ajustar su stock mínimo de alerta y su descripción, pero no crearlos ni eliminarlos manualmente.
 
 ### Proveedores
 

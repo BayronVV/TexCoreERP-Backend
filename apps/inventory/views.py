@@ -13,6 +13,13 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.listing import (
+    PAGINATION_PARAMS,
+    paginate_or_limit,
+    parse_date_range,
+    parse_int_param,
+    user_search_q,
+)
 from . import catalog, finished_link, services
 from .models import Evidencia, Movimiento, OrdenSalida, Producto, Proveedor
 from .serializers import (
@@ -51,6 +58,8 @@ def apply_filters(queryset, params, mapping):
             queryset = queryset.filter(**{lookup: value})
             str(queryset.query)  # fuerza la conversión del valor
         except (ValueError, TypeError, DjangoValidationError):
+            if param in ("desde", "hasta"):
+                raise ValidationError({param: [f"La fecha '{param}' no es válida. Usa el formato AAAA-MM-DD."]})
             raise ValidationError({param: ["Valor inválido."]})
     return queryset
 
@@ -319,32 +328,90 @@ class ProveedorRestaurarView(APIView):
 
 
 @extend_schema_view(get=extend_schema(
-    tags=["movimientos"], summary="Historial de movimientos (kardex)",
-    parameters=[LIMIT_PARAM, OpenApiParameter("tipo", str, description="INGRESO o SALIDA"), OpenApiParameter("producto", int, description="Id del producto"),
-                OpenApiParameter("orden", int, description="Id de la orden"),
-                OpenApiParameter("orden_compra", str, description="Código de la orden de compra (p. ej. OC-0001)"),
-                OpenApiParameter("desde", OpenApiTypes.DATE, description="Fecha mínima"),
-                OpenApiParameter("hasta", OpenApiTypes.DATE, description="Fecha máxima")],
+    tags=["movimientos"], summary="Historial de movimientos (kardex) con filtros combinables y paginación",
+    parameters=[
+        LIMIT_PARAM, *PAGINATION_PARAMS,
+        OpenApiParameter("tipo", str, description="INGRESO o SALIDA"),
+        OpenApiParameter("producto", int, description="Id del producto"),
+        OpenApiParameter("referencia", int, description="Id de la referencia asociada a la orden"),
+        OpenApiParameter("orden", str, description="Id o código de la orden"),
+        OpenApiParameter("orden_compra", str, description="Código de la orden de compra (p. ej. OC-0001)"),
+        OpenApiParameter("lote", str, description="Código o número de lote"),
+        OpenApiParameter("estado", str, description="Estado de la orden de salida (EN_PROCESO, COMPLETADA, ANULADA)"),
+        OpenApiParameter("responsable", str, description="Responsable de la orden o usuario que registró"),
+        OpenApiParameter("desde", OpenApiTypes.DATE, description="Fecha mínima"),
+        OpenApiParameter("hasta", OpenApiTypes.DATE, description="Fecha máxima"),
+        OpenApiParameter("q", str, description="Producto, código, lote, orden, proveedor o nota"),
+    ],
+    responses={200: MovimientoSerializer(many=True)},
 ))
-class MovimientoListView(generics.ListAPIView):
+class MovimientoListView(APIView):
     """Kardex: cada cambio de saldo con saldo antes y después."""
     required_permissions = catalog.INVENTORY_VIEW
     serializer_class = MovimientoSerializer
-    pagination_class = None
 
-    def get_queryset(self):
+    def get(self, request):
+        desde, hasta = parse_date_range(request.query_params)
+        producto_id = parse_int_param(request.query_params, "producto", minimum=1)
+        referencia_id = parse_int_param(request.query_params, "referencia", minimum=1)
+
         queryset = Movimiento.objects.select_related(
-            "producto", "orden", "registrado_por", "recepcion_linea__recepcion"
+            "producto", "orden", "orden__referencia", "registrado_por", "recepcion_linea__recepcion"
         ).prefetch_related(
             "evidencias", "orden__evidencias"
         )
+        if producto_id is not None:
+            queryset = queryset.filter(producto_id=producto_id)
+        if referencia_id is not None:
+            queryset = queryset.filter(orden__referencia_id=referencia_id)
+
+        orden_raw = (request.query_params.get("orden") or "").strip()
+        if orden_raw:
+            if orden_raw.isdigit():
+                queryset = queryset.filter(orden_id=int(orden_raw))
+            else:
+                queryset = queryset.filter(orden__codigo__icontains=orden_raw)
+
+        lote_raw = (request.query_params.get("lote") or "").strip()
+        if lote_raw:
+            queryset = queryset.filter(lote__icontains=lote_raw)
+
+        estado_raw = (request.query_params.get("estado") or "").strip()
+        if estado_raw:
+            queryset = queryset.filter(orden__estado=estado_raw)
+
+        responsable_raw = (request.query_params.get("responsable") or "").strip()
+        if responsable_raw:
+            if responsable_raw.isdigit():
+                queryset = queryset.filter(registrado_por_id=int(responsable_raw))
+            else:
+                queryset = queryset.filter(
+                    Q(orden__responsable__icontains=responsable_raw)
+                    | user_search_q("registrado_por", responsable_raw)
+                )
+
+        if desde is not None:
+            queryset = queryset.filter(fecha__gte=desde)
+        if hasta is not None:
+            queryset = queryset.filter(fecha__lte=hasta)
+
         queryset = apply_filters(
             queryset,
-            self.request.query_params,
-            (("tipo", "tipo"), ("producto", "producto_id"), ("orden", "orden_id"),
-             ("orden_compra", "orden_compra"), ("desde", "fecha__gte"), ("hasta", "fecha__lte")),
+            request.query_params,
+            (("tipo", "tipo"), ("orden_compra", "orden_compra")),
         )
-        return limited(queryset, self.request)
+        q = (request.query_params.get("q") or "").strip()
+        if q:
+            queryset = queryset.filter(
+                Q(producto__codigo__icontains=q)
+                | Q(producto__nombre__icontains=q)
+                | Q(lote__icontains=q)
+                | Q(orden__codigo__icontains=q)
+                | Q(orden_compra__icontains=q)
+                | Q(proveedor_nombre__icontains=q)
+                | Q(nota__icontains=q)
+            )
+        return paginate_or_limit(queryset, request, MovimientoSerializer)
 
 
 @extend_schema(

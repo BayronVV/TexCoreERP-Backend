@@ -2080,6 +2080,7 @@ flowchart LR
     v1[("reportes_mv_ventas_referencias")]
     t_ventas_factura_linea["DetalleVenta"] --> v1
     t_ventas_factura["FacturaVenta"] --> v1
+    t_users_customuser["CustomUser"] --> v1
     t_referencias_variante["Variante"] --> v1
     t_referencias_referencia["Referencia"] --> v1
 ```
@@ -2111,7 +2112,7 @@ Se alimenta de: `produccion_orden` (OrdenProduccion), `inventario_orden` (OrdenS
 
 Fila pre-agregada de ventas por factura y referencia de jean en la vista materializada `reportes_mv_ventas_referencias`.
 
-Se alimenta de: `ventas_factura_linea` (DetalleVenta), `ventas_factura` (FacturaVenta), `referencias_variante` (Variante), `referencias_referencia` (Referencia).
+Se alimenta de: `ventas_factura_linea` (DetalleVenta), `ventas_factura` (FacturaVenta), `users_customuser` (CustomUser), `referencias_variante` (Variante), `referencias_referencia` (Referencia).
 
 | Columna | Tipo |
 |---|---|
@@ -2124,6 +2125,8 @@ Se alimenta de: `ventas_factura_linea` (DetalleVenta), `ventas_factura` (Factura
 | `cliente_tipo` | varchar(12) |
 | `cliente_nombre` | varchar(150) |
 | `transportadora` | varchar(16) |
+| `vendedor_id` | bigint |
+| `vendedor_nombre` | varchar(254) |
 | `referencia_id` | bigint |
 | `referencia_codigo` | varchar(20) |
 | `referencia_nombre` | varchar(150) |

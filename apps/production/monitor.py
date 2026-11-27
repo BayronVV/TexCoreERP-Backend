@@ -19,9 +19,10 @@ pide atención a las 2 horas sin movimiento y es crítico a las 8, que es más o
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
 
-from django.db.models import Exists, OuterRef, Subquery
+from django.db.models import Exists, OuterRef, Q, Subquery
 from django.utils import timezone
 
+from apps.core.listing import user_search_q
 from apps.inventory import catalog as inventory_catalog
 
 from . import catalog, resources, tracking
@@ -58,7 +59,17 @@ def alert_level(seconds):
     return ALERT_CRITICAL if seconds >= CRITICAL_AFTER_S else ALERT_ATTENTION
 
 
-def _base(order_id=None, reference_id=None, cancelled=False):
+def _base(
+    order_id=None,
+    reference_id=None,
+    cancelled=False,
+    *,
+    desde=None,
+    hasta=None,
+    stage=None,
+    responsable=None,
+    q=None,
+):
     """Lotes vivos de órdenes no anuladas (o solo de las anuladas), con lo que necesita una tarjeta y su último movimiento."""
     last_event = EventoEtapa.objects.filter(etapa_lote__lote=OuterRef("pk")).order_by("-momento", "-id").values("momento")[:1]
     lots = Lote.objects.filter(orden__deleted_at__isnull=True)
@@ -71,6 +82,36 @@ def _base(order_id=None, reference_id=None, cancelled=False):
         lots = lots.filter(orden_id=order_id)
     if reference_id is not None:
         lots = lots.filter(orden__referencia_id=reference_id)
+    if desde is not None:
+        lots = lots.filter(orden__orden_salida__fecha_salida__gte=desde)
+    if hasta is not None:
+        lots = lots.filter(orden__orden_salida__fecha_salida__lte=hasta)
+    if stage:
+        current_stage_sq = Subquery(
+            EtapaLote.objects.filter(lote=OuterRef("pk"))
+            .exclude(estado=catalog.STAGE_DONE)
+            .order_by("secuencia")
+            .values("etapa")[:1]
+        )
+        lots = lots.annotate(_current_stage=current_stage_sq).filter(_current_stage=stage)
+    if responsable:
+        if responsable.isdigit():
+            lots = lots.filter(
+                Exists(EtapaLote.objects.filter(lote=OuterRef("pk"), responsable_id=int(responsable)))
+            )
+        else:
+            stage_resp = Exists(
+                EtapaLote.objects.filter(user_search_q("responsable", responsable), lote=OuterRef("pk"))
+            )
+            lots = lots.filter(Q(orden__orden_salida__responsable__icontains=responsable) | stage_resp)
+    if q:
+        lots = lots.filter(
+            Q(codigo__icontains=q)
+            | Q(orden__codigo__icontains=q)
+            | Q(orden__referencia__codigo__icontains=q)
+            | Q(orden__referencia__nombre__icontains=q)
+            | Q(orden__orden_salida__responsable__icontains=q)
+        )
     return lots
 
 
@@ -85,7 +126,7 @@ def _sort_key(state):
 
 
 def build_board(*, limit=DEFAULT_LIMIT, order_id=None, reference_id=None, done_days=DEFAULT_DONE_DAYS,
-                include_cancelled=False, now=None):
+                include_cancelled=False, now=None, desde=None, hasta=None, stage=None, responsable=None, q=None):
     """Las columnas del tablero: `{estado, nombre, total, lotes}` con a lo sumo `limit` lotes cada una (más la de canceladas,
     si se pide) y el resumen de alertas de todos los lotes activos.
 
@@ -95,9 +136,12 @@ def build_board(*, limit=DEFAULT_LIMIT, order_id=None, reference_id=None, done_d
     has_open = Exists(EtapaLote.objects.filter(lote=OuterRef("pk")).exclude(estado=catalog.STAGE_DONE))
     has_any = Exists(EtapaLote.objects.filter(lote=OuterRef("pk")))
     prefetch = ("etapas__responsable", resources.open_assignments())
+    base_kwargs = {
+        "desde": desde, "hasta": hasta, "stage": stage, "responsable": responsable, "q": q,
+    }
 
-    active = list(_base(order_id, reference_id).filter(has_open | ~has_any).prefetch_related(*prefetch))
-    done = _base(order_id, reference_id).filter(
+    active = list(_base(order_id, reference_id, **base_kwargs).filter(has_open | ~has_any).prefetch_related(*prefetch))
+    done = _base(order_id, reference_id, **base_kwargs).filter(
         has_any, ~has_open, ultimo_movimiento__gte=now - timedelta(days=done_days)
     )
     done_total = done.count()
@@ -125,7 +169,7 @@ def build_board(*, limit=DEFAULT_LIMIT, order_id=None, reference_id=None, done_d
         columns.append({"estado": state, "nombre": catalog.STATE_NAMES[state], "total": total, "lotes": lots[:limit]})
 
     if include_cancelled:
-        cancelled = _base(order_id, reference_id, cancelled=True)
+        cancelled = _base(order_id, reference_id, cancelled=True, **base_kwargs)
         cards = cancelled.order_by("-orden__orden_salida__anulada_at", "-id").prefetch_related(*prefetch)[:limit]
         columns.append({
             "estado": catalog.STATE_CANCELLED, "nombre": catalog.STATE_NAMES[catalog.STATE_CANCELLED],

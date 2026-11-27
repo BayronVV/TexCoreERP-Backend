@@ -40,6 +40,8 @@ class ReporteGerencialView(APIView):
             OpenApiParameter("estado_orden", str, description="Estado de la orden de producción (EN_PROCESO, COMPLETADA, ANULADA)"),
             OpenApiParameter("estado_cobro", str, description="Estado de cartera en ventas (POR_COBRAR, PAGADO, DEVOLUCION)"),
             OpenApiParameter("tipo_cliente", str, description="Tipo de cliente (DETAL, MAYORISTA, DISTRIBUIDOR)"),
+            OpenApiParameter("vendedor", int, description="ID del vendedor de la factura"),
+            OpenApiParameter("transportadora", str, description="Transportadora (INTERRAPIDISIMO, ENVIA, OTRA)"),
         ],
         responses={
             200: ReporteGerencialSerializer,

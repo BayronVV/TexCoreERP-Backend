@@ -7,6 +7,13 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.listing import (
+    PAGINATION_PARAMS,
+    paginate_or_limit,
+    parse_date_range,
+    parse_int_param,
+    seller_options,
+)
 from apps.inventory.services import next_code
 from apps.inventory.views import apply_filters, limited
 from apps.references import catalog as reference_catalog
@@ -62,6 +69,7 @@ class MetadatosVentaView(APIView):
             "tipos_documento": [{"codigo": code, "nombre": name} for code, name in catalog.DOCUMENT_TYPES],
             "transportadoras": [{"codigo": code, "nombre": name} for code, name in catalog.CARRIERS],
             "estados_cobro": [{"codigo": code, "nombre": name} for code, name in catalog.COLLECT_STATES],
+            "vendedores": seller_options(),
             "iva_tarifa": catalog.IVA_RATE, "aviso": catalog.INVOICE_NOTICE, "motivo_anulacion_minimo": catalog.MIN_CANCEL_REASON,
         })
 
@@ -238,28 +246,54 @@ class FacturaListCreateView(APIView):
     required_permissions = INVOICE_PERMISSIONS
 
     @extend_schema(
-        summary="Listar las facturas (filtros: cliente, estado, estado_cobro, transportadora, desde, hasta, q, limit)",
+        summary="Listar las facturas (filtros combinables y paginación)",
         parameters=[
-            LIMIT_PARAM, OpenApiParameter("cliente", int, description="Id del cliente"),
+            LIMIT_PARAM, *PAGINATION_PARAMS,
+            OpenApiParameter("cliente", int, description="Id del cliente"),
+            OpenApiParameter("vendedor", int, description="Id del vendedor"),
+            OpenApiParameter("referencia", int, description="Id de la referencia vendida"),
             OpenApiParameter("estado", str, description="EMITIDA o ANULADA"),
             OpenApiParameter("estado_cobro", str, description="POR_COBRAR, PAGADO o DEVOLUCION"),
             OpenApiParameter("transportadora", str, description="INTERRAPIDISIMO, ENVIA u OTRA"),
             OpenApiParameter("desde", str, description="Fecha mínima (AAAA-MM-DD)"), OpenApiParameter("hasta", str, description="Fecha máxima"),
-            OpenApiParameter("q", str, description="Número de factura, cliente o documento"),
+            OpenApiParameter("q", str, description="Número de factura, cliente, documento o guía"),
         ],
         responses={200: FacturaSerializer(many=True)},
     )
     def get(self, request):
+        desde, hasta = parse_date_range(request.query_params)
+        cliente_id = parse_int_param(request.query_params, "cliente", minimum=1)
+        vendedor_id = parse_int_param(request.query_params, "vendedor", minimum=1)
+        referencia_id = parse_int_param(request.query_params, "referencia", minimum=1)
+
+        invoices = invoice_queryset()
+        if cliente_id is not None:
+            invoices = invoices.filter(cliente_id=cliente_id)
+        if vendedor_id is not None:
+            invoices = invoices.filter(vendedor_id=vendedor_id)
+        if referencia_id is not None:
+            invoices = invoices.filter(
+                id__in=DetalleVenta.objects.filter(variante__referencia_id=referencia_id).values("factura_id")
+            )
+        if desde is not None:
+            invoices = invoices.filter(fecha__gte=desde)
+        if hasta is not None:
+            invoices = invoices.filter(fecha__lte=hasta)
+
         invoices = apply_filters(
-            invoice_queryset(), request.query_params, [
-                ("cliente", "cliente_id"), ("estado", "estado"), ("estado_cobro", "estado_cobro"),
-                ("transportadora", "transportadora"), ("desde", "fecha__gte"), ("hasta", "fecha__lte"),
+            invoices, request.query_params, [
+                ("estado", "estado"), ("estado_cobro", "estado_cobro"), ("transportadora", "transportadora"),
             ],
         )
         q = request.query_params.get("q", "").strip()
         if q:
-            invoices = invoices.filter(Q(numero__icontains=q) | Q(cliente_nombre__icontains=q) | Q(cliente_documento__icontains=q))
-        return Response(FacturaSerializer(limited(invoices, request), many=True).data)
+            invoices = invoices.filter(
+                Q(numero__icontains=q)
+                | Q(cliente_nombre__icontains=q)
+                | Q(cliente_documento__icontains=q)
+                | Q(numero_guia__icontains=q)
+            )
+        return paginate_or_limit(invoices, request, FacturaSerializer)
 
     @extend_schema(
         summary="Emitir una factura POS interna y descontar el inventario", request=FacturaInputSerializer, responses={201: FacturaSerializer},

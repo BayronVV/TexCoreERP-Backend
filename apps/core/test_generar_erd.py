@@ -36,7 +36,7 @@ class GenerarErdTests(SimpleTestCase):
         views = {v["name"]: v for v in report_views(self.models)}
         self.assertEqual(set(views), {"reportes_mv_produccion_ordenes", "reportes_mv_ventas_referencias"})
         self.assertEqual(len(views["reportes_mv_produccion_ordenes"]["columns"]), 14)
-        self.assertEqual(len(views["reportes_mv_ventas_referencias"]["columns"]), 22)
+        self.assertEqual(len(views["reportes_mv_ventas_referencias"]["columns"]), 24)
         self.assertIn("| `estado_cobro` |", self.text)
 
     def test_referencia_imagenes(self):

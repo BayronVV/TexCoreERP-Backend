@@ -7,6 +7,12 @@ class OpcionCatalogoSerializer(serializers.Serializer):
     nombre = serializers.CharField()
 
 
+class VendedorFiltroSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    nombre = serializers.CharField()
+    email = serializers.CharField()
+
+
 class ReferenciaFiltroSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     codigo = serializers.CharField()
@@ -21,6 +27,8 @@ class MetadatosReporteSerializer(serializers.Serializer):
     estados_orden = OpcionCatalogoSerializer(many=True)
     estados_cobro = OpcionCatalogoSerializer(many=True)
     tipos_cliente = OpcionCatalogoSerializer(many=True)
+    vendedores = VendedorFiltroSerializer(many=True)
+    transportadoras = OpcionCatalogoSerializer(many=True)
     referencias = ReferenciaFiltroSerializer(many=True)
 
 
@@ -37,6 +45,8 @@ class ReporteKpisSerializer(serializers.Serializer):
     recaudado_periodo = serializers.IntegerField()
     pendiente_recaudo_periodo = serializers.IntegerField()
     saldo_financiero_empresa = serializers.IntegerField()
+    devoluciones_guias = serializers.IntegerField()
+    flete_devoluciones_total = serializers.IntegerField()
 
 
 class ConsolidadoTipoJeanSerializer(serializers.Serializer):
@@ -98,6 +108,8 @@ class VentaDetalleReporteSerializer(serializers.Serializer):
     cliente_nombre = serializers.CharField()
     cliente_tipo = serializers.CharField()
     cliente_tipo_nombre = serializers.CharField()
+    vendedor_nombre = serializers.CharField()
+    transportadora = serializers.CharField()
     estado_cobro = serializers.CharField()
     estado_cobro_nombre = serializers.CharField()
     referencia_codigo = serializers.CharField()
@@ -114,6 +126,13 @@ class VentaDetalleReporteSerializer(serializers.Serializer):
     total = serializers.IntegerField()
 
 
+class DevolucionVendedorReporteSerializer(serializers.Serializer):
+    vendedor_id = serializers.IntegerField(allow_null=True)
+    vendedor_nombre = serializers.CharField()
+    guias_devueltas = serializers.IntegerField()
+    flete_vendedor = serializers.IntegerField()
+
+
 class ReporteGerencialSerializer(serializers.Serializer):
     filtros_aplicados = serializers.DictField()
     kpis = ReporteKpisSerializer()
@@ -121,10 +140,10 @@ class ReporteGerencialSerializer(serializers.Serializer):
     ordenes_produccion = OrdenProduccionReporteSerializer(many=True)
     ventas_por_referencia = VentaReferenciaReporteSerializer(many=True)
     ventas_detalle = VentaDetalleReporteSerializer(many=True)
+    devoluciones_por_vendedor = DevolucionVendedorReporteSerializer(many=True)
 
 
 class ReporteRefrescoSerializer(serializers.Serializer):
     """Resultado de la solicitud explícita de refresco de vistas SQL materializadas."""
     refreshed = serializers.BooleanField(help_text="Verdadero si se refrescaron vistas materializadas")
     detail = serializers.CharField()
-

@@ -9,8 +9,15 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.listing import (
+    PAGINATION_PARAMS,
+    paginate_or_limit,
+    parse_date_range,
+    parse_int_param,
+)
 from apps.inventory.views import apply_filters, limited
 from apps.sales import catalog as sales_catalog
+from apps.sales.models import DetalleVenta
 from apps.sales.serializers import _name
 
 from . import catalog, services, tracking
@@ -64,28 +71,58 @@ class GuiaListView(APIView):
     required_permissions = VIEW_PERMISSIONS
 
     @extend_schema(
-        summary="Listar las guías (filtros: estado, transportadora, factura, desde, hasta, q, todas, limit)",
+        summary="Listar las guías (filtros combinables y paginación)",
         parameters=[
-            LIMIT_PARAM, OpenApiParameter("estado", str, description="POR_DESPACHAR, EN_TRANSITO, EN_NOVEDAD, ENTREGADA, DEVUELTA o ANULADA"),
-            OpenApiParameter("transportadora", str, description="INTERRAPIDISIMO, ENVIA u OTRA"), OpenApiParameter("factura", int, description="Id de la factura"),
+            LIMIT_PARAM, *PAGINATION_PARAMS,
+            OpenApiParameter("estado", str, description="POR_DESPACHAR, EN_TRANSITO, EN_NOVEDAD, ENTREGADA, DEVUELTA o ANULADA"),
+            OpenApiParameter("transportadora", str, description="INTERRAPIDISIMO, ENVIA u OTRA"),
+            OpenApiParameter("factura", int, description="Id de la factura"),
+            OpenApiParameter("cliente", int, description="Id del cliente"),
+            OpenApiParameter("vendedor", int, description="Id del vendedor"),
+            OpenApiParameter("referencia", int, description="Id de la referencia incluida en la factura"),
             OpenApiParameter("desde", str, description="Fecha de creación mínima (AAAA-MM-DD)"), OpenApiParameter("hasta", str, description="Fecha de creación máxima"),
-            OpenApiParameter("q", str, description="Número de guía, factura o cliente"),
+            OpenApiParameter("q", str, description="Número de guía, factura, cliente o novedad"),
             OpenApiParameter("todas", str, description="1 para incluir las guías reemplazadas o anuladas (por defecto solo las vigentes)"),
         ],
         responses={200: GuiaSerializer(many=True)},
     )
     def get(self, request):
+        desde, hasta = parse_date_range(request.query_params)
+        cliente_id = parse_int_param(request.query_params, "cliente", minimum=1)
+        vendedor_id = parse_int_param(request.query_params, "vendedor", minimum=1)
+        referencia_id = parse_int_param(request.query_params, "referencia", minimum=1)
+        factura_id = parse_int_param(request.query_params, "factura", minimum=1)
+
         guides = guide_queryset()
         if request.query_params.get("todas") != "1":
             guides = guides.filter(vigente=True)
+        if factura_id is not None:
+            guides = guides.filter(factura_id=factura_id)
+        if cliente_id is not None:
+            guides = guides.filter(factura__cliente_id=cliente_id)
+        if vendedor_id is not None:
+            guides = guides.filter(factura__vendedor_id=vendedor_id)
+        if referencia_id is not None:
+            guides = guides.filter(
+                factura_id__in=DetalleVenta.objects.filter(variante__referencia_id=referencia_id).values("factura_id")
+            )
+        if desde is not None:
+            guides = guides.filter(created_at__date__gte=desde)
+        if hasta is not None:
+            guides = guides.filter(created_at__date__lte=hasta)
+
         guides = apply_filters(guides, request.query_params, [
-            ("estado", "estado"), ("transportadora", "transportadora"), ("factura", "factura_id"),
-            ("desde", "created_at__date__gte"), ("hasta", "created_at__date__lte"),
+            ("estado", "estado"), ("transportadora", "transportadora"),
         ])
         q = request.query_params.get("q", "").strip()
         if q:
-            guides = guides.filter(Q(numero_guia__icontains=q) | Q(factura__numero__icontains=q) | Q(factura__cliente_nombre__icontains=q))
-        return Response(GuiaSerializer(limited(guides, request), many=True).data)
+            guides = guides.filter(
+                Q(numero_guia__icontains=q)
+                | Q(factura__numero__icontains=q)
+                | Q(factura__cliente_nombre__icontains=q)
+                | Q(novedad__icontains=q)
+            )
+        return paginate_or_limit(guides, request, GuiaSerializer)
 
 
 @extend_schema(tags=["envios"])

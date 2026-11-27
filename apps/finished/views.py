@@ -6,6 +6,13 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.listing import (
+    PAGINATION_PARAMS,
+    paginate_or_limit,
+    parse_date_range,
+    parse_int_param,
+    user_search_q,
+)
 from apps.inventory.views import apply_filters, limited
 
 from . import adjustments, catalog, services
@@ -130,23 +137,72 @@ class MovimientoListView(APIView):
     required_permissions = READ_PERMISSIONS
 
     @extend_schema(
-        summary="Listar los movimientos (filtros: referencia, variante, tipo, desde, hasta, limit)",
+        summary="Listar los movimientos (filtros combinables y paginación)",
         parameters=[
-            LIMIT_PARAM, OpenApiParameter("referencia", int, description="Id de la referencia"),
+            LIMIT_PARAM, *PAGINATION_PARAMS,
+            OpenApiParameter("referencia", int, description="Id de la referencia"),
             OpenApiParameter("variante", int, description="Id de la variante (talla y color)"),
             OpenApiParameter("tipo", str, description="ENTRADA_PRODUCCION, AJUSTE o SALIDA_VENTA"),
+            OpenApiParameter("lote", str, description="Id o código del lote"),
+            OpenApiParameter("cliente", int, description="Id del cliente de la factura"),
+            OpenApiParameter("vendedor", int, description="Id del vendedor de la factura"),
+            OpenApiParameter("responsable", str, description="Id, nombre o correo del usuario"),
             OpenApiParameter("desde", str, description="Fecha mínima (AAAA-MM-DD)"), OpenApiParameter("hasta", str, description="Fecha máxima"),
+            OpenApiParameter("q", str, description="Referencia, lote, documento o nota"),
         ],
         responses={200: MovimientoTerminadoSerializer(many=True)},
     )
     def get(self, request):
-        movements = MovimientoTerminado.objects.select_related("variante__referencia", "ingreso", "ajuste", "factura", "lote", "usuario")
-        movements = apply_filters(
-            movements, request.query_params,
-            [("referencia", "variante__referencia_id"), ("variante", "variante_id"), ("tipo", "tipo"),
-             ("desde", "created_at__date__gte"), ("hasta", "created_at__date__lte")],
+        desde, hasta = parse_date_range(request.query_params)
+        referencia_id = parse_int_param(request.query_params, "referencia", minimum=1)
+        variante_id = parse_int_param(request.query_params, "variante", minimum=1)
+        cliente_id = parse_int_param(request.query_params, "cliente", minimum=1)
+        vendedor_id = parse_int_param(request.query_params, "vendedor", minimum=1)
+
+        movements = MovimientoTerminado.objects.select_related(
+            "variante__referencia", "ingreso", "ajuste", "factura", "factura__cliente", "factura__vendedor", "lote", "usuario"
         )
-        return Response(MovimientoTerminadoSerializer(limited(movements, request), many=True).data)
+        if referencia_id is not None:
+            movements = movements.filter(variante__referencia_id=referencia_id)
+        if variante_id is not None:
+            movements = movements.filter(variante_id=variante_id)
+        if cliente_id is not None:
+            movements = movements.filter(factura__cliente_id=cliente_id)
+        if vendedor_id is not None:
+            movements = movements.filter(factura__vendedor_id=vendedor_id)
+
+        lote_raw = (request.query_params.get("lote") or "").strip()
+        if lote_raw:
+            if lote_raw.isdigit():
+                movements = movements.filter(lote_id=int(lote_raw))
+            else:
+                movements = movements.filter(lote__codigo__icontains=lote_raw)
+
+        responsable_raw = (request.query_params.get("responsable") or "").strip()
+        if responsable_raw:
+            if responsable_raw.isdigit():
+                movements = movements.filter(usuario_id=int(responsable_raw))
+            else:
+                movements = movements.filter(user_search_q("usuario", responsable_raw))
+
+        if desde is not None:
+            movements = movements.filter(created_at__date__gte=desde)
+        if hasta is not None:
+            movements = movements.filter(created_at__date__lte=hasta)
+
+        movements = apply_filters(movements, request.query_params, [("tipo", "tipo")])
+        q = (request.query_params.get("q") or "").strip()
+        if q:
+            movements = movements.filter(
+                Q(variante__referencia__codigo__icontains=q)
+                | Q(variante__referencia__nombre__icontains=q)
+                | Q(lote__codigo__icontains=q)
+                | Q(factura__numero__icontains=q)
+                | Q(ingreso__codigo__icontains=q)
+                | Q(ajuste__codigo__icontains=q)
+                | Q(nota__icontains=q)
+            )
+        return paginate_or_limit(movements, request, MovimientoTerminadoSerializer)
 
 
 def adjustment_queryset():

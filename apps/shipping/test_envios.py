@@ -352,12 +352,12 @@ class InvoiceIntegrationTests(ShippingBase):
         sin = self.sale().json()
         self.assertIsNone(sin["guia"])
 
-    def test_el_pago_sigue_funcionando_igual(self):
+    def test_el_pago_con_guia_entregada_lo_confirma_el_gerente(self):
         invoice, guide = self.invoice_with_guide()
         self.dispatch([guide])
         self.state(guide, catalog.DELIVERED)
-        response = self.seller.post(reverse("ventas_factura_conciliar", args=[invoice.id]), {"estado_cobro": "PAGADO"}, format="json")
-        self.assertEqual(response.status_code, 200)
+        response = self.manager.post(reverse("ventas_factura_conciliar", args=[invoice.id]), {}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(self.seller.get(reverse("ventas_cartera_resumen")).json()["conteo_pagadas"], 1)
 
     def test_el_listado_de_facturas_no_hace_consultas_de_mas_por_la_guia(self):

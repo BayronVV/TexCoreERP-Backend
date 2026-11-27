@@ -80,7 +80,7 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | `ventas` | `/api/ventas/precios/` (referencias activas con costo, precios y, para `ventas.precios`, cálculo sugerido desde producción y alertas; filtro `q`), `/api/ventas/precios/<referencia>/` (`PUT`: actualizar manualmente), `/api/ventas/precios/<referencia>/aplicar-costo/` (`POST`: aplicar costo calculado de producción) y `/api/ventas/precios/<referencia>/historial/` (`GET`: historial de cambios). Modificar o consultar cálculo/historial exige `ventas.precios` | TE-62, TE-174 |
 | `ventas` | `/api/ventas/facturas/` (listar con filtros `cliente`, `estado`, `desde`, `hasta`, `q` y `limit`, y emitir la factura POS interna descontando el inventario) y `/api/ventas/facturas/<id>/` (consultar con sus líneas). No hay `PUT` ni `DELETE`: una factura no se edita | TE-62 |
 | `ventas` | `/api/ventas/facturas/<id>/pdf/` (descarga el PDF), `/api/ventas/facturas/<id>/anular/` (anula con motivo y reingresa las unidades; exige `ventas.anular`) y `/api/ventas/metadatos/` (tipos de cliente con su lista de precios y descuento máximo, transportadoras, IVA y la leyenda «Factura POS interna. No es factura electrónica.») | TE-62 |
-| `ventas` | `/api/ventas/facturas/<id>/conciliar/` (`POST`: concilia el cobro contraentrega de una factura emitida como `PAGADO`, que suma el recaudo al saldo financiero, o como `DEVOLUCION`, que reingresa las prendas al inventario; exige `ventas.gestionar`) y `/api/ventas/cartera/resumen/` (`GET`: saldo financiero y totales por cobrar, recaudados y devueltos, con su conteo; exige `ventas.ver`). Una factura se concilia una sola vez | TE-64 |
+| `ventas` | `/api/ventas/facturas/<id>/conciliar/` (`POST`: confirma el recaudo; exige `ventas.conciliar`, la guía vigente ENTREGADA o, sin guía, una nota), `/api/ventas/cartera/resumen/` (`GET`: totales por cobrar, recaudados y devueltos; `saldo_financiero` solo con `ventas.conciliar`) y `/api/ventas/panel/` (`GET`: cifras del día calculadas en el servidor). La devolución se registra desde la guía (`envios`). Una factura se concilia una sola vez | TE-64, TE-173 |
 | `ventas` | Las facturas (`/api/ventas/facturas/` y `…/<id>/`) traen el campo `guia`: la guía vigente de la factura (`id`, `estado`, `estado_nombre`, `color` del semáforo, `rastreo_estado`, `consultada_en` y `novedad`) o `null` si todavía no tiene. `transportadora` y `numero_guia` de la factura son el espejo de esa guía y solo los escribe el servicio de guías | TE-63 |
 | `envios` | `/api/envios/metadatos/` (estados con su color de semáforo, transiciones permitidas, transportadoras y cuál se rastrea, plazos para anotar la guía y si el rastreo está habilitado), `/api/envios/resumen/` (conteos por estado, facturas sin guía, novedades abiertas y devoluciones por vendedor con su flete) y `/api/envios/pendientes/` (facturas emitidas sin guía, con `horas_sin_guia` y `urgencia`: `normal`, `atencion` desde 4 h o `vencida` desde 24 h) | TE-63 |
 | `envios` | `/api/envios/guias/` (listar con filtros `estado`, `transportadora`, `factura`, `desde`, `hasta`, `q`, `todas` y `limit`) y `/api/envios/guias/<id>/` (detalle con el historial propio y la línea de tiempo guardada de la transportadora, sin llamar a la API). Una guía no se borra ni se crea suelta: nace al anotarla en una factura | TE-63 |
@@ -283,21 +283,24 @@ Respuesta `201` con el acta (`REC-LAV-2026-0001`): totales enviado, conforme, me
 
 ## Ejemplo: conciliar un pago contraentrega
 
-Cuando la transportadora gira el recaudo de una factura emitida (`estado_cobro` `POR_COBRAR`), se concilia como pagada. Una factura se concilia una sola
-vez: después queda `PAGADO` o `DEVOLUCION` y no se mueve.
+Cuando la transportadora gira el recaudo de una factura emitida (`estado_cobro` `POR_COBRAR`) cuya guía vigente está `ENTREGADA`, se confirma el pago (HU 7.3 y 7.5).
+Exige `ventas.conciliar` (Gerente y Secretaria): el Vendedor factura pero no confirma su propio pago.
 
 ```bash
-curl -X POST http://localhost:8000/api/ventas/facturas/1/conciliar/   -H "Authorization: Bearer <access>" -H "Content-Type: application/json"   -d '{"estado_cobro": "PAGADO", "observaciones": "Giro de la transportadora del 12 de noviembre"}'
+curl -X POST http://localhost:8000/api/ventas/facturas/1/conciliar/   -H "Authorization: Bearer <access>" -H "Content-Type: application/json"   -d '{"nota": "Giro de la transportadora del 12 de noviembre"}'
 ```
 
-Responde `200` con la factura en `estado_cobro` `PAGADO`, con la fecha de cobro y quién la cobró. El `valor_a_recaudar` se suma al saldo financiero de la empresa
-(caja general) y queda un movimiento de cartera con el saldo antes y después. Para una devolución se envía
-`{"estado_cobro": "DEVOLUCION", "motivo": "El cliente rechazó el pedido"}` (el motivo lleva de 5 a 255 caracteres): las prendas vuelven al producto terminado con un
-movimiento `DEVOLUCION_VENTA` por línea y el saldo no cambia. Errores: `400` si el estado no es `PAGADO` o `DEVOLUCION`, la factura está anulada, ya fue gestionada
-o falta el motivo de la devolución; `404` si no existe; `403` si el rol no tiene `ventas.gestionar`.
+Responde `200` con la factura en `estado_cobro` `PAGADO`, la fecha de cobro y quién la cobró. El `valor_a_recaudar` se suma a la única caja de la empresa y la `nota`
+queda en el movimiento de cartera (la factura no cambia sus observaciones). Si la factura no tiene guía, la `nota` es obligatoria (mínimo 10 caracteres).
+Errores: `400` si la guía no está entregada (el mensaje dice su estado), falta la nota sin guía, la factura está anulada o ya fue gestionada, o se envía
+`estado_cobro` `DEVOLUCION`; `404` si no existe; `403` sin `ventas.conciliar`. Cada factura trae `accion_cartera`: `CONFIRMAR_PAGO`, `CONFIRMAR_SIN_GUIA`,
+`REGISTRAR_DEVOLUCION`, `ESPERAR_GUIA` o `NINGUNA`.
 
-El resumen está en `GET /api/ventas/cartera/resumen/`: `saldo_financiero`, `total_por_cobrar` y `conteo_por_cobrar`, `total_recaudado` y `conteo_pagadas`,
-`total_devoluciones` y `conteo_devoluciones`.
+La devolución tiene un solo camino: `POST /api/envios/guias/<id>/devolucion/` (`envios.devolucion`) sobre una guía `DEVUELTA`; reingresa las prendas una sola vez.
+
+El resumen está en `GET /api/ventas/cartera/resumen/` (`total_por_cobrar`, `conteo_por_cobrar`, `total_recaudado`, `conteo_pagadas`, `total_devoluciones`,
+`conteo_devoluciones` y `saldo_financiero`, que llega en `null` sin `ventas.conciliar`). Las cifras del día del panel de ventas están en `GET /api/ventas/panel/`
+(`facturas_hoy`, `vendido_hoy`, `anuladas_hoy`, `por_cobrar`, `facturas_por_cobrar`), calculadas en la base de datos.
 
 ## Ejemplo: consultar el reporte gerencial
 

@@ -13,7 +13,7 @@ tiene `<módulo>.ver`.
 | `PRODUCCION` | Jefe de Producción | Referencias, fichas técnicas, órdenes y lotes, tiempos, recursos, costeo, órdenes de compra, criterios de calidad y **lavandería** (remisión de salida y recepción). |
 | `ALMACENISTA` | Almacenista | Proveedores, materias primas, movimientos y **recepción de mercancía**. En envíos arma las relaciones de despacho, cambia los estados de las guías y registra la devolución física. |
 | `TERMINACION` | Personal de Terminación | Control de calidad: define los defectos e inspecciona los lotes que vuelven de lavandería. |
-| `SECRETARIA` | Secretaria | Producto terminado: ingresa al inventario final las prendas aptas de cada inspección, ajusta el inventario contra el conteo físico y consulta existencias y movimientos. En envíos anota guías, arma relaciones de despacho y cambia los estados. |
+| `SECRETARIA` | Secretaria | Producto terminado: ingresa al inventario final las prendas aptas de cada inspección, ajusta el inventario contra el conteo físico y consulta existencias y movimientos. En envíos anota guías, arma relaciones de despacho y cambia los estados. En cartera confirma los recaudos contraentrega (HU 7.5). |
 | `VENDEDOR` | Vendedor | Consulta el producto terminado disponible, registra clientes y emite las facturas POS internas de venta (descuenta el inventario) y **concilia el cobro contraentrega** de cada una (pagada o devolución). Anota la guía de la transportadora al facturar y consulta los envíos. |
 | `PENDING` | Pendiente de aprobación | Cuenta recién registrada: **sin permisos** hasta que un administrador le asigne un rol. |
 
@@ -35,7 +35,7 @@ Cada módulo tiene `ver` (consultar) y `gestionar` (registrar y modificar). Marc
 | Procesos Externos (Lavandería) | `lavanderia.ver`, `lavanderia.gestionar` | Activo (Remisión de salida y Recepción de lavandería) |
 | Control de Calidad | `calidad.ver`, `calidad.gestionar` | Activo (Inspecciones y Defectos) |
 | Producto Terminado | `producto_terminado.ver`, `producto_terminado.gestionar`, `producto_terminado.ajustar` | Activo (Ingreso, Existencias, Ajuste manual y Movimientos) |
-| Ventas y Despachos | `ventas.ver`, `ventas.gestionar`, `ventas.precios`, `ventas.anular` | Activo (Panel de ventas, Nueva venta, Facturas, Clientes, Precios y Cartera) |
+| Ventas y Despachos | `ventas.ver`, `ventas.gestionar`, `ventas.precios`, `ventas.anular`, `ventas.conciliar` | Activo (Panel de ventas, Nueva venta, Facturas, Clientes, Precios y Cartera) |
 | Envíos | `envios.ver`, `envios.anotar`, `envios.gestionar`, `envios.devolucion` | Activo (Guías, Por despachar / sin guía, Relaciones de despacho y Resumen) |
 | Reportes | `reportes.ver`, `reportes.gestionar` | Activo (Tablero gerencial). Consultar exige `reportes.ver`; refrescar las vistas exige `reportes.gestionar` |
 
@@ -64,10 +64,11 @@ roles, así que la matriz real de un despliegue puede diferir. `ADMIN` no aparec
 | `producto_terminado.ver` | ✔ | | | | ✔ | ✔ |
 | `producto_terminado.gestionar` | | | | | ✔ | |
 | `producto_terminado.ajustar` | | | | | ✔ | |
-| `ventas.ver` | ✔ | | | | | ✔ |
+| `ventas.ver` | ✔ | | | | ✔ | ✔ |
 | `ventas.gestionar` | | | | | | ✔ |
 | `ventas.precios` | ✔ | | | | | |
 | `ventas.anular` | ✔ | | | | | |
+| `ventas.conciliar` | ✔ | | | | ✔ | |
 | `envios.ver` | ✔ | | ✔ | | ✔ | ✔ |
 | `envios.anotar` | | | ✔ | | ✔ | ✔ |
 | `envios.gestionar` | | | ✔ | | ✔ | |
@@ -111,6 +112,7 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 | Registrar y modificar clientes; **emitir una factura** (descuenta el inventario); **conciliar el cobro contraentrega** de una factura (pagada o devolución) | `ventas.gestionar` |
 | Registrar o actualizar el costo de fábrica y los precios de una referencia | `ventas.precios` |
 | Anular una factura | `ventas.anular` |
+| Confirmar el recaudo contraentrega y ver el saldo financiero (el Vendedor no concilia su propio pago) | `ventas.conciliar` |
 | Consultar los lotes disponibles, las lavanderías, las recetas, el historial de remisiones, las remisiones pendientes y las actas de recepción de lavandería | `lavanderia.ver` |
 | Despachar una remisión de salida a lavandería y asentar la recepción de lavandería | `lavanderia.gestionar` |
 | Consultar el tablero gerencial y sus filtros, y forzar el refresco de sus vistas (`/api/reportes/…`) | `reportes.ver` |

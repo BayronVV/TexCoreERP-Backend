@@ -25,4 +25,5 @@ urlpatterns = [
     path("ventas/facturas/<int:pk>/anular/", views.FacturaAnularView.as_view(), name="ventas_factura_anular"),
     path("ventas/facturas/<int:pk>/conciliar/", views.FacturaConciliarView.as_view(), name="ventas_factura_conciliar"),
     path("ventas/cartera/resumen/", views.CarteraResumenView.as_view(), name="ventas_cartera_resumen"),
+    path("ventas/panel/", views.PanelVentasView.as_view(), name="ventas_panel"),
 ]

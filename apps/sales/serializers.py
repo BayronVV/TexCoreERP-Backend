@@ -195,6 +195,10 @@ class FacturaSerializer(serializers.ModelSerializer):
     transportadora_nombre = serializers.SerializerMethodField()
     estado_cobro_nombre = serializers.SerializerMethodField()
     guia = serializers.SerializerMethodField(help_text="Guía vigente de la factura (HU 7.2): estado, color de semáforo y rastreo")
+    accion_cartera = serializers.SerializerMethodField(
+        help_text="Qué admite la factura en cartera según su guía (HU 7.5): CONFIRMAR_PAGO (guía entregada), CONFIRMAR_SIN_GUIA "
+                  "(exige nota), REGISTRAR_DEVOLUCION (guía devuelta: se registra desde Envíos), ESPERAR_GUIA (aún en camino) o NINGUNA",
+    )
     unidades = serializers.SerializerMethodField()
     aviso = serializers.SerializerMethodField(help_text="Leyenda que acompaña a la factura")
     lineas = DetalleVentaSerializer(many=True, read_only=True)
@@ -206,7 +210,7 @@ class FacturaSerializer(serializers.ModelSerializer):
             "cliente_ciudad", "cliente_direccion", "cliente_telefono", "vendedor_nombre", "modalidad_pago", "estado_cobro", "estado_cobro_nombre",
             "transportadora", "transportadora_nombre", "numero_guia", "observaciones", "subtotal", "descuento_total", "base_gravable",
             "iva_tarifa", "iva_total", "total", "valor_a_recaudar", "unidades", "motivo_anulacion", "anulada_por_nombre", "anulada_en",
-            "fecha_cobro", "cobrado_por_nombre", "motivo_devolucion", "guia", "aviso", "lineas", "created_at",
+            "fecha_cobro", "cobrado_por_nombre", "motivo_devolucion", "guia", "accion_cartera", "aviso", "lineas", "created_at",
         ]
 
     def get_vendedor_nombre(self, obj) -> str:
@@ -233,22 +237,6 @@ class FacturaSerializer(serializers.ModelSerializer):
                 "id": {"type": "integer"},
                 "estado": {"type": "string"},
                 "estado_nombre": {"type": "string"},
-                "color": {"type": "string", "description": "Semáforo: verde, amarillo, rojo o gris"},
-                "rastreo_estado": {"type": "string"},
-                "consultada_en": {"type": "string", "format": "date-time", "nullable": True},
-                "novedad": {"type": "string"},
-            },
-        }
-    )
-    @extend_schema_field(
-        {
-            "type": "object",
-            "nullable": True,
-            "description": "Guía vigente de la factura; nula si aún no tiene guía.",
-            "properties": {
-                "id": {"type": "integer"},
-                "estado": {"type": "string"},
-                "estado_nombre": {"type": "string"},
                 "color": {"type": "string", "description": "Semáforo de la guía"},
                 "rastreo_estado": {"type": "string"},
                 "consultada_en": {"type": "string", "format": "date-time", "nullable": True},
@@ -257,7 +245,6 @@ class FacturaSerializer(serializers.ModelSerializer):
         }
     )
     def get_guia(self, obj):
-        """Resumen de la guía vigente de la factura (estado, semáforo y rastreo), o nulo si no tiene."""
         """Resumen de la guía vigente de la factura (estado, semáforo y rastreo), o nulo si no tiene."""
         guides = getattr(obj, "guia_vigente", None)
         if guides is None:  # fuera de `invoice_queryset` (sin precarga)
@@ -270,6 +257,16 @@ class FacturaSerializer(serializers.ModelSerializer):
             "color": shipping_catalog.STATE_COLORS.get(guide.estado, "gris"), "rastreo_estado": guide.rastreo_estado,
             "consultada_en": guide.rastreo_consultado_en, "novedad": guide.novedad,
         }
+
+    def get_accion_cartera(self, obj) -> str:
+        if obj.estado != catalog.STATUS_ISSUED or obj.estado_cobro != catalog.COLLECT_PENDING:
+            return catalog.CARTERA_NONE
+        guide = self.get_guia(obj)
+        if guide is None:
+            return catalog.CARTERA_PAY_NO_GUIDE
+        return {shipping_catalog.DELIVERED: catalog.CARTERA_PAY, shipping_catalog.RETURNED: catalog.CARTERA_RETURN}.get(
+            guide["estado"], catalog.CARTERA_WAIT,
+        )
 
     def get_transportadora_nombre(self, obj) -> str:
         return catalog.CARRIER_NAMES.get(obj.transportadora, "")
@@ -303,21 +300,34 @@ class AnularInputSerializer(serializers.Serializer):
 
 
 class ConciliarInputSerializer(serializers.Serializer):
-    """Acción rápida para cambiar el estado de cartera: PAGADO o DEVOLUCION (HU 7.3)."""
-    estado_cobro = serializers.ChoiceField(choices=catalog.CONCILIATION_STATES)
-    motivo = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
-    observaciones = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+    """Confirmar el recaudo de una factura (HU 7.3 y 7.5). La devolución no se registra aquí: se registra desde la guía devuelta."""
+    estado_cobro = serializers.ChoiceField(choices=catalog.CONCILIATION_STATES, required=False, default=catalog.COLLECT_PAID)
+    nota = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, default="",
+        help_text="Queda en el movimiento de cartera; obligatoria (mínimo 10 caracteres) si la factura no tiene guía",
+    )
+    observaciones = serializers.CharField(max_length=255, required=False, allow_blank=True, default="", help_text="Alias anterior de `nota`")
 
 
 class CarteraResumenSerializer(serializers.Serializer):
-    """Resumen consolidado de cartera y saldo financiero de la empresa."""
-    saldo_financiero = serializers.IntegerField()
+    """Resumen consolidado de cartera. `saldo_financiero` es null para quien no tiene `ventas.conciliar`."""
+    saldo_financiero = serializers.IntegerField(allow_null=True)
     total_por_cobrar = serializers.IntegerField()
     conteo_por_cobrar = serializers.IntegerField()
     total_recaudado = serializers.IntegerField()
     conteo_pagadas = serializers.IntegerField()
     total_devoluciones = serializers.IntegerField()
     conteo_devoluciones = serializers.IntegerField()
+
+
+class PanelVentasSerializer(serializers.Serializer):
+    """Cifras del panel de ventas calculadas en el servidor (HU 7.5)."""
+    fecha = serializers.DateField()
+    facturas_hoy = serializers.IntegerField()
+    vendido_hoy = serializers.IntegerField()
+    anuladas_hoy = serializers.IntegerField()
+    por_cobrar = serializers.IntegerField()
+    facturas_por_cobrar = serializers.IntegerField()
 
 
 class OpcionSerializer(serializers.Serializer):

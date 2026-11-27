@@ -89,7 +89,7 @@ class ReportesGerencialesTests(SalesBase):
     def test_filtro_estado_cobro_y_conciliacion_en_reporte(self):
         # Conciliamos la primera factura como PAGADO
         conciliar_url = reverse("ventas_factura_conciliar", args=[self.invoice1["id"]])
-        self.seller.post(conciliar_url, {"estado_cobro": sales_catalog.COLLECT_PAID}, format="json")
+        self.manager.post(conciliar_url, {"nota": "Entregada en mano y pagada en efectivo"}, format="json")
 
         res_pagadas = self.manager.get(reverse("reportes-gerencial"), {"estado_cobro": sales_catalog.COLLECT_PAID})
         self.assertEqual(res_pagadas.status_code, 200)

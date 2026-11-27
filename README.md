@@ -28,12 +28,11 @@ backend/
 └── .env.example       # Plantilla de variables de entorno (sin secretos)
 ```
 
-Son 9 apps con modelos (54 tablas) más `reports`, que solo lee dos vistas SQL. Los módulos nuevos
+Son 9 apps con modelos (56 tablas) más `reports`, que solo lee dos vistas SQL materializadas. Los módulos nuevos
 se agregan como `apps/<modulo>/` y se registran en `INSTALLED_APPS`.
 
-**Estado: Sprint 3 entregado** (9 historias, TE-57 a TE-65). El backend cubre todo el recorrido de la prenda: referencias y producción
-(Sprint 2), lavandería, calidad, inventario final, facturación, guías de envío con rastreo Track123, cartera contraentrega y reportes gerenciales
-(Sprint 3). Cifras: 928 pruebas del backend, 221 del frontend, 114 rutas y 157 operaciones en OpenAPI.
+**Estado: Sprint 4 en cierre** (Sprints 1–3 cerrados + entregas Sprint 4: compras `TE-178`, inventario/lavandería `TE-170`/`TE-171`/`TE-172`, seguridad/observabilidad/CI `TE-175`/`TE-179`/`TE-180`/`TE-181`, costo de fábrica `TE-174`, cartera-guías `TE-173`, reportes/filtros `TE-177`, sustentación `TE-187` y documentación `TE-182`).
+Cifras: 1087 pruebas del backend, 267 del frontend, 123 rutas y 166 operaciones en OpenAPI.
 En producción: API <https://texcore-api.onrender.com> y sistema <https://texcore-web.onrender.com>; los datos de esos servidores son simulados.
 
 ## Documentación
@@ -142,8 +141,8 @@ sigue guardando el código (`ADMIN`, `VENDEDOR`...), así el JWT y el
 frontend no cambian.
 
 - Cada módulo tiene los permisos `<modulo>.ver` y `<modulo>.gestionar`;
-  Seguridad además tiene `seguridad.roles`, Compras `compras.aprobar`, Producto terminado `producto_terminado.ajustar`, Ventas
-  `ventas.precios` y `ventas.anular`, y Envíos `envios.anotar` y `envios.devolucion`. En total son 31 permisos; la matriz rol → permiso está
+  Seguridad además tiene `seguridad.roles`, `seguridad.accesos` y `seguridad.auditoria`, Compras `compras.aprobar`, Producto terminado `producto_terminado.ajustar`, Ventas
+  `ventas.precios`, `ventas.anular` y `ventas.conciliar`, y Envíos `envios.anotar` y `envios.devolucion`. En total son 34 permisos; la matriz rol → permiso está
   en [`docs/roles-y-permisos.md`](docs/roles-y-permisos.md).
 - `ADMIN` tiene todos los permisos de forma implícita y no se puede
   restringir. `PENDING` no puede tener permisos.
@@ -207,9 +206,9 @@ limitaciones en [`docs/despliegue-render.md`](docs/despliegue-render.md).
 
 ```powershell
 python manage.py check
-python manage.py test        # 928 pruebas; usa SQLite temporal, nunca la base en la nube
+python manage.py test        # 1087 pruebas; usa SQLite temporal, nunca la base en la nube
 python manage.py test apps.production   # solo un módulo
-python manage.py spectacular --validate --file schema.yml   # valida el esquema OpenAPI (borra después schema.yml)
+python manage.py spectacular --validate --fail-on-warn --file schema.yml   # valida el esquema OpenAPI (borra después schema.yml)
 ```
 
 ## Convenciones
@@ -363,22 +362,22 @@ Apps `apps/sales` (`/api/ventas/`) y `apps/shipping` (`/api/envios/`). Detalle d
 
 | Endpoint | Qué hace |
 |----------|----------|
-| `GET/POST ventas/clientes/`, `GET/PATCH ventas/clientes/<id>/`, `GET ventas/precios/`, `PUT ventas/precios/<referencia>/` | Clientes y precios por referencia (costo de fábrica, mayorista y detal). Los precios exigen `ventas.precios` (Gerente). |
+| `GET/POST ventas/clientes/`, `GET/PATCH ventas/clientes/<id>/`, `GET ventas/precios/`, `PUT ventas/precios/<referencia>/`, `POST …/aplicar-costo/`, `GET …/historial/` | Clientes, precios y costo calculado desde producción (HU 4.7 / TE-174). Exigen `ventas.precios`. |
 | `GET/POST ventas/facturas/`, `GET ventas/facturas/<id>/`, `GET …/<id>/pdf/`, `POST …/<id>/anular/` | Factura POS interna (**no es factura electrónica**) `FV-0001`: descuenta el producto terminado por talla y color, descuento del vendedor con tope por tipo de cliente, IVA del 19 %, token anti doble clic y anulación con reingreso. Solo contraentrega. |
-| `POST ventas/facturas/<id>/conciliar/`, `GET ventas/cartera/resumen/` | Conciliación del cobro (HU 7.3): `PAGADO` suma al saldo financiero; `DEVOLUCION` reingresa las prendas. Se concilia una sola vez. |
+| `POST ventas/facturas/<id>/conciliar/`, `GET ventas/cartera/resumen/`, `GET ventas/panel/` | Conciliación del cobro (`ventas.conciliar`, guía `ENTREGADA` o nota sin guía); la devolución se registra desde la guía (`DEVUELTA`) en Envíos (HU 7.5 / TE-173). |
 | `GET envios/guias/`, `…/<id>/`, `POST envios/facturas/<id>/guia/`, `POST envios/guias/<id>/estado/`, `PATCH …/flete/`, `POST …/devolucion/` | Guías de envío con semáforo de estados, historial de solo inserción, flete y devolución física en cartera. |
 | `GET/POST envios/relaciones/`, `…/<id>/`, `…/<id>/pdf/` | Relaciones de despacho `RD-0001` con PDF; todas las guías pasan a `EN_TRANSITO` en una sola transacción. |
 | `POST envios/guias/<id>/rastrear/`, `GET envios/rastreo/estado/` | Estado real de las guías de Interrapidísimo con Track123 (HU 7.2). Opcional, solo por botón, con enfriamiento y reserva de cuota; si falla responde `503` y la guía no cambia. |
 
-## Reportes gerenciales (HU 7.4)
+## Reportes gerenciales (HU 7.4 y 7.7)
 
-App `apps/reports`. Todo bajo `/api/reportes/` y con `reportes.ver` (Gerente). Solo lee dos vistas SQL (`reportes_mv_produccion_ordenes` y `reportes_mv_ventas_referencias`), materializadas en PostgreSQL y normales en SQLite.
+App `apps/reports`. Todo bajo `/api/reportes/`: consultar exige `reportes.ver` y refrescar exige `reportes.gestionar` (Gerente). Lee dos vistas SQL (`reportes_mv_produccion_ordenes` y `reportes_mv_ventas_referencias`), materializadas en PostgreSQL y normales en SQLite.
 
 | Endpoint | Qué hace |
 |----------|----------|
-| `GET metadatos/` | Opciones de los filtros: tipos de jean, estados de orden y de cobro, tipos de cliente y referencias. |
-| `GET gerencial/` | Indicadores de producción, calidad y ventas, consolidado por tipo de jean, órdenes, ventas por referencia y detalle (250 líneas). Filtros `desde`, `hasta`, `tipo_jean`, `referencia`, `estado_orden`, `estado_cobro` y `tipo_cliente`. En PostgreSQL refresca las vistas antes de leer. |
-| `POST refrescar/` | Fuerza el refresco de las vistas materializadas. |
+| `GET metadatos/` | Opciones de los filtros: tipos de jean, estados de orden y de cobro, tipos de cliente, `vendedores`, `transportadoras` y `referencias`. |
+| `GET gerencial/` | Indicadores de producción, calidad, ventas y `devoluciones_por_vendedor` (`saldo_financiero_empresa` solo con `ventas.conciliar`). Filtros combinables `desde`, `hasta`, `tipo_jean`, `referencia`, `estado_orden`, `estado_cobro`, `tipo_cliente`, `vendedor` y `transportadora`. |
+| `POST refrescar/` | Fuerza el refresco de las vistas materializadas (`reportes.gestionar`). |
 
 ## Datos de demostración
 

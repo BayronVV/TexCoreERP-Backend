@@ -39,11 +39,15 @@ nav:
       - Roles y permisos: roles-y-permisos.md
       - API REST: api.md
       - Modelo de datos: modelo-de-datos.md
+      - Diagrama de clases (análisis): diagrama-clases.md
+      - Método de costeo: metodo-costeo.md
+      - Matriz de trazabilidad: matriz-trazabilidad.md
       - Convenciones de base de datos: convenciones-base-de-datos.md
       - Procesos de negocio (BPMN): procesos-bpmn.md
   - Manual del sistema:
       - Instalación y operación: manual-del-sistema.md
       - Despliegue en Render: despliegue-render.md
       - Calidad y cobertura de pruebas: calidad-y-cobertura.md
+      - Guion de sustentación: guion-sustentacion.md
   - Manual de usuario: manual-de-usuario.md
   - Ficha técnica: ficha-tecnica.md

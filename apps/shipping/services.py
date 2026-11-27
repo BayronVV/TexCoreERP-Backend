@@ -50,6 +50,7 @@ def format_warning(carrier, number):
 
 
 def clean_guide_input(carrier, number):
+    """Valida transportadora y normaliza el número de guía sin espacios."""
     carrier = str(carrier or "").strip()
     if carrier not in catalog.CARRIER_NAMES:
         fail("Elige una transportadora de la lista.", "transportadora")
@@ -62,6 +63,7 @@ def clean_guide_input(carrier, number):
 
 
 def clean_token(value):
+    """Valida el UUID de idempotencia enviado por el formulario de despacho."""
     try:
         return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
     except (ValueError, AttributeError, TypeError):
@@ -69,6 +71,7 @@ def clean_token(value):
 
 
 def record_event(guide, before, after, note="", origin=catalog.ORIGIN_MANUAL, user=None):
+    """Inserta un evento inmutable en el historial de la guía."""
     return EventoGuia.objects.create(guia=guide, estado_antes=before, estado_despues=after, nota=str(note or "")[:255], origen=origin, usuario=user)
 
 

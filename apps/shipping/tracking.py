@@ -101,6 +101,7 @@ def tracking_status(client=None):
 
 
 def supports_tracking(guide):
+    """Indica si la transportadora de la guía soporta rastreo automático en Track123."""
     return guide.transportadora in catalog.TRACKING_COURIERS
 
 

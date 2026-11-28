@@ -5,6 +5,7 @@ usuario del JWT solo existe dentro de DRF. Se usa por defecto en todas las vista
 
     required_permissions = {"GET": "inventario.ver", "POST": "inventario.gestionar"}
     required_permissions = "inventario.ver"   # el mismo para todos los métodos
+    required_permissions = ("ventas.ver", "envios.ver")   # basta con cualquiera de ellos (HU 7.6)
 """
 
 from rest_framework.permissions import BasePermission
@@ -29,4 +30,6 @@ class HasPermission(BasePermission):
         # Falla cerrado: una vista o un método sin permiso declarado no se abre.
         if not required:
             return request.method == "OPTIONS"
+        if isinstance(required, (tuple, list)):
+            return any(user.has_permission_code(code) for code in required)
         return user.has_permission_code(required)

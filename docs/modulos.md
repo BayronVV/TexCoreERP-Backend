@@ -950,6 +950,48 @@ Las rutas de consulta piden `reportes.ver` y refrescar las vistas pide `reportes
     - **El flete de devoluciones no se descuenta de nómina:** la sección *Devoluciones por vendedor* consolida el total y los fletes a cargo del vendedor a nivel informativo; el ERP no tiene módulo de nómina ni liquidación de comisiones.
     - **Exportación en el navegador:** el detalle de ventas en el tablero se limita a las 250 líneas más recientes. La biblioteca `xlsx` va dentro del paquete principal.
 
+## Trazabilidad de punta a punta (HU 7.6, TE-176)
+
+Pantalla de **solo lectura** que junta lo que cada módulo ya guarda: no crea procesos, tablas ni permisos. Vive en
+`apps/reports/trazabilidad.py` (servicio), `apps/reports/views.py` (vistas) y `src/components/Traceability/` (pantalla).
+
+### Recorridos
+
+| Ficha | Bloques (en orden) | Permiso de cada bloque |
+|---|---|---|
+| Lote | referencia y ficha técnica · orden y tallas · materiales (salida de la OP) con sus compras previas · etapas con tiempos, responsables y asignaciones · remisiones y recepciones de lavandería · inspección y marras por defecto · ingresos a producto terminado | `referencias.ver` (ficha: `fichas_tecnicas.ver`) · `produccion.ver` · `inventario.ver` (compras: `compras.ver`) · `produccion.ver` · `lavanderia.ver` · `calidad.ver` · `producto_terminado.ver` |
+| Factura | venta y líneas · movimientos de producto terminado y lotes de origen por talla y color · guías (vigente y reemplazadas) con sus eventos · cobro y movimientos de cartera | `ventas.ver` · `producto_terminado.ver` · `envios.ver` · `ventas.ver` |
+
+Un bloque sin su permiso llega como `{"acceso": false}`, **sin datos, conteos ni códigos**: el filtrado es del servidor (OWASP API3).
+La pantalla se abre con **cualquiera** de esos permisos de consulta: `HasPermission` acepta una tupla en `required_permissions` y la
+interpreta como «basta con uno».
+
+### Conciliación del lote
+
+Pasos *Planificadas → Enviadas → Recibidas conformes → Aptas → Ingresadas*. Cada paso visible trae `cantidad` (o `pendiente` si no hay
+registro) y, frente al anterior, `diferencia`, `porcentaje`, `justificada` (lo que explican la merma y las dañadas de la recepción, o
+las marras de la inspección) y `sin_justificar`. Un paso sin acceso no se compara con nadie. No hay tolerancia configurable: la regla
+es exacta.
+
+### Límites honestos
+
+- **Materiales:** la salida de una OP guarda en `Movimiento.lote` el código de la referencia, no el lote de compra. Se muestran las
+  últimas tres entradas por compra del material hasta la fecha de la salida (de Compras, con su recepción y su OC, o registradas a
+  mano en Inventario), rotuladas como compras previas.
+- **Producto terminado:** el stock se lleva por variante. De una factura se listan hasta 10 lotes por variante que la ingresaron
+  hasta la fecha de la factura (más recientes primero) y el total; no se calcula un «lote probable» por FIFO.
+
+### Rutas y rendimiento
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /api/trazabilidad/buscar/?codigo=` | Resuelve un código exacto (lote, OP, factura, inspección, ingreso, RD o guía) |
+| `GET /api/trazabilidad/lotes/<codigo>/` | Ficha del lote con su conciliación |
+| `GET /api/trazabilidad/facturas/<numero>/` | Ficha de la factura |
+
+Cada bloque usa `select_related` y `Prefetch(to_attr=…)`, y las compras previas y los lotes de origen salen de una sola consulta con
+`Window(RowNumber())` por partición: el número de consultas no crece con las filas (`apps/reports/test_trazabilidad.py`).
+
 ## Datos de demostración
 
 Comandos solo para desarrollo (exigen `DJANGO_DEBUG=true`), idempotentes y que pasan por las mismas reglas que la aplicación.

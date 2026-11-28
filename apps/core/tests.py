@@ -160,3 +160,41 @@ class OpenApiAndEnvExampleTests(TestCase):
 
         missing = sorted(used_in_settings - declared_in_example)
         self.assertEqual(missing, [], f"Variables faltantes en .env.example: {missing}")
+
+
+class SeparacionDeAmbientesTests(SimpleTestCase):
+    """TE-185: un `.env` de desarrollo (o las pruebas) no puede conectarse a la base de producción."""
+
+    def test_reconoce_la_base_de_produccion_por_usuario_del_pooler_o_por_host_directo(self):
+        from config.settings import points_to_production
+
+        prod, dev = "prodref123", "devref456"
+        pooler = "postgresql://postgres.{ref}:clave@aws-0-us-west-2.pooler.supabase.com:5432/postgres"
+        self.assertTrue(points_to_production(pooler.format(ref=prod), prod))
+        self.assertTrue(points_to_production(f"postgresql://postgres:clave@db.{prod}.supabase.co:5432/postgres", prod))
+        self.assertFalse(points_to_production(pooler.format(ref=dev), prod))  # mismo host del pooler, otro proyecto
+        self.assertFalse(points_to_production("postgresql://texcore:texcore@localhost:5432/texcore_test", prod))
+        self.assertFalse(points_to_production(pooler.format(ref=prod), ""))  # sin DB_PROD_REF no se compara
+        self.assertFalse(points_to_production("", prod))  # SQLite local
+
+    def test_settings_se_niega_a_arrancar_en_desarrollo_contra_produccion(self):
+        import subprocess
+        import sys
+
+        env = {
+            **os.environ, "DJANGO_DEBUG": "true", "DJANGO_SECRET_KEY": "solo-prueba", "DB_PROD_REF": "prodref123",
+            "DATABASE_URL": "postgresql://postgres.prodref123:clave@aws-0-us-west-2.pooler.supabase.com:5432/postgres",
+            "DJANGO_SETTINGS_MODULE": "config.settings", "PYTHONIOENCODING": "utf-8",
+        }
+        result = subprocess.run(
+            [sys.executable, "-c", "import django; django.setup()"], cwd=settings.BASE_DIR, env=env, capture_output=True, text=True,
+            encoding="utf-8",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("PRODUCCIÓN", result.stderr)
+        env["DJANGO_DEBUG"] = "false"  # una terminal de operación (DEBUG apagado) sí puede, con sus comandos --permitir-produccion
+        ok = subprocess.run(
+            [sys.executable, "-c", "import django; django.setup()"], cwd=settings.BASE_DIR, env=env, capture_output=True, text=True,
+            encoding="utf-8",
+        )
+        self.assertEqual(ok.returncode, 0, ok.stderr)

@@ -46,7 +46,7 @@ Correspondencia con el modelo de análisis (interfaz / control / entidad):
 backend/
 ├── config/        # settings, urls, wsgi/asgi
 ├── apps/
-│   ├── core/       # salud, BaseModel (borrado lógico), permiso HasPermission, comandos generar_erd y seed_demo_completo
+│   ├── core/       # salud, BaseModel (borrado lógico), permiso HasPermission, comandos generar_erd, seed_demo_completo, reiniciar_datos_demo y verificar_coherencia_demo
 │   ├── users/      # usuarios, roles y permisos, recuperación de contraseña
 │   ├── inventory/  # proveedores, catálogo, órdenes de salida, kardex, evidencias, alertas, costo promedio
 │   ├── purchasing/ # órdenes de compra y recepción de mercancía

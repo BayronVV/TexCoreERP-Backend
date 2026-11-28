@@ -4,6 +4,9 @@ TexCore controla el acceso por **rol** (RBAC, RNF01). Cada rol tiene permisos co
 cada ruta de la API exige uno. El menú del sistema también se arma con ellos: un módulo aparece solo si el rol
 tiene `<módulo>.ver`.
 
+La **Trazabilidad** (HU 7.6) no tiene permisos propios: se abre con cualquier permiso de consulta de los módulos que recorre y cada
+bloque se muestra solo con el permiso de su módulo (ver la tabla de acciones).
+
 ## Roles base
 
 | Código | Nombre | Para qué sirve |
@@ -115,6 +118,7 @@ La referencia exacta de cada ruta está en Swagger. Este resumen sirve para deci
 | Consultar los lotes disponibles, las lavanderías, las recetas, el historial de remisiones, las remisiones pendientes y las actas de recepción de lavandería | `lavanderia.ver` |
 | Despachar una remisión de salida a lavandería y asentar la recepción de lavandería | `lavanderia.gestionar` |
 | Consultar el tablero gerencial y sus filtros (`/api/reportes/…`) | `reportes.ver` |
+| Abrir la trazabilidad de un lote o de una factura (`/api/trazabilidad/…`); cada bloque exige además el `.ver` de su módulo y sin él llega vacío | cualquiera de `referencias.ver`, `fichas_tecnicas.ver`, `produccion.ver`, `inventario.ver`, `compras.ver`, `lavanderia.ver`, `calidad.ver`, `producto_terminado.ver`, `ventas.ver`, `envios.ver` |
 | Forzar el refresco de las vistas SQL materializadas de reportes (`/api/reportes/refrescar/`) | `reportes.gestionar` |
 | Consultar guías, su detalle e historial, las facturas sin guía, las relaciones de despacho (y su PDF), el resumen y los metadatos de envíos | `envios.ver` |
 | Anotar o reemplazar el número de guía de una factura ya emitida (`/api/envios/facturas/<id>/guia/`) | `envios.anotar` |

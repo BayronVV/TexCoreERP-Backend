@@ -737,6 +737,20 @@ stateDiagram-v2
     - **Sin comisión ni plazo de la transportadora:** el recaudo entra completo, sin descontar la comisión ni modelar cuándo gira la transportadora; el flete de una devolución se reporta en Envíos y en el tablero de reportes, no se descuenta aquí.
     - **Sin contabilidad:** el «saldo financiero» es un acumulado de recaudos en `Caja General`, no una caja contable; el alcance del proyecto excluye la contabilidad.
 
+### Alcance de la relación factura–guía–recaudo y fuente de cada saldo (TE-188)
+
+- **Una guía vigente por factura**, sin entregas parciales: lo garantiza la base con el índice único parcial `uq_envios_guia_vigente_factura` (`apps/shipping/models.py`). Cambiar de guía la reemplaza (la anterior queda no vigente, con su historial). Una factura se entrega y se cobra completa, o se devuelve completa.
+- **Recaudo:** solo de una guía `ENTREGADA` (o de una factura sin guía, con nota), una sola vez.
+- **Devolución:** solo de una guía `DEVUELTA` y de una factura por cobrar; reingresa todas las líneas y deja el movimiento de cartera en cero.
+
+| Saldo | Fuente única | Regla de conciliación |
+|---|---|---|
+| Materia prima e insumos | `inventario_movimiento` (kardex) | `Producto.stock_actual` = `stock_despues` del último movimiento; cada movimiento parte del saldo del anterior. |
+| Producto terminado por talla y color | `terminado_movimiento` | `StockTerminado.cantidad` = `saldo_despues` del último movimiento de la variante; Inventario muestra la suma por referencia (HU 6.5). |
+| Caja (saldo financiero) | `ventas_movimiento_cartera` | `Caja General` = `saldo_despues` del último movimiento; saldo después = antes + monto en la base. |
+
+Los tres libros son de solo inserción (ver [convenciones de base de datos](convenciones-base-de-datos.md)) y `verificar_coherencia_demo` revisa estas reglas sobre la base completa.
+
 ## Envíos: guías de envío y relaciones de despacho (HU 7.2, TE-63)
 
 App nueva `apps/shipping`, rutas bajo `/api/envios/`, tablas `envios_*`. La lógica está en `services.py` (anotar la guía, cambiar estados,

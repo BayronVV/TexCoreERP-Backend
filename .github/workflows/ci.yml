@@ -50,6 +50,15 @@ jobs:
           NO_MKDOCS_2_WARNING: "true"
       - name: Auditoría de dependencias de producción (pip-audit)
         run: pip-audit -r requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Diagramas BPMN al día y válidos (generador y bpmnlint)
+        working-directory: tools/bpmn
+        run: |
+          python generar_bpmn.py /tmp/bpmn
+          for f in /tmp/bpmn/*.bpmn; do diff -q "$f" "../../docs/bpmn/$(basename "$f")"; done
+          npx --yes bpmnlint@12.1.1 ../../docs/bpmn/*.bpmn
 
   verificacion-postgres:
     name: Verificación en PostgreSQL (bloqueos, concurrencia y vistas)
@@ -90,6 +99,9 @@ jobs:
           python manage.py test
           apps.core.test_postgres
           apps.core.test_e2e_sustentacion
+          apps.core.test_reinicio_demo
+          apps.core.test_libros
+          apps.core.test_verificar_mer
           apps.core.test_permisos_rutas
           apps.production
           apps.quality

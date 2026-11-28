@@ -26,7 +26,7 @@ despliegan la rama `main` y se redespliegan solos con cada merge.
 | `DJANGO_SECRET_KEY` | cadena aleatoria larga | **Distinta** a la de tu `.env` local. |
 | `DJANGO_ALLOWED_HOSTS` | `texcore-api.onrender.com` | Render también agrega su host solo. |
 | `APP_ENV` | `prod` | Lo muestra `/api/health/`. |
-| `DATABASE_URL` | cadena del *session pooler* de Supabase | Secreto: solo se escribe en Render. |
+| `DATABASE_URL` | cadena del *session pooler* (puerto 5432) del proyecto **`texcore-prod`** de Supabase | Secreto: solo se escribe en Render. |
 | `DB_SSL_REQUIRE` | `true` | |
 | `DB_CONN_MAX_AGE` | `0` | Evita agotar el pool de Supabase. |
 | `CORS_ALLOWED_ORIGINS` | `https://texcore-web.onrender.com` | Sin barra final y sin `localhost`. |
@@ -59,6 +59,7 @@ Además corre el endurecimiento de la base (RLS) al final de cada `migrate`.
   `--email` y `--password` propios (ver el [manual del sistema](manual-del-sistema.md)). Nunca se deja la contraseña de ejemplo.
 - **Los datos de los servidores de Render son simulados.** Con `SEED_DEMO_ON_DEPLOY=true` el arranque deja datos de demostración en todos los módulos (clientes, facturas, guías, lotes, existencias...) y la base compartida del equipo se usa para mostrar el sistema: se pueden modificar, borrar o completar sin temor, pero no se debe guardar información real en ella. La siembra nunca toca usuarios, roles ni permisos.
 - Los comandos `seed_demo_*` sueltos **no funcionan en Render**: exigen `DJANGO_DEBUG=true`, que en producción es `false`. La excepción es `seed_demo_completo --permitir-produccion` (o `SEED_DEMO_ON_DEPLOY=true`), pensada para sembrar los datos simulados de la demostración; los demás se mantienen cerrados. Es a propósito (incluidos `seed_demo_calidad`, con la que en producción los defectos se crean desde **Control de Calidad → Defectos**, y `seed_demo_terminado`, con la que el producto terminado se ingresa desde **Producto Terminado → Ingreso**).
+- **Reiniciar los datos de la demostración** (TE-183) no se hace desde el arranque: `SEED_DEMO_ON_DEPLOY` solo siembra, nunca borra. Se corre a mano desde una terminal con el `DATABASE_URL` de la base (puerto de sesión 5432 de Supabase, con la aplicación sin tráfico): `python manage.py reiniciar_datos_demo --confirmar --permitir-produccion`. Vacía solo los módulos de negocio, conserva usuarios, roles, permisos y auditoría, y deshace todo si la comprobación de coherencia falla.
 - `seed_demo_envios` (guías de demostración de la HU 7.2) tampoco corre en Render, por la misma razón. En producción las guías se anotan al facturar o desde **Por despachar / sin guía**.
 - Una migración que cambia el esquema se aplica a la base compartida: la versión anterior del código, si sigue desplegada, debe
   tolerarlo (la 0002 de inventario ya lo advertía).
@@ -121,8 +122,43 @@ El rastreo de Interrapidísimo (HU 7.2) es opcional: el sistema funciona igual c
   guardan en la base de datos, no en el disco.
 - **Plan gratuito:** el servicio se duerme tras 15 minutos sin tráfico y la
   primera petición tarda cerca de un minuto en responder.
-- **Base de datos compartida:** hoy apunta a `texcore-dev`. Para producción real
-  usar `texcore-prod` cambiando solo `DATABASE_URL`.
+- **Pausa de Supabase:** un proyecto gratuito se pausa tras 7 días con poca actividad en la base. El cron de `purgar_registros`
+  la mantiene activa; aun así, conviene abrir la aplicación antes de cada demostración.
+
+## Ambientes: desarrollo y producción (TE-185)
+
+| Ambiente | Base de datos | Quién la usa |
+|---|---|---|
+| **Producción** | Proyecto de Supabase `texcore-prod` | Solo el servicio `texcore-api` de Render (`DATABASE_URL` en Render). |
+| **Desarrollo** | Proyecto de Supabase `texcore-dev` | Los `.env` locales del equipo. |
+| **Pruebas automáticas** | SQLite en memoria, o el PostgreSQL propio de la integración continua (`TEST_DATABASE_URL`) | `manage.py test`; nunca escriben en ninguna de las dos bases de Supabase. |
+
+Un cambio hecho desde un equipo local queda en `texcore-dev` y no aparece en la aplicación desplegada. Además, con `DJANGO_DEBUG=true`
+(o al correr las pruebas) la aplicación **se niega a arrancar** si la cadena de conexión apunta al proyecto de producción: basta poner
+en el `.env` la referencia pública del proyecto de producción en `DB_PROD_REF` (Supabase → *Project Settings* → *General* → *Project ID*;
+no es un secreto). Se compara el usuario del pooler (`postgres.<ref>`), no el host, que comparten todos los proyectos de la región.
+
+### Preparar o reiniciar la base de producción
+
+Se hace una vez (y cada vez que se quieran reiniciar los datos de la demostración), desde una terminal local, con la cadena de
+producción **solo en esa sesión** (nunca en el `.env`) y `DJANGO_DEBUG=false`:
+
+1. **Reactivar** `texcore-prod` en el panel de Supabase si está pausado y copiar su cadena del *session pooler* (puerto 5432).
+2. **Respaldo** de `texcore-dev` con `pg_dump` y de sus cuentas con
+   `python manage.py dumpdata users.CustomUser --natural-foreign --indent 2`, guardados fuera del repositorio. Solo se copian las
+   cuentas: los roles y la matriz de permisos los crean las migraciones; si en desarrollo hay roles propios (`is_system=false`) o cambios
+   en la matriz, se replican a mano desde **Roles y permisos**.
+3. Con la cadena de producción en la sesión: `python manage.py migrate` (esquema, roles, permisos y RLS) → `python manage.py loaddata`
+   del archivo de cuentas → `python manage.py reiniciar_datos_demo --confirmar --permitir-produccion` (siembra y comprobación de
+   coherencia) → `python manage.py verificar_mer`. `seed_admin` solo si falta un administrador, y nunca antes de cargar las cuentas.
+4. **Rotar la contraseña** de la base de producción en Supabase (la anterior se usó en una terminal local), poner la cadena nueva en
+   `DATABASE_URL` del servicio `texcore-api` en Render y redesplegar. El sitio `texcore-web` no cambia.
+5. **Verificar** con una consulta de solo lectura a cada base que los datos son distintos y las cuentas están en ambas, entrar a
+   <https://texcore-web.onrender.com> con una cuenta real y comprobar que un cambio hecho en local no aparece allí.
+6. **Borrar** el archivo de cuentas y **avisar al equipo** de que sus `.env` siguen en `texcore-dev`.
+
+Las contraseñas de las cuentas se copian cifradas (no dependen de `DJANGO_SECRET_KEY`); al cambiar de base solo se cierran las sesiones
+abiertas.
 
 ## Frontend (`texcore-web`)
 

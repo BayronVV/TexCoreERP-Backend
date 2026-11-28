@@ -102,6 +102,28 @@ TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "").strip()
 RUNNING_TESTS = len(sys.argv) > 1 and sys.argv[1] == "test"
 
 active_db_url = TEST_DATABASE_URL if RUNNING_TESTS else DATABASE_URL
+
+
+def points_to_production(url, production_ref):
+    """¿La cadena de conexión es la del proyecto de producción de Supabase? (TE-185)
+
+    Se compara el usuario (`postgres.<ref>`, en el pooler) o el host directo (`db.<ref>.supabase.co`), no el host del pooler, que
+    comparten todos los proyectos de la región. `production_ref` es la referencia pública del proyecto, no un secreto.
+    """
+    if not url or not production_ref:
+        return False
+    parsed = dj_database_url.parse(url)
+    return parsed.get("USER", "").endswith(f".{production_ref}") or parsed.get("HOST", "") == f"db.{production_ref}.supabase.co"
+
+
+# Separación de ambientes (TE-185): un equipo de desarrollo (DJANGO_DEBUG=true) o las pruebas nunca se conectan a producción.
+# Para preparar o sembrar producción desde una terminal se usa DJANGO_DEBUG=false y los comandos con --permitir-produccion.
+DB_PROD_REF = os.getenv("DB_PROD_REF", "").strip()
+if (DEBUG or RUNNING_TESTS) and points_to_production(active_db_url, DB_PROD_REF):
+    raise ImproperlyConfigured(
+        "Esta configuración de desarrollo o de pruebas apunta a la base de PRODUCCIÓN (DB_PROD_REF). Usa la base de desarrollo "
+        "(texcore-dev) en tu .env; para operar producción desde una terminal usa DJANGO_DEBUG=false."
+    )
 if active_db_url:
     DATABASES = {
         "default": dj_database_url.parse(

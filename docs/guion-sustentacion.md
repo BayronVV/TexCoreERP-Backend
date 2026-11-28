@@ -91,3 +91,13 @@ python manage.py test apps.core.test_permisos_rutas -v 2
 ```bash
 cd ../frontend && npm test -- src/uiErrorHandling.test.js
 ```
+
+## Escenario 8 · Modelos verificables: BPMN, MER y libros inmutables (TE-188)
+
+**Qué demuestra:** el BPMN publicado tiene cada tarea automatizada enlazada a su caso de uso, su endpoint y su prueba, con compuertas condicionadas y excepciones; el MER coincide con el esquema real de PostgreSQL; y los libros de movimientos no se pueden editar ni borrar (ni siquiera con SQL directo).
+
+```bash
+python manage.py test apps.core.test_bpmn_trazabilidad apps.core.test_verificar_mer apps.core.test_libros
+python manage.py verificar_mer                 # contra la base conectada
+cd tools/bpmn && npx bpmnlint ../../docs/bpmn/*.bpmn
+```

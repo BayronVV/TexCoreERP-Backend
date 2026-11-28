@@ -54,6 +54,29 @@ MERMAID_TYPES = {
 }
 
 
+def schema_version():
+    """Última migración de cada módulo del proyecto: identifica el esquema que describe la página (TE-188)."""
+    from django.db.migrations.loader import MigrationLoader
+
+    leaves = dict(MigrationLoader(None, ignore_no_migrations=True).graph.leaf_nodes())
+    return ", ".join(f"{label} {leaves[label].split('_')[0]}" for label in PROJECT_APPS if label in leaves)
+
+
+def generation_stamp():
+    """Fecha y commit con que se generó la página (solo al escribirla con --salida; la vista previa queda determinista)."""
+    import os
+    import subprocess
+    from datetime import date
+
+    commit = os.environ.get("RENDER_GIT_COMMIT", "")[:7]
+    if not commit:
+        try:
+            commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            commit = "desconocido"
+    return f"Generado el {date.today().isoformat()} desde el commit `{commit}`."
+
+
 def project_models():
     found = []
     for label in PROJECT_APPS:
@@ -263,6 +286,8 @@ class Command(BaseCommand):
         text = self.render(models_)
         target = options.get("salida")
         if target:
+            version = f"> Esquema de las migraciones: {schema_version()}."
+            text = text.replace(version, f"{version}{chr(10)}> {generation_stamp()}", 1)
             Path(target).write_text(text, encoding="utf-8")
             self.stdout.write(self.style.SUCCESS(f"Modelo de datos escrito en {target}"))
         else:
@@ -288,6 +313,7 @@ class Command(BaseCommand):
             "",
             "> Generado automáticamente con `python manage.py generar_erd --salida docs/modelo-de-datos.md`.",
             "> No lo edites a mano: vuelve a generarlo cuando cambie un modelo.",
+            f"> Esquema de las migraciones: {schema_version()}.",
             "",
             f"El modelo tiene **{len(models_)} tablas** de negocio en {len(titles)} módulos, más dos vistas "
             "materializadas de reportes. Todas las tablas de negocio heredan de `BaseModel` y por eso incluyen además "

@@ -4,7 +4,8 @@
 
 Registra cuatro clientes de distintos tipos y el costo de fábrica y los precios (antes de IVA) de las referencias de demostración,
 con margen consistente: mayorista ≈ costo × 1,45 y detal ≈ costo × 1,90. Son valores de demostración: el Gerente los corrige en la
-pantalla de precios. No crea facturas, para hacerlas en vivo. Una referencia que ya tiene precio no se toca.
+pantalla de precios. Una referencia que ya tiene precio no se toca. Si aún no hay facturas, emite tres de demostración; la primera
+sale de una talla y color que entró desde un lote real, para poder seguir la trazabilidad de la factura al lote (HU 7.6).
 """
 import uuid
 
@@ -13,7 +14,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from apps.finished.models import StockTerminado
+from apps.finished.models import IngresoLinea, StockTerminado
 from apps.inventory.services import next_code
 from apps.references import catalog as reference_catalog
 from apps.references.models import Referencia
@@ -77,7 +78,18 @@ class Command(BaseCommand):
         if FacturaVenta.objects.count() == 0:
             User = get_user_model()
             seller = User.objects.filter(role__name="Vendedor").first() or User.objects.first()
-            stocks = list(StockTerminado.objects.filter(variante__referencia__codigo="REF-0001", cantidad__gte=5).select_related("variante")[:3])
+            # La primera factura sale de una talla y color que entró desde un lote real (seed_demo_terminado), para que la trazabilidad
+            # de la HU 7.6 llegue de la factura al lote; si no hay ninguna, se usa REF-0001 como antes.
+            entered = IngresoLinea.objects.values("variante_id")
+            with_price = PrecioReferencia.objects.values("referencia_id")
+            stocks = list(
+                StockTerminado.objects.filter(variante_id__in=entered, variante__referencia_id__in=with_price, cantidad__gte=5)
+                .select_related("variante").order_by("variante_id")[:1]
+            )
+            stocks += list(
+                StockTerminado.objects.filter(variante__referencia__codigo="REF-0001", cantidad__gte=5)
+                .exclude(variante_id__in=[row.variante_id for row in stocks]).select_related("variante").order_by("variante_id")[:3]
+            )
             if stocks and len(stocks) >= 2:
                 v1, v2 = stocks[0].variante, stocks[1].variante
                 c1 = Cliente.objects.filter(tipo=catalog.CLIENT_WHOLESALE).first()

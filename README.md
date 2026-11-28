@@ -74,6 +74,7 @@ La API queda en http://localhost:8000. Con `DATABASE_URL` vacío se usa SQLite l
 | `DATABASE_URL`         | Recomendada | Cadena de Supabase (*Session pooler*). Vacía = SQLite local. |
 | `DB_SSL_REQUIRE`       | No (`true`) | Supabase exige SSL. |
 | `DB_CONN_MAX_AGE`      | No (`0`) | Segundos que se reutiliza la conexión (0 con runserver). |
+| `DB_PROD_REF`          | Recomendada | Referencia pública del proyecto de producción (`texcore-prod`): con `DJANGO_DEBUG=true` la app no arranca contra esa base. Tu `DATABASE_URL` local va a `texcore-dev`. |
 | `NUM_PROXIES`          | No (`0`) | Proxies delante del backend; 0 ignora `X-Forwarded-For`. |
 | `CORS_ALLOWED_ORIGINS` | No | Orígenes del frontend autorizados. |
 | `FRONTEND_URL`         | No | URL del frontend para armar el enlace del correo de recuperación. |
@@ -393,11 +394,15 @@ python manage.py seed_demo_calidad       # defectos típicos y dos lotes devuelt
 python manage.py seed_demo_terminado     # ingresa al inventario final las aptas de la inspección de demostración
 python manage.py seed_demo_ventas        # clientes, precios y hasta 3 facturas de demostración
 python manage.py seed_demo_envios        # guías de demostración (no llama a Track123 ni gasta cuota)
-python manage.py seed_demo_lavanderia    # opcional: lavanderías y recetas de lavado (no está en seed_demo_completo)
+python manage.py seed_demo_lavanderia    # lavanderías y recetas de lavado (también va dentro de seed_demo_completo)
 
 # o todo de una vez, en su orden y sin duplicar:
 python manage.py seed_demo_completo
 python manage.py seed_demo_completo --permitir-produccion   # contra la base desplegada (datos simulados)
+
+# empezar de cero: vacía los datos de negocio (conserva usuarios, roles, permisos y auditoría), siembra y comprueba en una transacción
+python manage.py reiniciar_datos_demo --confirmar
+python manage.py verificar_coherencia_demo                    # solo lee; falla si un libro, un huérfano o la trazabilidad no cuadra
 ```
 
 En Render se puede sembrar sola en cada despliegue con `SEED_DEMO_ON_DEPLOY=true`. Los datos de los servidores desplegados son simulados.

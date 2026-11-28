@@ -90,6 +90,7 @@ de cada endpoint (parámetros, cuerpos y respuestas) están en Swagger. El permi
 | `compras` | `/api/compras/ordenes/` y `/api/compras/ordenes/<id>/` (órdenes de compra de materiales: crear, listar con filtros `estado`, `proveedor` y `q`, y editar mientras son borrador), `/api/compras/ordenes/<id>/aprobar/`, `cancelar/` y `cerrar/` (aprobación del Gerente, cancelación y cierre con motivo) | — |
 | `compras` | `/api/compras/recepciones/` (recibir mercancía con varios productos a la vez, contra una orden aprobada o suelta; cada fila entra al almacén con la misma regla del ingreso: stock, costo promedio y kardex) y `/api/compras/metadatos/` (estados y tolerancia de exceso) | — |
 | `reportes` | `/api/reportes/metadatos/` (opciones de los filtros: tipos de jean, estados de orden y de cobro, tipos de cliente, `vendedores`, `transportadoras` y `referencias`) y `/api/reportes/gerencial/` (`GET`: indicadores de producción, calidad, ventas y `devoluciones_por_vendedor`, con filtros `desde`, `hasta`, `tipo_jean`, `referencia`, `estado_orden`, `estado_cobro`, `tipo_cliente`, `vendedor` y `transportadora`). Ambas exigen `reportes.ver` | TE-65, TE-177 |
+| `trazabilidad` | `/api/trazabilidad/buscar/?codigo=` (búsqueda única por código exacto), `/api/trazabilidad/lotes/<codigo>/` y `/api/trazabilidad/facturas/<numero>/` (`GET`, solo lectura). Se abren con cualquier permiso de consulta de los módulos involucrados; cada bloque sin su permiso llega como `{"acceso": false}` sin datos | TE-176 |
 | `reportes` | `/api/reportes/refrescar/` (`POST`: refresca a la fuerza las dos vistas SQL materializadas en PostgreSQL; en SQLite responde `refreshed: false` porque son vistas normales). Exige `reportes.gestionar` (la consulta, `reportes.ver`) | TE-65, TE-179 |
 | `salud` | `/api/health/`, `/api/health/db/` (público; `db` solo responde `ok` con la latencia, o `no disponible` con 503, sin motor, versión ni texto del error) | — |
 
@@ -300,6 +301,20 @@ La devolución tiene un solo camino: `POST /api/envios/guias/<id>/devolucion/` (
 El resumen está en `GET /api/ventas/cartera/resumen/` (`total_por_cobrar`, `conteo_por_cobrar`, `total_recaudado`, `conteo_pagadas`, `total_devoluciones`,
 `conteo_devoluciones` y `saldo_financiero`, que llega en `null` sin `ventas.conciliar`). Las cifras del día del panel de ventas están en `GET /api/ventas/panel/`
 (`facturas_hoy`, `vendido_hoy`, `anuladas_hoy`, `por_cobrar`, `facturas_por_cobrar`), calculadas en la base de datos.
+
+## Ejemplo: seguir la trazabilidad de un lote
+
+```bash
+curl "http://localhost:8000/api/trazabilidad/buscar/?codigo=op-0007-l01" -H "Authorization: Bearer <access>"
+# {"tipo": "lote", "codigo": "OP-0007-L01"}
+curl http://localhost:8000/api/trazabilidad/lotes/OP-0007-L01/ -H "Authorization: Bearer <access>"
+```
+
+La ficha trae `referencia`, `orden`, `materiales`, `etapas`, `lavanderia`, `calidad` e `ingreso`; cada uno es `{"acceso": false}` si el
+rol no consulta ese módulo. `conciliacion` lista los pasos con `cantidad`, `pendiente` y, frente al paso anterior, `diferencia`,
+`porcentaje`, `justificada` y `sin_justificar`. Una búsqueda sin resultado responde `200` con `{"tipo": null}`; una ficha inexistente,
+`404`. La de una factura (`/api/trazabilidad/facturas/FV-0009/`) trae `venta`, `existencias` (movimientos y `lotes_de_origen`),
+`envio` (guías con `eventos`) y `cobro`.
 
 ## Ejemplo: consultar el reporte gerencial
 

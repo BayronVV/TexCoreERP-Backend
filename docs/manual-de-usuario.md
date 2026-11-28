@@ -789,6 +789,43 @@ Menú **Envíos → Panel de envíos**: cuántas guías hay en cada color, cuán
     - **El flete de una devolución no se descuenta:** se registra y se reporta por vendedor; no hay nómina.
     - **Devolución completa:** se devuelve la factura entera, no una parte.
 
+## 12. Trazabilidad de punta a punta (todos los roles que consultan)
+
+Menú **Trazabilidad**. Muestra en una sola pantalla el recorrido de un **lote** (de la orden hasta el producto terminado) o de una
+**venta** (de la factura hasta el recaudo). Es **solo consulta**: nada se modifica desde aquí, y cada paso tiene **Ir a la pantalla**
+para abrir el módulo donde se registró.
+
+**Cómo llegar:**
+
+- Escribe un código en la búsqueda y pulsa **Ver trazabilidad**: orden de producción (`OP-0007`), lote (`OP-0007-L01`), inspección
+  (`INS-…`), ingreso a producto terminado, factura (`FV-0009`), relación de despacho (`RD-0001`) o número de guía. No distingue
+  mayúsculas. Una orden muestra sus lotes y una relación sus facturas para que elijas; si el código no existe, la pantalla lo dice.
+- O pulsa **Trazabilidad** / **Ver trazabilidad** en *Órdenes de producción* (órdenes y lotes), *Monitor de estado*, *Inspecciones*,
+  *Ingreso* y *Movimientos* de producto terminado, *Facturas* y *Guías*.
+
+**Ficha de un lote**, en orden: referencia y ficha técnica, orden de producción con sus tallas, materiales consumidos, etapas con sus
+tiempos, responsables, operarios y máquinas, lavandería (remisión y recepción con merma y dañadas), inspección de calidad (aptas y
+marras por defecto) e ingreso a producto terminado por talla y color. Cada paso aparece como *Cumplido*, *Pendiente* o *Sin acceso*.
+
+**¿Cuadran las cantidades?** Arriba de la ficha se comparan *Planificadas → Enviadas a lavandería → Recibidas conformes → Aptas en
+calidad → Ingresadas a producto terminado*. Una diferencia sale en verde si la explica un registro (merma o dañadas en la recepción,
+marras en calidad) y en ámbar, **sin justificar**, si nada la explica o si hay más prendas que en el paso anterior.
+
+**Ficha de una venta:** la factura con el cliente, el vendedor y las prendas; la salida de inventario que generó (y el reingreso si
+hubo devolución); la guía con todo su historial, también las reemplazadas; y el cobro con su movimiento de cartera.
+
+**Lo que la pantalla no puede decir (y lo avisa):**
+
+- **De qué compra exacta salió un material.** La salida de una orden no registra el lote de compra; por eso se listan las **compras
+  previas** del material (proveedor, orden de compra y lote del proveedor) recibidas antes de la salida.
+- **De qué lote salió una prenda vendida.** El producto terminado se lleva por talla y color, no por lote. La venta muestra los
+  **lotes que ingresaron esa talla y color** hasta la fecha de la factura; si el stock vino de un ajuste o del inventario heredado,
+  lo dice.
+
+**Quién ve qué:** cada bloque aparece solo si tu rol puede consultar ese módulo; si no, verás *Tu rol no tiene acceso a este
+módulo*, sin datos. Por ejemplo, el **Vendedor** ve la venta, el envío, el cobro y el ingreso a producto terminado, pero la orden, los
+materiales, las etapas, la lavandería y la calidad le salen sin acceso.
+
 ## Preguntas frecuentes
 
 **No veo un módulo del menú.** Tu rol no tiene permiso. Pídele a un administrador que lo ajuste en *Roles y permisos*.

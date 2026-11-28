@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 
 from apps.sales import catalog as sales_catalog
 
-from . import catalog, services
+from . import catalog, services, trazabilidad
 from .serializers import MetadatosReporteSerializer, ReporteGerencialSerializer, ReporteRefrescoSerializer
 
 VIEW_PERMISSIONS = {"GET": catalog.REPORTS_VIEW}
@@ -87,3 +87,55 @@ class ReporteRefrescarVistasView(APIView):
             )
         return Response({"refreshed": refreshed, "detail": "Vistas analíticas actualizadas correctamente."})
 
+
+
+TRACE_PERMISSIONS = {"GET": catalog.TRACE_VIEW_ANY}  # cualquiera de los permisos de consulta involucrados (HU 7.6)
+TRACE_NOTE = (
+    "Solo lectura. Cada bloque llega como `{\"acceso\": false}`, sin datos, si el usuario no tiene el permiso de "
+    "consulta de su módulo. Basta con uno de estos permisos para abrirla: " + ", ".join(f"`{c}`" for c in catalog.TRACE_VIEW_ANY) + "."
+)
+
+
+@extend_schema(tags=["trazabilidad"])
+class TrazabilidadBuscarView(APIView):
+    """Búsqueda única por código exacto: orden (OP), lote, factura (FV), inspección, ingreso, relación (RD) o guía."""
+    required_permissions = TRACE_PERMISSIONS
+
+    @extend_schema(
+        summary="Buscar un código para abrir su trazabilidad",
+        description="Devuelve `tipo` (`lote`, `factura`, `orden`, `relacion` o `null` si no existe) y `codigo`; una orden "
+                    "o una relación traen `opciones` para elegir el lote o la factura. " + TRACE_NOTE,
+        parameters=[OpenApiParameter("codigo", str, required=True, description="Código exacto (no distingue mayúsculas)")],
+        responses={200: OpenApiResponse(description="Resultado de la búsqueda")},
+    )
+    def get(self, request):
+        return Response(trazabilidad.search(request.query_params.get("codigo", "")))
+
+
+@extend_schema(tags=["trazabilidad"])
+class TrazabilidadLoteView(APIView):
+    """Recorrido de un lote: referencia, orden y materiales, etapas, lavandería, calidad, ingreso y conciliación."""
+    required_permissions = TRACE_PERMISSIONS
+
+    @extend_schema(
+        summary="Trazabilidad de un lote",
+        description=TRACE_NOTE + " Los materiales traen las compras previas a la salida (no la compra exacta).",
+        responses={200: OpenApiResponse(description="Bloques del recorrido"), 404: OpenApiResponse(description="El lote no existe")},
+    )
+    def get(self, request, codigo):
+        return Response(trazabilidad.lot_trace(request.user, codigo))
+
+
+@extend_schema(tags=["trazabilidad"])
+class TrazabilidadFacturaView(APIView):
+    """Recorrido de una factura: venta, existencias y lotes de origen, guías con su historial y cobro."""
+    required_permissions = TRACE_PERMISSIONS
+
+    @extend_schema(
+        summary="Trazabilidad de una factura",
+        description=TRACE_NOTE + " Los lotes de origen son los que ingresaron cada talla y color hasta la fecha de la "
+                    "factura: el stock se lleva por talla y color, no por lote.",
+        responses={200: OpenApiResponse(description="Bloques del recorrido"), 404: OpenApiResponse(description="La factura no existe")},
+    )
+    def get(self, request, numero):
+        return Response(trazabilidad.invoice_trace(request.user, numero))

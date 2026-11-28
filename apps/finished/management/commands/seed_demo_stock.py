@@ -4,7 +4,8 @@
 
 Deja entre 12 y 20 unidades en cada talla y color de las referencias activas, para poder vender en la demostración. Pasa por la misma
 regla de la aplicación que el ajuste manual (HU 6.3): una corrección por referencia con motivo «Sobrante o hallazgo», que deja su
-comprobante `AJT` y su movimiento en el libro. Solo sube las variantes que están por debajo de su meta: lo que ya tiene más, no se toca.
+comprobante `AJT` y su movimiento en el libro. Solo sube las variantes que están por debajo de su meta: lo que ya tiene más, no se toca. Cada variante se ajusta una sola vez: si ya
+tiene su ajuste de demostración, no se vuelve a subir aunque la demo de ventas haya bajado su stock (correrlo dos veces no duplica).
 """
 import uuid
 
@@ -17,7 +18,7 @@ from apps.references import catalog as reference_catalog
 from apps.references.models import Referencia, Variante
 
 from ... import adjustments
-from ...models import StockTerminado
+from ...models import AjusteLinea, StockTerminado
 
 NOTE = "Inventario inicial de demostración: unidades por talla y color para la demo de ventas."
 
@@ -39,9 +40,10 @@ class Command(BaseCommand):
         if clerk is None:
             raise CommandError("No hay usuarios: crea uno primero (por ejemplo con seed_admin).")
         references = adjusted = 0
+        seeded = set(AjusteLinea.objects.filter(ajuste__observacion=NOTE).values_list("variante_id", flat=True))
         for reference in Referencia.objects.filter(estado=reference_catalog.ACTIVE).order_by("codigo"):
             lines = []
-            for variant in Variante.objects.filter(referencia=reference).order_by("id"):
+            for variant in Variante.objects.filter(referencia=reference).exclude(id__in=seeded).order_by("id"):
                 before = StockTerminado.objects.filter(variante=variant).values_list("cantidad", flat=True).first() or 0
                 if target(variant.id) > before:
                     lines.append({"variante": variant.id, "esperado": before, "contado": target(variant.id)})

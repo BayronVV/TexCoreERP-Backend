@@ -41,8 +41,6 @@ class SeedDemoCompletoTests(TestCase):
         second = self.run_seed("--permitir-produccion")
         self.assertIn("ya tiene datos, se salta", second)
         for _, path in seed.REPORT:
-            if path.endswith("MovimientoTerminado"):
-                continue  # el stock se vuelve a completar tras las ventas de la demo
             self.assertEqual(seed._model(path).objects.count(), counts[path], path)
         self.assertEqual(Guia.objects.filter(vigente=True).count(), 10)
 

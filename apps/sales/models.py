@@ -10,7 +10,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
 
-from apps.core.models import BaseModel
+from apps.core.models import AppendOnlyModel, BaseModel
 
 from . import catalog
 
@@ -188,7 +188,7 @@ class SaldoFinanciero(BaseModel):
         return f"{self.nombre}: ${self.saldo_actual}"
 
 
-class MovimientoCartera(BaseModel):
+class MovimientoCartera(AppendOnlyModel):
     """
     Libro de movimientos del saldo financiero por conciliación de cartera (HU 7.3).
     Registra cada entrada de dinero por recaudo confirmado o registro de devolución.
@@ -204,6 +204,11 @@ class MovimientoCartera(BaseModel):
     class Meta:
         db_table = "ventas_movimiento_cartera"
         ordering = ["-created_at", "-id"]
+        constraints = [
+            # La regla del libro en la base, como en producto terminado: el saldo después es el anterior más lo recaudado.
+            models.CheckConstraint(condition=Q(saldo_despues=F("saldo_antes") + F("monto")), name="ck_cartera_movimiento_saldo"),
+            models.CheckConstraint(condition=Q(monto__gte=0), name="ck_cartera_movimiento_monto"),
+        ]
 
     def __str__(self):
         return f"{self.tipo} {self.factura.numero}: ${self.monto}"

@@ -2,6 +2,8 @@
 
 > Generado automáticamente con `python manage.py generar_erd --salida docs/modelo-de-datos.md`.
 > No lo edites a mano: vuelve a generarlo cuando cambie un modelo.
+> Esquema de las migraciones: users 0018, inventory 0008, references 0003, production 0007, purchasing 0002, quality 0001, finished 0003, sales 0005, shipping 0002.
+> Generado el 2026-11-28 desde el commit `e96e566`.
 
 El modelo tiene **56 tablas** de negocio en 9 módulos, más dos vistas materializadas de reportes. Todas las tablas de negocio heredan de `BaseModel` y por eso incluyen además `created_at`, `updated_at` y `deleted_at` (borrado lógico; ver [convenciones de base de datos](convenciones-base-de-datos.md)). Esas columnas no se repiten abajo.
 

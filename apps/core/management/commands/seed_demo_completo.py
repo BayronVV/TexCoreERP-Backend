@@ -4,7 +4,7 @@
     python manage.py seed_demo_completo --permitir-produccion      # contra la base de producción (datos SIMULADOS de la demostración)
 
 Encadena, en el orden en que dependen unos de otros, los comandos `seed_demo_*` de cada módulo:
-inventario → producción → recursos → tarifas → compras → calidad → producto terminado → stock por talla y color → ventas → envíos.
+inventario → producción → recursos → tarifas → compras → lavandería → calidad → producto terminado → stock por talla y color → ventas → envíos.
 Es idempotente: un módulo que ya tiene datos se salta (sin duplicarlos) y los pasos que se pueden repetir (stock, ventas, envíos) solo
 completan lo que falta. Al final imprime cuántos registros tiene cada módulo y falla si alguno quedó vacío.
 
@@ -31,6 +31,7 @@ STEPS = [
     ("Recursos", "seed_demo_recursos", "apps.production.models.Operario", True),
     ("Tarifas de mano de obra", "seed_demo_tarifas", "apps.production.models.TarifaManoObra", True),
     ("Compras", "seed_demo_compras", "apps.purchasing.models.OrdenCompra", True),
+    ("Lavandería", "seed_demo_lavanderia", "apps.production.models.RecetaLavado", True),
     ("Calidad", "seed_demo_calidad", "apps.quality.models.TipoDefecto", True),
     ("Producto terminado", "seed_demo_terminado", "apps.finished.models.IngresoTerminado", True),
     ("Stock por talla y color", "seed_demo_stock", "apps.finished.models.StockTerminado", False),

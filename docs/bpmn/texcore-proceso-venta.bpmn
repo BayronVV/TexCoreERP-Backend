@@ -2,6 +2,11 @@
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_texcore-proceso-venta" targetNamespace="https://texcore.example/bpmn" exporter="TexCore generar_bpmn.py" exporterVersion="1.0">
   <bpmn:collaboration id="Collaboration_TexCore">
     <bpmn:participant id="Participant_TexCore" name="Venta, envío y recaudo" processRef="Process_TexCore" />
+    <bpmn:participant id="P_TRA" name="Transportadora (tercero externo: transporta, entrega y cobra el contraentrega)" />
+    <bpmn:messageFlow id="M3" name="Número de guía (portal)" sourceRef="P_TRA" targetRef="T18" />
+    <bpmn:messageFlow id="M4" name="Paquetes despachados" sourceRef="S11" targetRef="P_TRA" />
+    <bpmn:messageFlow id="M5" name="Estado del envío (Track123)" sourceRef="P_TRA" targetRef="S12" />
+    <bpmn:messageFlow id="M6" name="Dinero del contraentrega" sourceRef="P_TRA" targetRef="T24" />
   </bpmn:collaboration>
   <bpmn:process id="Process_TexCore" name="Venta, envío y recaudo" isExecutable="false">
     <bpmn:laneSet id="LaneSet_TexCore">
@@ -21,6 +26,10 @@
         <bpmn:flowNodeRef>T23</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>S12</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>G7</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>G8</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>E6</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>T24</bpmn:flowNodeRef>
+        <bpmn:flowNodeRef>S13</bpmn:flowNodeRef>
       </bpmn:lane>
       <bpmn:lane id="L_VEN" name="Vendedor">
         <bpmn:flowNodeRef>T18</bpmn:flowNodeRef>
@@ -28,20 +37,15 @@
         <bpmn:flowNodeRef>G5</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>E2</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>S10</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>T24</bpmn:flowNodeRef>
-        <bpmn:flowNodeRef>S13</bpmn:flowNodeRef>
         <bpmn:flowNodeRef>S9</bpmn:flowNodeRef>
-      </bpmn:lane>
-      <bpmn:lane id="L_TRA" name="Transportadora (tercero externo)">
-        <bpmn:flowNodeRef>T22</bpmn:flowNodeRef>
       </bpmn:lane>
     </bpmn:laneSet>
     <bpmn:startEvent id="S9" name="Hay producto terminado y un pedido">
-      <bpmn:outgoing>Flow_20</bpmn:outgoing>
+      <bpmn:outgoing>Flow_22</bpmn:outgoing>
     </bpmn:startEvent>
     <bpmn:manualTask id="T18" name="Obtener la guía en el portal de la transportadora">
       <bpmn:documentation>Fuera de la app: la guía se genera en el portal de la transportadora antes de facturar.</bpmn:documentation>
-      <bpmn:incoming>Flow_20</bpmn:incoming>
+      <bpmn:incoming>Flow_22</bpmn:incoming>
       <bpmn:outgoing>Flow_01</bpmn:outgoing>
     </bpmn:manualTask>
     <bpmn:userTask id="T19" name="Facturar y anotar la guía (HU 7.1, HU 7.2)">
@@ -52,12 +56,12 @@
     <bpmn:endEvent id="E2" name="Venta rechazada: el sistema lista las faltantes">
       <bpmn:incoming>Flow_04</bpmn:incoming>
     </bpmn:endEvent>
-    <bpmn:exclusiveGateway id="G5" name="¿Hay stock?">
+    <bpmn:exclusiveGateway id="G5" name="¿Hay stock?" default="Flow_04">
       <bpmn:incoming>Flow_02</bpmn:incoming>
       <bpmn:outgoing>Flow_03</bpmn:outgoing>
       <bpmn:outgoing>Flow_04</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:exclusiveGateway id="G6" name="¿Se agrupa en una relación de despacho?">
+    <bpmn:exclusiveGateway id="G6" name="¿Se agrupa en una relación de despacho?" default="Flow_07">
       <bpmn:incoming>Flow_05</bpmn:incoming>
       <bpmn:outgoing>Flow_06</bpmn:outgoing>
       <bpmn:outgoing>Flow_07</bpmn:outgoing>
@@ -77,97 +81,108 @@
       <bpmn:incoming>Flow_08</bpmn:incoming>
       <bpmn:outgoing>Flow_09</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:manualTask id="T22" name="Transportar y entregar el paquete">
-      <bpmn:documentation>Fuera de la app: la transportadora transporta, entrega y cobra al cliente.</bpmn:documentation>
-      <bpmn:incoming>Flow_07</bpmn:incoming>
-      <bpmn:incoming>Flow_09</bpmn:incoming>
-      <bpmn:outgoing>Flow_10</bpmn:outgoing>
-    </bpmn:manualTask>
     <bpmn:userTask id="T23" name="Consultar estado de la guía (HU 7.2)">
       <bpmn:documentation>Envíos → Guías → botón Consultar estado (permiso envios.gestionar).</bpmn:documentation>
-      <bpmn:incoming>Flow_10</bpmn:incoming>
-      <bpmn:outgoing>Flow_11</bpmn:outgoing>
+      <bpmn:incoming>Flow_07</bpmn:incoming>
+      <bpmn:incoming>Flow_09</bpmn:incoming>
+      <bpmn:incoming>Flow_14</bpmn:incoming>
+      <bpmn:outgoing>Flow_10</bpmn:outgoing>
     </bpmn:userTask>
     <bpmn:serviceTask id="S12" name="Consultar Track123 y actualizar el semáforo (HU 7.2)">
       <bpmn:documentation>Solo Interrapidísimo, solo a petición. Estados: por despachar, en tránsito, con novedad, entregada, devuelta.</bpmn:documentation>
+      <bpmn:incoming>Flow_10</bpmn:incoming>
+      <bpmn:outgoing>Flow_11</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="G7" name="¿Cómo quedó la entrega?" default="Flow_14">
       <bpmn:incoming>Flow_11</bpmn:incoming>
       <bpmn:outgoing>Flow_12</bpmn:outgoing>
-    </bpmn:serviceTask>
-    <bpmn:exclusiveGateway id="G7" name="¿Entregada o devuelta?">
-      <bpmn:incoming>Flow_12</bpmn:incoming>
       <bpmn:outgoing>Flow_13</bpmn:outgoing>
       <bpmn:outgoing>Flow_14</bpmn:outgoing>
     </bpmn:exclusiveGateway>
-    <bpmn:userTask id="T24" name="Conciliar pago contraentrega: Pagado (HU 7.3)">
-      <bpmn:documentation>Ventas y Despachos → Gestión de cartera → Confirmar recaudo.</bpmn:documentation>
-      <bpmn:incoming>Flow_13</bpmn:incoming>
+    <bpmn:endEvent id="E6" name="Recaudo pendiente: la factura sigue por cobrar">
+      <bpmn:incoming>Flow_16</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="G8" name="¿Llegó el recaudo?" default="Flow_16">
+      <bpmn:incoming>Flow_12</bpmn:incoming>
       <bpmn:outgoing>Flow_15</bpmn:outgoing>
-    </bpmn:userTask>
+      <bpmn:outgoing>Flow_16</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
     <bpmn:userTask id="T27" name="Registrar devolución física del paquete (HU 7.2)">
       <bpmn:documentation>Envíos → Guías → detalle de la guía devuelta → Registrar devolución (permiso envios.devolucion).</bpmn:documentation>
-      <bpmn:incoming>Flow_14</bpmn:incoming>
-      <bpmn:outgoing>Flow_17</bpmn:outgoing>
+      <bpmn:incoming>Flow_13</bpmn:incoming>
+      <bpmn:outgoing>Flow_19</bpmn:outgoing>
     </bpmn:userTask>
-    <bpmn:serviceTask id="S13" name="Sumar recaudo al saldo financiero (HU 7.3)">
-      <bpmn:documentation>Movimiento de cartera RECAUDO con saldo antes y después.</bpmn:documentation>
-      <bpmn:incoming>Flow_15</bpmn:incoming>
-      <bpmn:outgoing>Flow_16</bpmn:outgoing>
-    </bpmn:serviceTask>
     <bpmn:serviceTask id="S14" name="Reingresar stock y anotar flete al vendedor (HU 7.2)">
       <bpmn:documentation>Movimiento DEVOLUCION_VENTA; el flete queda como flete_vendedor (solo se registra y se reporta).</bpmn:documentation>
+      <bpmn:incoming>Flow_19</bpmn:incoming>
+      <bpmn:outgoing>Flow_20</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="T24" name="Confirmar recaudo de la guía entregada (HU 7.3, HU 7.5)">
+      <bpmn:documentation>Ventas y Despachos → Gestión de cartera → Confirmar recaudo (permiso ventas.conciliar: Secretaria y Gerente). Solo se confirma el recaudo de una guía entregada.</bpmn:documentation>
+      <bpmn:incoming>Flow_15</bpmn:incoming>
+      <bpmn:outgoing>Flow_17</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="E4" name="Devolución registrada">
+      <bpmn:incoming>Flow_20</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="S13" name="Sumar recaudo al saldo financiero (HU 7.3)">
+      <bpmn:documentation>Movimiento de cartera RECAUDO con saldo antes y después.</bpmn:documentation>
       <bpmn:incoming>Flow_17</bpmn:incoming>
       <bpmn:outgoing>Flow_18</bpmn:outgoing>
     </bpmn:serviceTask>
-    <bpmn:endEvent id="E4" name="Devolución registrada">
-      <bpmn:incoming>Flow_18</bpmn:incoming>
-    </bpmn:endEvent>
     <bpmn:userTask id="T25" name="Consultar tablero gerencial y exportar a Excel o CSV (HU 7.4)">
       <bpmn:documentation>Reportes → Tablero gerencial → Exportar Excel (.xlsx) o CSV (.csv).</bpmn:documentation>
-      <bpmn:incoming>Flow_16</bpmn:incoming>
-      <bpmn:outgoing>Flow_19</bpmn:outgoing>
+      <bpmn:incoming>Flow_18</bpmn:incoming>
+      <bpmn:outgoing>Flow_21</bpmn:outgoing>
     </bpmn:userTask>
     <bpmn:endEvent id="E3" name="Proceso completado">
-      <bpmn:incoming>Flow_19</bpmn:incoming>
+      <bpmn:incoming>Flow_21</bpmn:incoming>
     </bpmn:endEvent>
     <bpmn:sequenceFlow id="Flow_01" sourceRef="T18" targetRef="T19" />
     <bpmn:sequenceFlow id="Flow_02" sourceRef="T19" targetRef="G5" />
-    <bpmn:sequenceFlow id="Flow_03" name="Sí" sourceRef="G5" targetRef="S10" />
+    <bpmn:sequenceFlow id="Flow_03" name="Sí" sourceRef="G5" targetRef="S10">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">hay stock de todas las tallas y colores pedidos</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
     <bpmn:sequenceFlow id="Flow_04" name="No" sourceRef="G5" targetRef="E2" />
     <bpmn:sequenceFlow id="Flow_05" sourceRef="S10" targetRef="G6" />
-    <bpmn:sequenceFlow id="Flow_06" name="Sí" sourceRef="G6" targetRef="T21" />
-    <bpmn:sequenceFlow id="Flow_07" name="No" sourceRef="G6" targetRef="T22" />
+    <bpmn:sequenceFlow id="Flow_06" name="Sí" sourceRef="G6" targetRef="T21">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">se despachan varias guías juntas</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_07" name="No" sourceRef="G6" targetRef="T23" />
     <bpmn:sequenceFlow id="Flow_08" sourceRef="T21" targetRef="S11" />
-    <bpmn:sequenceFlow id="Flow_09" sourceRef="S11" targetRef="T22" />
-    <bpmn:sequenceFlow id="Flow_10" sourceRef="T22" targetRef="T23" />
-    <bpmn:sequenceFlow id="Flow_11" sourceRef="T23" targetRef="S12" />
-    <bpmn:sequenceFlow id="Flow_12" sourceRef="S12" targetRef="G7" />
-    <bpmn:sequenceFlow id="Flow_13" name="Entregada" sourceRef="G7" targetRef="T24" />
-    <bpmn:sequenceFlow id="Flow_14" name="Devuelta" sourceRef="G7" targetRef="T27" />
-    <bpmn:sequenceFlow id="Flow_15" sourceRef="T24" targetRef="S13" />
-    <bpmn:sequenceFlow id="Flow_16" sourceRef="S13" targetRef="T25" />
-    <bpmn:sequenceFlow id="Flow_17" sourceRef="T27" targetRef="S14" />
-    <bpmn:sequenceFlow id="Flow_18" sourceRef="S14" targetRef="E4" />
-    <bpmn:sequenceFlow id="Flow_19" sourceRef="T25" targetRef="E3" />
-    <bpmn:sequenceFlow id="Flow_20" sourceRef="S9" targetRef="T18" />
-    <bpmn:textAnnotation id="A6"><bpmn:text>La guía se genera en el portal de la transportadora, fuera de TexCore.</bpmn:text></bpmn:textAnnotation>
-    <bpmn:association id="Assoc_A6" associationDirection="None" sourceRef="T18" targetRef="A6" />
-    <bpmn:textAnnotation id="A7"><bpmn:text>El transporte, la entrega y el cobro al cliente ocurren fuera de TexCore.</bpmn:text></bpmn:textAnnotation>
-    <bpmn:association id="Assoc_A7" associationDirection="None" sourceRef="T22" targetRef="A7" />
+    <bpmn:sequenceFlow id="Flow_09" sourceRef="S11" targetRef="T23" />
+    <bpmn:sequenceFlow id="Flow_10" sourceRef="T23" targetRef="S12" />
+    <bpmn:sequenceFlow id="Flow_11" sourceRef="S12" targetRef="G7" />
+    <bpmn:sequenceFlow id="Flow_12" name="Entregada" sourceRef="G7" targetRef="G8">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">estado de la guía = entregada</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_13" name="Devuelta" sourceRef="G7" targetRef="T27">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">estado de la guía = devuelta</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_14" name="Con novedad o en tránsito: volver a consultar" sourceRef="G7" targetRef="T23" />
+    <bpmn:sequenceFlow id="Flow_15" name="Sí" sourceRef="G8" targetRef="T24">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">la transportadora entregó el dinero del contraentrega</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_16" name="No" sourceRef="G8" targetRef="E6" />
+    <bpmn:sequenceFlow id="Flow_17" sourceRef="T24" targetRef="S13" />
+    <bpmn:sequenceFlow id="Flow_18" sourceRef="S13" targetRef="T25" />
+    <bpmn:sequenceFlow id="Flow_19" sourceRef="T27" targetRef="S14" />
+    <bpmn:sequenceFlow id="Flow_20" sourceRef="S14" targetRef="E4" />
+    <bpmn:sequenceFlow id="Flow_21" sourceRef="T25" targetRef="E3" />
+    <bpmn:sequenceFlow id="Flow_22" sourceRef="S9" targetRef="T18" />
     <bpmn:textAnnotation id="A8"><bpmn:text>Solo Interrapidísimo y solo cuando alguien pulsa «Consultar estado».</bpmn:text></bpmn:textAnnotation>
     <bpmn:association id="Assoc_A8" associationDirection="None" sourceRef="S12" targetRef="A8" />
-    <bpmn:textAnnotation id="A9"><bpmn:text>Hoy la conciliación es manual y no verifica el estado de la guía.</bpmn:text></bpmn:textAnnotation>
-    <bpmn:association id="Assoc_A9" associationDirection="None" sourceRef="T24" targetRef="A9" />
     <bpmn:textAnnotation id="A10"><bpmn:text>El flete solo se registra a nombre del vendedor y se reporta; no se descuenta de ningún pago.</bpmn:text></bpmn:textAnnotation>
     <bpmn:association id="Assoc_A10" associationDirection="None" sourceRef="S14" targetRef="A10" />
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_TexCore">
     <bpmndi:BPMNPlane id="BPMNPlane_TexCore" bpmnElement="Collaboration_TexCore">
-      <bpmndi:BPMNShape id="Participant_TexCore_di" bpmnElement="Participant_TexCore" isHorizontal="true"><dc:Bounds x="40" y="40" width="2820" height="960" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Participant_TexCore_di" bpmnElement="Participant_TexCore" isHorizontal="true"><dc:Bounds x="40" y="40" width="2820" height="770" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="P_TRA_di" bpmnElement="P_TRA" isHorizontal="true"><dc:Bounds x="40" y="860" width="2820" height="70" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="L_GER_di" bpmnElement="L_GER" isHorizontal="true"><dc:Bounds x="70" y="40" width="2790" height="190" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="L_ALM_di" bpmnElement="L_ALM" isHorizontal="true"><dc:Bounds x="70" y="230" width="2790" height="190" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="L_SEC_di" bpmnElement="L_SEC" isHorizontal="true"><dc:Bounds x="70" y="420" width="2790" height="190" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="L_VEN_di" bpmnElement="L_VEN" isHorizontal="true"><dc:Bounds x="70" y="610" width="2790" height="200" /></bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="L_TRA_di" bpmnElement="L_TRA" isHorizontal="true"><dc:Bounds x="70" y="810" width="2790" height="190" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="S9_di" bpmnElement="S9" ><dc:Bounds x="187" y="664" width="36" height="36" /><bpmndi:BPMNLabel><dc:Bounds x="160" y="703" width="90" height="44" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="T18_di" bpmnElement="T18" ><dc:Bounds x="305" y="640" width="140" height="84" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="T19_di" bpmnElement="T19" ><dc:Bounds x="475" y="640" width="140" height="84" /></bpmndi:BPMNShape>
@@ -177,21 +192,19 @@
       <bpmndi:BPMNShape id="S10_di" bpmnElement="S10" ><dc:Bounds x="815" y="640" width="140" height="84" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="T21_di" bpmnElement="T21" ><dc:Bounds x="985" y="450" width="140" height="84" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="S11_di" bpmnElement="S11" ><dc:Bounds x="1155" y="450" width="140" height="84" /></bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="T22_di" bpmnElement="T22" ><dc:Bounds x="1325" y="840" width="140" height="84" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="T23_di" bpmnElement="T23" ><dc:Bounds x="1495" y="450" width="140" height="84" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="S12_di" bpmnElement="S12" ><dc:Bounds x="1665" y="450" width="140" height="84" /></bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="G7_di" bpmnElement="G7" isMarkerVisible="true" ><dc:Bounds x="1880" y="467" width="50" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="1934" y="477" width="90" height="30" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="T24_di" bpmnElement="T24" ><dc:Bounds x="2005" y="640" width="140" height="84" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="G7_di" bpmnElement="G7" isMarkerVisible="true" ><dc:Bounds x="1880" y="467" width="50" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="1809" y="434" width="90" height="30" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="E6_di" bpmnElement="E6" ><dc:Bounds x="2057" y="542" width="36" height="36" /><bpmndi:BPMNLabel><dc:Bounds x="1963" y="531" width="90" height="58" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="G8_di" bpmnElement="G8" isMarkerVisible="true" ><dc:Bounds x="2050" y="467" width="50" height="50" /><bpmndi:BPMNLabel><dc:Bounds x="2030" y="434" width="90" height="30" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="T27_di" bpmnElement="T27" ><dc:Bounds x="2005" y="260" width="140" height="84" /></bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="S13_di" bpmnElement="S13" ><dc:Bounds x="2175" y="640" width="140" height="84" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="S14_di" bpmnElement="S14" ><dc:Bounds x="2175" y="260" width="140" height="84" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="T24_di" bpmnElement="T24" ><dc:Bounds x="2175" y="450" width="140" height="84" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="E4_di" bpmnElement="E4" ><dc:Bounds x="2397" y="284" width="36" height="36" /><bpmndi:BPMNLabel><dc:Bounds x="2370" y="323" width="90" height="30" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="S13_di" bpmnElement="S13" ><dc:Bounds x="2345" y="450" width="140" height="84" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="T25_di" bpmnElement="T25" ><dc:Bounds x="2515" y="70" width="140" height="84" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="E3_di" bpmnElement="E3" ><dc:Bounds x="2737" y="94" width="36" height="36" /><bpmndi:BPMNLabel><dc:Bounds x="2710" y="133" width="90" height="30" /></bpmndi:BPMNLabel></bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="A6_di" bpmnElement="A6"><dc:Bounds x="345" y="746" width="230" height="40" /></bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="A7_di" bpmnElement="A7"><dc:Bounds x="980" y="860" width="320" height="44" /></bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="A8_di" bpmnElement="A8"><dc:Bounds x="1620" y="556" width="230" height="40" /></bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="A9_di" bpmnElement="A9"><dc:Bounds x="2045" y="746" width="230" height="40" /></bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="A8_di" bpmnElement="A8"><dc:Bounds x="1620" y="388" width="230" height="40" /></bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="A10_di" bpmnElement="A10"><dc:Bounds x="2170" y="366" width="320" height="40" /></bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_01_di" bpmnElement="Flow_01">
         <di:waypoint x="445" y="682" />
@@ -223,8 +236,8 @@
       <bpmndi:BPMNEdge id="Flow_07_di" bpmnElement="Flow_07">
         <di:waypoint x="885" y="467" />
         <di:waypoint x="885" y="436" />
-        <di:waypoint x="1395" y="436" />
-        <di:waypoint x="1395" y="840" />
+        <di:waypoint x="1565" y="436" />
+        <di:waypoint x="1565" y="450" />
         <bpmndi:BPMNLabel><dc:Bounds x="891" y="447" width="90" height="16" /></bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_08_di" bpmnElement="Flow_08">
@@ -233,74 +246,92 @@
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_09_di" bpmnElement="Flow_09">
         <di:waypoint x="1295" y="492" />
-        <di:waypoint x="1395" y="492" />
-        <di:waypoint x="1395" y="840" />
+        <di:waypoint x="1495" y="492" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_10_di" bpmnElement="Flow_10">
-        <di:waypoint x="1465" y="882" />
-        <di:waypoint x="1565" y="882" />
-        <di:waypoint x="1565" y="534" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_11_di" bpmnElement="Flow_11">
         <di:waypoint x="1635" y="492" />
         <di:waypoint x="1665" y="492" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_12_di" bpmnElement="Flow_12">
+      <bpmndi:BPMNEdge id="Flow_11_di" bpmnElement="Flow_11">
         <di:waypoint x="1805" y="492" />
         <di:waypoint x="1880" y="492" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_13_di" bpmnElement="Flow_13">
-        <di:waypoint x="1905" y="517" />
-        <di:waypoint x="1905" y="682" />
-        <di:waypoint x="2005" y="682" />
-        <bpmndi:BPMNLabel><dc:Bounds x="1911" y="521" width="90" height="16" /></bpmndi:BPMNLabel>
+      <bpmndi:BPMNEdge id="Flow_12_di" bpmnElement="Flow_12">
+        <di:waypoint x="1930" y="492" />
+        <di:waypoint x="2050" y="492" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1936" y="473" width="90" height="16" /></bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_14_di" bpmnElement="Flow_14">
+      <bpmndi:BPMNEdge id="Flow_13_di" bpmnElement="Flow_13">
         <di:waypoint x="1905" y="467" />
         <di:waypoint x="1905" y="302" />
         <di:waypoint x="2005" y="302" />
         <bpmndi:BPMNLabel><dc:Bounds x="1911" y="447" width="90" height="16" /></bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_14_di" bpmnElement="Flow_14">
+        <di:waypoint x="1905" y="517" />
+        <di:waypoint x="1905" y="594" />
+        <di:waypoint x="1565" y="594" />
+        <di:waypoint x="1565" y="534" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1809" y="533" width="90" height="58" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_15_di" bpmnElement="Flow_15">
-        <di:waypoint x="2145" y="682" />
-        <di:waypoint x="2175" y="682" />
+        <di:waypoint x="2100" y="492" />
+        <di:waypoint x="2175" y="492" />
+        <bpmndi:BPMNLabel><dc:Bounds x="2106" y="473" width="90" height="16" /></bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_16_di" bpmnElement="Flow_16">
-        <di:waypoint x="2315" y="682" />
-        <di:waypoint x="2585" y="682" />
-        <di:waypoint x="2585" y="154" />
+        <di:waypoint x="2075" y="517" />
+        <di:waypoint x="2075" y="542" />
+        <bpmndi:BPMNLabel><dc:Bounds x="2081" y="521" width="90" height="16" /></bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_17_di" bpmnElement="Flow_17">
+        <di:waypoint x="2315" y="492" />
+        <di:waypoint x="2345" y="492" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_18_di" bpmnElement="Flow_18">
+        <di:waypoint x="2485" y="492" />
+        <di:waypoint x="2585" y="492" />
+        <di:waypoint x="2585" y="154" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_19_di" bpmnElement="Flow_19">
         <di:waypoint x="2145" y="302" />
         <di:waypoint x="2175" y="302" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_18_di" bpmnElement="Flow_18">
+      <bpmndi:BPMNEdge id="Flow_20_di" bpmnElement="Flow_20">
         <di:waypoint x="2315" y="302" />
         <di:waypoint x="2397" y="302" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_19_di" bpmnElement="Flow_19">
+      <bpmndi:BPMNEdge id="Flow_21_di" bpmnElement="Flow_21">
         <di:waypoint x="2655" y="112" />
         <di:waypoint x="2737" y="112" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_20_di" bpmnElement="Flow_20">
+      <bpmndi:BPMNEdge id="Flow_22_di" bpmnElement="Flow_22">
         <di:waypoint x="223" y="682" />
         <di:waypoint x="305" y="682" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Assoc_A6_di" bpmnElement="Assoc_A6">
+      <bpmndi:BPMNEdge id="M3_di" bpmnElement="M3">
+        <di:waypoint x="375" y="860" />
         <di:waypoint x="375" y="724" />
-        <di:waypoint x="375" y="746" />
+        <bpmndi:BPMNLabel><dc:Bounds x="381" y="778" width="90" height="28" /></bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Assoc_A7_di" bpmnElement="Assoc_A7">
-        <di:waypoint x="1325" y="882" />
-        <di:waypoint x="1300" y="882" />
+      <bpmndi:BPMNEdge id="M4_di" bpmnElement="M4">
+        <di:waypoint x="1225" y="534" />
+        <di:waypoint x="1225" y="860" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1231" y="683" width="90" height="28" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="M5_di" bpmnElement="M5">
+        <di:waypoint x="1735" y="860" />
+        <di:waypoint x="1735" y="534" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1741" y="683" width="90" height="28" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="M6_di" bpmnElement="M6">
+        <di:waypoint x="2245" y="860" />
+        <di:waypoint x="2245" y="534" />
+        <bpmndi:BPMNLabel><dc:Bounds x="2251" y="683" width="90" height="28" /></bpmndi:BPMNLabel>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Assoc_A8_di" bpmnElement="Assoc_A8">
-        <di:waypoint x="1735" y="534" />
-        <di:waypoint x="1735" y="556" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Assoc_A9_di" bpmnElement="Assoc_A9">
-        <di:waypoint x="2075" y="724" />
-        <di:waypoint x="2075" y="746" />
+        <di:waypoint x="1735" y="450" />
+        <di:waypoint x="1735" y="428" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Assoc_A10_di" bpmnElement="Assoc_A10">
         <di:waypoint x="2245" y="344" />

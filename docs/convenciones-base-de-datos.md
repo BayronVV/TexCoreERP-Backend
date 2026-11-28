@@ -47,6 +47,18 @@ class Proveedor(BaseModel):
   físico, `CASCADE` no debe dispararse nunca.
 - **Consultas SQL a mano** (reportes): agregar siempre `WHERE deleted_at IS NULL`.
 
+### Libros de solo inserción (TE-188)
+
+Los tres libros de movimientos —kardex de inventario (`inventario_movimiento`), libro de producto terminado (`terminado_movimiento`) y libro de cartera (`ventas_movimiento_cartera`)— **solo se insertan**: una fila no se edita ni se borra, ni lógica ni físicamente. Una anulación, devolución o corrección deja un **movimiento nuevo** con el signo contrario, así que el saldo de cualquier fecha se reconstruye sumando el libro.
+
+| Capa | Qué frena |
+|---|---|
+| Modelo (`AppendOnlyModel` en `apps/core/models.py`) | Volver a guardar una fila, `delete()`, `restore()`, `hard_delete()` y `update()`/`delete()` en bloque. Lanza `LedgerIsAppendOnly` (un `IntegrityError`, que la API responde con `409`). Vale en SQLite y en PostgreSQL. |
+| Base de datos (PostgreSQL, migración `sales.0005`) | Triggers `BEFORE UPDATE OR DELETE` por fila y `BEFORE TRUNCATE` en las tres tablas: frenan también el SQL directo. Error SQLSTATE `23001`. |
+| Regla del saldo en la base | `CheckConstraint` saldo después = saldo antes + cantidad en producto terminado (`ck_terminado_movimiento_saldo`) y en cartera (`ck_cartera_movimiento_saldo`, con monto nunca negativo). |
+
+La única excepción es el **reinicio de los datos de demostración** (`reiniciar_datos_demo`), que activa `texcore.permitir_reinicio` con `SET LOCAL` dentro de su propia transacción; el permiso desaparece al terminarla. Las bases de prueba de Django (`test_…`) pueden vaciarse entre pruebas. Lo prueban `apps/core/test_libros.py` (en PostgreSQL, en la integración continua) y las pruebas de anulación y devolución de inventario, ventas y envíos.
+
 ## 2. Nombres
 
 - Tablas y columnas en `snake_case`, en español, siguiendo el modelo

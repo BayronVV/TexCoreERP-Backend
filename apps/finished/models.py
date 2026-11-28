@@ -13,7 +13,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
 
-from apps.core.models import BaseModel
+from apps.core.models import AppendOnlyModel, BaseModel
 
 from . import catalog
 
@@ -122,7 +122,7 @@ class AjusteLinea(BaseModel):
         ]
 
 
-class MovimientoTerminado(BaseModel):
+class MovimientoTerminado(AppendOnlyModel):
     """Una fila del libro del stock: de cuánto a cuánto pasó el saldo de una variante y por qué."""
     variante = models.ForeignKey("references.Variante", on_delete=models.PROTECT, related_name="movimientos_terminado")
     tipo = models.CharField(max_length=20, choices=catalog.MOVEMENT_TYPES)

@@ -1,5 +1,13 @@
+"""Proveedores de lavandería y recetas de lavado de demostración (TE-57).
+
+    python manage.py seed_demo_lavanderia     # idempotente; solo con DJANGO_DEBUG=true (o desde seed_demo_completo --permitir-produccion)
+
+Registra tres proveedores de lavandería y cuatro recetas de lavado. No envía lotes: eso lo hace seed_demo_calidad.
+"""
 from decimal import Decimal
-from django.core.management.base import BaseCommand
+
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
 
 from apps.inventory import catalog as inv_catalog
 from apps.inventory.models import Proveedor
@@ -11,6 +19,8 @@ class Command(BaseCommand):
     help = "Carga proveedores de lavandería, recetas de lavado y datos iniciales de procesos externos (TE-57)."
 
     def handle(self, *args, **options):
+        if not settings.DEBUG:
+            raise CommandError("Este comando solo se permite con DJANGO_DEBUG=true.")
         self.stdout.write("--- Semilla Procesos Externos / Lavandería (TE-57) ---")
 
         # 1. Proveedores de lavandería

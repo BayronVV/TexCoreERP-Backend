@@ -17,7 +17,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
-from apps.core.models import ActiveManager, ActiveQuerySet, BaseModel
+from apps.core.models import ActiveManager, ActiveQuerySet, AppendOnlyModel, BaseModel
 
 from . import catalog
 
@@ -214,7 +214,7 @@ class OrdenLinea(BaseModel):
         ]
 
 
-class Movimiento(BaseModel):
+class Movimiento(AppendOnlyModel):
     """Fila del kardex: cada ingreso o salida con el saldo antes y después, el usuario y la fecha."""
     producto = models.ForeignKey(Producto, on_delete=models.PROTECT, related_name="movimientos")
     tipo = models.CharField(max_length=8, choices=catalog.MOVEMENT_TYPES)

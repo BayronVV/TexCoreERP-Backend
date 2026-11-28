@@ -65,7 +65,7 @@ def drop_triggers_sql(table):
 def install(apps, schema_editor):
     if schema_editor.connection.vendor != "postgresql":
         return
-    schema_editor.execute(FUNCTIONS)
+    schema_editor.execute(FUNCTIONS, params=None)  # sin parámetros: el % del LIKE es literal
     for table in LEDGERS:
         schema_editor.execute(triggers_sql(table))
 
